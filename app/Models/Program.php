@@ -20,4 +20,10 @@ class Program extends Model
     {
         return $this->hasMany(Physical::class);
     }
+
+    public function indicator()
+{
+    return $this->hasOne(Indicator::class, 'program_id');  // assuming you add program_id to indicators
+    // or belongsTo if inverse
+}
 }

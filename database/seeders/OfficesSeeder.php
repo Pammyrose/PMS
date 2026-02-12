@@ -14,12 +14,12 @@ class OfficesSeeder extends Seeder
             ['id' => 1, 'name' => 'Regional Office', 'parent_id' => null],
 
             // PENROs (under Regional)
-            ['id' => 2, 'name' => 'PENRO Abra', 'parent_id' => 1],
-            ['id' => 3, 'name' => 'PENRO Apayao', 'parent_id' => 1],
-            ['id' => 4, 'name' => 'PENRO Benguet', 'parent_id' => 1],
-            ['id' => 5, 'name' => 'PENRO Ifugao', 'parent_id' => 1],
-            ['id' => 6, 'name' => 'PENRO Kalinga', 'parent_id' => 1],
-            ['id' => 7, 'name' => 'PENRO Mt. Province', 'parent_id' => 1],
+            ['id' => 2, 'name' => 'PENRO Abra', 'parent_id' => null],
+            ['id' => 3, 'name' => 'PENRO Apayao', 'parent_id' => null],
+            ['id' => 4, 'name' => 'PENRO Benguet', 'parent_id' => null],
+            ['id' => 5, 'name' => 'PENRO Ifugao', 'parent_id' => null],
+            ['id' => 6, 'name' => 'PENRO Kalinga', 'parent_id' => null],
+            ['id' => 7, 'name' => 'PENRO Mt. Province', 'parent_id' => null],
 
             // CENROs under Abra
             ['id' => 8, 'name' => 'CENRO Bangued', 'parent_id' => 2],

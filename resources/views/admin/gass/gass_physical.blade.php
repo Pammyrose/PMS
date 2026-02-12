@@ -307,7 +307,7 @@
                                                 <input type="hidden" name="entries[{{ $rowIndex }}][programs_id]"
                                                     value="{{ $prog->id }}">
                                                 <input type="hidden" name="entries[{{ $rowIndex }}][target]"
-                                                    value="{{ $prog->target ?? 0 }}">
+                                                    value="{{ $indicators[$prog->id]?->target ?? '' }}">
                                                 <input type="hidden" name="entries[{{ $rowIndex }}][year]" value="2025">
                                                 <input type="hidden" name="entries[{{ $rowIndex }}][period_type]"
                                                     class="period-type-field" value="monthly">
@@ -322,8 +322,9 @@
 
                                             <td class="indicator">
                                                 <input type="hidden" name="entries[{{ $rowIndex }}][performance_indicator]"
-                                                    value="{{ $entry?->performance_indicator ?? '' }}">
-                                                {{ $entry?->performance_indicator ?? 'Not specified' }}
+                                                    value="{{ $indicators[$prog->id]?->name ?? '' }}">
+                                                <div><strong>{{ $indicators[$prog->id]?->name ?? 'Not specified' }}</strong></div>
+                                               
                                             </td>
 
                                             <!-- Monthly -->
@@ -470,7 +471,51 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+    <!-- Toast Container (top-right position) -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+        <!-- Success Toast -->
+        <div id="successToast" class="toast bg-success text-white" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-success text-white">
+                <strong class="me-auto">Success</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="successMessage">
+                Data saved successfully!
+            </div>
+        </div>
+
+        <!-- Error Toast -->
+        <div id="errorToast" class="toast bg-danger text-white" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-danger text-white">
+                <strong class="me-auto">Error</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="errorMessage">
+                Something went wrong.
+            </div>
+        </div>
+
+ 
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
+        // Initialize Bootstrap toasts
+        const successToastEl = document.getElementById('successToast');
+        const errorToastEl = document.getElementById('errorToast');
+        const infoToastEl = document.getElementById('infoToast');
+
+        const successToast = new bootstrap.Toast(successToastEl);
+        const errorToast = new bootstrap.Toast(errorToastEl);
+        const infoToast = new bootstrap.Toast(infoToastEl);
+
+        // Show success message if available from redirect
+        @if(session('success'))
+            document.getElementById('successMessage').textContent = "{{ session('success') }}";
+            successToast.show();
+        @endif
+
         // Your existing JavaScript remains unchanged
         document.getElementById('toggleSidebar')?.addEventListener('click', function () {
             document.querySelector('.sidebar').classList.toggle('d-none');

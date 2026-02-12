@@ -61,8 +61,20 @@ Route::prefix('admin/gass')->name('admin.gass.')->middleware('auth')->group(func
     ->name('physical.save');
 
 
+Route::get('/indicators', [GassController::class, 'indicatorsIndex'])
+        ->name('indicators');
 
-}); 
+    Route::get('/indicators/create', [GassController::class, 'createIndicator'])
+        ->name('indicators.create');
+
+    Route::post('/indicators', [GassController::class, 'storeIndicator'])
+        ->name('indicators.store');
+
+    Route::patch('/indicators/{indicator}', [GassController::class, 'update'])
+        ->name('indicators.update');
+});
+
+
 
 
 
