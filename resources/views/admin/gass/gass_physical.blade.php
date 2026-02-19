@@ -1,617 +1,251 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Physical Performance (GASS) – 2025 - DENR PMS</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <style>
+        :root {
+            --green: #10b981;
+            --border: #e5e7eb;
+            --quarter-bg: #e0e7ff;
+            --annual-bg: #e5e7eb;
+        }
+
+        .year-header {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e40af;
+            text-align: center;
+            padding: 12px 0;
+            background: linear-gradient(to right, #eff6ff, #dbeafe);
+            border-bottom: 2px solid #3b82f6;
+        }
+
+        /* Month & Quarter headers */
+        .month-header {
+            background: #2f5be7;
+            color: white;
+            text-align: center;
+            font-weight: 600;
+            font-size: 11px;
+            padding: 4px 2px;
+            min-width: 42px;
+            border: 1px solid #1e40af;
+        }
+
+        .month-header.quarter {
+            background: #64748b;
+            min-width: 54px;
+            font-size: 11.5px;
+        }
+
+        .month-header.annual {
+            background: #374151;
+            min-width: 64px;
+            font-size: 12px;
+        }
+
+        /* Input fields */
+        .month-box {
+            width: 100%;
+            height: 24px;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 12px;
+            padding: 0;
+        }
+
+        .month-box[readonly] {
+            background: #e2e8f0;
+            color: #475569;
+            font-weight: 500;
+        }
+
+        .month-box:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            min-width: 1200px; /* prevents too much squeezing on small screens */
+        }
+
+        th, td {
+            border: 1px solid #d1d5db;
+            vertical-align: middle;
+        }
+
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: inherit;
+        }
+
+        .quarter-total {
+            background: var(--quarter-bg) !important;
+        }
+
+        .annual-total {
+            background: var(--annual-bg) !important;
+            font-weight: 600;
+        }
+    </style>
 </head>
-
-<style>
-    :root {
-        --green: #10b981;
-        --amber: #f59e0b;
-        --red: #ef4444;
-        --gray: #6b7280;
-        --border: #e5e7eb;
-        --input-bg: #f9fafb;
-    }
-
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-
-    body {
-        font-family: system-ui, -apple-system, sans-serif;
-        background: #f8fafc;
-        color: #1f2937;
-        padding: 20px;
-        line-height: 1.5;
-    }
-
-    .header {
-        background: rgb(255, 255, 255);
-        border-radius: 12px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-        padding: 16px 24px;
-        margin-bottom: 24px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .header h1 {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: #111827;
-    }
-
-    .filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-    }
-
-    select,
-    button {
-        padding: 8px 16px;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        font-size: 0.95rem;
-        background: white;
-        cursor: pointer;
-    }
-
-    button {
-        background: var(--green);
-        color: white;
-        border: none;
-        font-weight: 500;
-    }
-
-    button:hover {
-        background: #059669;
-    }
-
-    .card {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
-        overflow: hidden;
-    }
-
-    .table-container {
-        overflow-x: auto;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.88rem;
-    }
-
-    th,
-    td {
-        padding: 10px 6px;
-        text-align: center;
-        border-bottom: 1px solid var(--border);
-        white-space: nowrap;
-    }
-
-    th {
-        background-color: rgb(43, 92, 255);
-        font-weight: 600;
-        color: white;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-
-    td:first-child,
-    th:first-child {
-        text-align: left;
-        min-width: 220px;
-        font-weight: 500;
-    }
-
-    .indicator {
-        color: var(--gray);
-        font-size: 0.9rem;
-    }
-
-    .cell-green {
-        background: rgba(16, 185, 129, 0.18);
-        font-weight: 600;
-    }
-
-    .cell-amber {
-        background: rgba(245, 158, 11, 0.18);
-        font-weight: 600;
-    }
-
-    .cell-red {
-        background: rgba(239, 68, 68, 0.18);
-        font-weight: 600;
-    }
-
-    input[type="number"] {
-        width: 70px;
-        padding: 4px 2px;
-        border: 1px solid #d1d5db;
-        border-radius: 4px;
-        background: var(--input-bg);
-        text-align: center;
-        font-size: 0.95rem;
-    }
-
-    input[type="number"]:focus {
-        outline: none;
-        border-color: var(--green);
-        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
-    }
-
-    input[type="number"]::-webkit-inner-spin-button,
-    input[type="number"]::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-
-    .hidden {
-        display: none !important;
-    }
-
-    .legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 24px;
-        margin: 24px 0;
-        font-size: 0.9rem;
-        color: var(--gray);
-        justify-content: center;
-    }
-
-    .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-    }
-
-    .dot-green {
-        background: var(--green);
-    }
-
-    .dot-amber {
-        background: var(--amber);
-    }
-
-    .dot-red {
-        background: var(--red);
-    }
-</style>
-
 <body>
 
-    @include('components.nav')
+@include('components.nav')
 
-    <div class="d-flex">
-        @include('components.sidebar')
+<div class="d-flex">
+    @include('components.sidebar')
 
-        <main class="flex-grow-1 p-2 bg-gradient-to-b from-gray-50 to-white">
-            <div class="min-h-screen flex flex-col">
+    <main class="flex-grow-1 p-3 bg-gradient-to-b from-gray-50 to-white">
 
-                <div class="header">
-                    <h1>
-                        Physical Performance (GASS)
-                    </h1>
-                    <div class="filters">
-                        <select name="office_id" form="physicalForm">
-                            <option value="1">Office: GASS</option>
-                        </select>
-                        <select>
-                            <option>All Divisions</option>
-                        </select>
-                        <select name="year" form="physicalForm">
-                            <option value="2025" selected>Year: 2025</option>
-                            <option value="2026">Year: 2026</option>
-                        </select>
-                        <select id="periodSelect">
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="semiannual">Semi-Annual</option>
-                            <option value="annual">Annual</option>
-                        </select>
-                        <button type="button">Generate Report</button>
-                        <button type="submit" form="physicalForm" style="background:#6b7280;">Save</button>
-                    </div>
-                </div>
+        <div class="year-header">
+            Physical Performance Targets & Accomplishments – <span id="currentYear">2025</span>
+        </div>
 
-                <!-- FORM START -->
-                <form id="physicalForm" method="POST" action="{{ route('admin.gass.physical.save') }}">
-                    @csrf
+        <div class="bg-white rounded-lg shadow mt-3 p-3">
 
-                    <div class="card">
-                        <div class="table-container">
-                            <table id="performanceTable">
-                                <thead class="bg-blue-600">
-                                    <tr id="monthlyHeader">
-                                        <th>Programs / Activities</th>
-                                        <th>Performance Indicator</th>
-                                        <th>JAN</th>
-                                        <th>FEB</th>
-                                        <th>MAR</th>
-                                        <th>APR</th>
-                                        <th>MAY</th>
-                                        <th>JUN</th>
-                                        <th>JUL</th>
-                                        <th>AUG</th>
-                                        <th>SEP</th>
-                                        <th>OCT</th>
-                                        <th>NOV</th>
-                                        <th>DEC</th>
-                                        <th>TOTAL</th>
-                                        <th>REMARKS</th>
-                                    </tr>
-
-                                    <tr id="quarterlyHeader" class="hidden">
-                                        <th>Programs / Activities</th>
-                                        <th>Performance Indicator</th>
-                                        <th>1st QTR</th>
-                                        <th>2nd QTR</th>
-                                        <th>3rd QTR</th>
-                                        <th>4th QTR</th>
-                                        <th>TOTAL</th>
-                                        <th>REMARKS</th>
-                                    </tr>
-
-                                    <tr id="semiannualHeader" class="hidden">
-                                        <th>Programs / Activities</th>
-                                        <th>Performance Indicator</th>
-                                        <th>1st Half (Jan–Jun)</th>
-                                        <th>2nd Half (Jul–Dec)</th>
-                                        <th>TOTAL</th>
-                                        <th>REMARKS</th>
-                                    </tr>
-
-                                    <tr id="annualHeader" class="hidden">
-                                        <th>Programs / Activities</th>
-                                        <th>Performance Indicator</th>
-                                        <th>ANNUAL TOTAL</th>
-                                        <th>REMARKS</th>
-                                    </tr>
-                                    
-                                </thead>
-
-                                <tbody>
-                                    @forelse($programs as $prog)
-                                        @php
-                                            $entry = $existing[$prog->id] ?? null;
-                                            $rowIndex = $loop->index;
-                                        @endphp
-
-                                        <tr>
-
-                                            <td>
-                                                <input type="hidden" name="entries[{{ $rowIndex }}][programs_id]"
-                                                    value="{{ $prog->id }}">
-                                                <input type="hidden" name="entries[{{ $rowIndex }}][target]"
-                                                    value="{{ $indicators[$prog->id]?->target ?? '' }}">
-                                                <input type="hidden" name="entries[{{ $rowIndex }}][year]" value="2025">
-                                                <input type="hidden" name="entries[{{ $rowIndex }}][period_type]"
-                                                    class="period-type-field" value="monthly">
-                                                <strong>{{ $prog->title ?: $prog->activities ?: $prog->project ?: 'TITLE' . $prog->id }}</strong>
-
-                                                @if($prog->subactivities)
-                                                    <br><small class="text-gray-600 pl-4">
-                                                        {{ str_replace("\n", " • ", trim($prog->subactivities)) }}
-                                                    </small>
-                                                @endif
-                                            </td>
-
-                                            <td class="indicator">
-                                                <input type="hidden" name="entries[{{ $rowIndex }}][performance_indicator]"
-                                                    value="{{ $indicators[$prog->id]?->name ?? '' }}">
-                                                <div><strong>{{ $indicators[$prog->id]?->name ?? 'Not specified' }}</strong></div>
-                                               
-                                            </td>
-
-                                            <!-- Monthly -->
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][jan]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.jan", $entry?->jan ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][feb]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.feb", $entry?->feb ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][mar]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.mar", $entry?->mar ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][apr]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.apr", $entry?->apr ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][may]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.may", $entry?->may ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][jun]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.jun", $entry?->jun ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][jul]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.jul", $entry?->jul ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][aug]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.aug", $entry?->aug ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][sep]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.sep", $entry?->sep ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][oct]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.oct", $entry?->oct ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][nov]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.nov", $entry?->nov ?? 0) }}">
-                                            </td>
-                                            <td class="monthly-col">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][dec]"
-                                                    class="month-input"
-                                                    value="{{ old("entries.$rowIndex.dec", $entry?->dec ?? 0) }}">
-                                            </td>
-
-                                            <td class="total monthly-total"><strong>0</strong></td>
-
-                                            <!-- Quarterly (hidden by default) -->
-                                            <td class="qtr-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][q1]"
-                                                    class="qtr-input"
-                                                    value="{{ old("entries.$rowIndex.q1", $entry?->q1 ?? 0) }}">
-                                            </td>
-                                            <td class="qtr-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][q2]"
-                                                    class="qtr-input"
-                                                    value="{{ old("entries.$rowIndex.q2", $entry?->q2 ?? 0) }}">
-                                            </td>
-                                            <td class="qtr-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][q3]"
-                                                    class="qtr-input"
-                                                    value="{{ old("entries.$rowIndex.q3", $entry?->q3 ?? 0) }}">
-                                            </td>
-                                            <td class="qtr-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][q4]"
-                                                    class="qtr-input"
-                                                    value="{{ old("entries.$rowIndex.q4", $entry?->q4 ?? 0) }}">
-                                            </td>
-                                            <td class="total qtr-total hidden"><strong>0</strong></td>
-
-                                            <!-- Semi-annual -->
-                                            <td class="semi-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][first_half]"
-                                                    class="semi-input"
-                                                    value="{{ old("entries.$rowIndex.first_half", $entry?->first_half ?? 0) }}">
-                                            </td>
-                                            <td class="semi-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][second_half]"
-                                                    class="semi-input"
-                                                    value="{{ old("entries.$rowIndex.second_half", $entry?->second_half ?? 0) }}">
-                                            </td>
-                                            <td class="total semi-total hidden"><strong>0</strong></td>
-
-                                            <!-- Annual -->
-                                            <td class="annual-col hidden">
-                                                <input type="number" min="0" name="entries[{{ $rowIndex }}][annual_total]"
-                                                    class="annual-input"
-                                                    value="{{ old("entries.$rowIndex.annual_total", $entry?->annual_total ?? 0) }}">
-                                            </td>
-
-                                            <!-- Remarks -->
-                                            <td>
-                                                <input type="text" name="entries[{{ $rowIndex }}][remarks]"
-                                                    placeholder="Remarks..." style="width:180px;"
-                                                    value="{{ old("entries.$rowIndex.remarks", $entry?->remarks ?? '') }}">
-                                            </td>
-                                        </tr>
-
-                                    @empty
-                                        <tr>
-                                            <td colspan="16" class="text-center py-12 text-gray-500 italic">
-                                                No programs loaded for this view.<br>
-                                                <small>(Select a program from the GASS overview page)</small>
-                                            </td>
-                                        </tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-
-                            <div class="legend">
-                                <div class="legend-item"><span class="dot dot-green"></span> ≥ 100% / On Track</div>
-                                <div class="legend-item"><span class="dot dot-amber"></span> 85–99% / Needs Attention
-                                </div>
-                                <div class="legend-item"><span class="dot dot-red"></span>
-                                    < 85% / Delayed</div>
-                                </div>
-                            </div>
-                        </div>
-                </form>
-                <!-- FORM END -->
-
+            <!-- BUTTON -->
+            <div class="text-end mb-3">
+                <button onclick="addPhysicalSet()" class="btn btn-success btn-sm" id="addBtn">
+                    <i class="fa fa-plus"></i> Add Physical Performance Columns
+                </button>
             </div>
-        </main>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+            <div class="table-container">
+                <table class="text-sm" id="performanceTable">
 
-    <!-- Toast Container (top-right position) -->
-    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
-        <!-- Success Toast -->
-        <div id="successToast" class="toast bg-success text-white" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="toast-header bg-success text-white">
-                <strong class="me-auto">Success</strong>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-            <div class="toast-body" id="successMessage">
-                Data saved successfully!
+                    <thead>
+                        <tr class="bg-blue-800 text-white">
+                            <th class="px-4 py-3" style="min-width:280px">Programs/Activities/Projects (P/A/Ps)</th>
+                            <th class="px-4 py-3" style="min-width:220px">Performance Indicators</th>
+                            <th class="px-4 py-3" style="min-width:160px">Office</th>
+                            <!-- Month columns will be added here -->
+                        </tr>
+                    </thead>
+
+                    <tbody class="text-gray-700">
+                        <tr class="bg-gray-100 font-semibold">
+                            <td class="px-4 py-3" colspan="3">
+                                GENERAL ADMINISTRATION AND SUPPORT SERVICES (GASS)<br>
+                                GENERAL MANAGEMENT AND SUPERVISION (GMS)<br>
+                                A. REPAIR AND MAINTENANCE AND INSURANCE
+                            </td>
+                        </tr>
+
+                        <tr class="hover:bg-gray-50 data-row">
+                            <td class="px-4 py-3 pl-5 text-blue-700 font-medium">
+                                1. Repair and Maintenance of Property including hiring of Civil Engineer<br>
+                                <span class="ms-4">1.1 Maintenance of Buildings and Other Structures</span>
+                            </td>
+                            <td class="px-4 py-3">
+                                Other building maintained (no.)
+                            </td>
+                            <td class="px-4 py-3">
+                                PENRO Ifugao<br>
+                                Buguias<br>
+                                IFUGAO<br>
+                                PENRO<br>
+                                Alfonso Lista<br>
+                                Lamut
+                            </td>
+                        </tr>
+
+                        <!-- More rows can be added here -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Error Toast -->
-        <div id="errorToast" class="toast bg-danger text-white" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="toast-header bg-danger text-white">
-                <strong class="me-auto">Error</strong>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-            <div class="toast-body" id="errorMessage">
-                Something went wrong.
-            </div>
-        </div>
+    </main>
+</div>
 
- 
-    </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let columnsAdded = false;
 
-    <script>
-        // Initialize Bootstrap toasts
-        const successToastEl = document.getElementById('successToast');
-        const errorToastEl = document.getElementById('errorToast');
-        const infoToastEl = document.getElementById('infoToast');
+function addPhysicalSet() {
+    if (columnsAdded) return;
+    columnsAdded = true;
+    document.getElementById("addBtn").disabled = true;
+    document.getElementById("addBtn").innerHTML = '<i class="fa fa-check"></i> Columns Added';
 
-        const successToast = new bootstrap.Toast(successToastEl);
-        const errorToast = new bootstrap.Toast(errorToastEl);
-        const infoToast = new bootstrap.Toast(infoToastEl);
+    const table = document.getElementById("performanceTable");
+    const headerRow = table.querySelector("thead tr");
 
-        // Show success message if available from redirect
-        @if(session('success'))
-            document.getElementById('successMessage').textContent = "{{ session('success') }}";
-            successToast.show();
-        @endif
+    const months = [
+        { label: "JAN",  type: "month" },
+        { label: "FEB",  type: "month" },
+        { label: "MAR",  type: "month" },
+        { label: "1ST Q", type: "quarter" },
+        { label: "APR",  type: "month" },
+        { label: "MAY",  type: "month" },
+        { label: "JUN",  type: "month" },
+        { label: "2ND Q", type: "quarter" },
+        { label: "JUL",  type: "month" },
+        { label: "AUG",  type: "month" },
+        { label: "SEP",  type: "month" },
+        { label: "3RD Q", type: "quarter" },
+        { label: "OCT",  type: "month" },
+        { label: "NOV",  type: "month" },
+        { label: "DEC",  type: "month" },
+        { label: "4TH Q", type: "quarter" },
+        { label: "ANNUAL", type: "annual" }
+    ];
 
-        // Your existing JavaScript remains unchanged
-        document.getElementById('toggleSidebar')?.addEventListener('click', function () {
-            document.querySelector('.sidebar').classList.toggle('d-none');
+    // Add header columns
+    months.forEach(m => {
+        const th = document.createElement("th");
+        th.textContent = m.label;
+        th.classList.add("month-header", "text-center", "border");
+        
+        if (m.type === "quarter") th.classList.add("quarter");
+        if (m.type === "annual")  th.classList.add("annual");
+
+        headerRow.appendChild(th);
+    });
+
+    // Add input cells to every tbody row
+    document.querySelectorAll("tbody tr").forEach(row => {
+        months.forEach(m => {
+            const td = document.createElement("td");
+            td.classList.add("p-1", "text-center", "border");
+
+            const input = document.createElement("input");
+            input.type = "number";
+            input.className = "month-box";
+            input.value = "0";
+            input.min = "0";
+
+            if (m.type !== "month") {
+                input.readOnly = true;
+                td.classList.add(m.type === "quarter" ? "quarter-total" : "annual-total");
+            }
+
+            td.appendChild(input);
+            row.appendChild(td);
         });
+    });
+}
+</script>
 
-        const periodSelect = document.getElementById('periodSelect');
-
-        function updateView() {
-            const view = periodSelect.value;
-
-            document.querySelectorAll('.period-type-field').forEach(field => {
-                field.value = view;
-            });
-
-            document.getElementById('monthlyHeader').classList.toggle('hidden', view !== 'monthly');
-            document.getElementById('quarterlyHeader').classList.toggle('hidden', view !== 'quarterly');
-            document.getElementById('semiannualHeader').classList.toggle('hidden', view !== 'semiannual');
-            document.getElementById('annualHeader').classList.toggle('hidden', view !== 'annual');
-
-            document.querySelectorAll('.monthly-col, .monthly-total').forEach(el => {
-                el.classList.toggle('hidden', view !== 'monthly');
-            });
-
-            document.querySelectorAll('.qtr-col, .qtr-total').forEach(el => {
-                el.classList.toggle('hidden', view !== 'quarterly');
-            });
-
-            document.querySelectorAll('.semi-col, .semi-total').forEach(el => {
-                el.classList.toggle('hidden', view !== 'semiannual');
-            });
-
-            document.querySelectorAll('.annual-col').forEach(el => {
-                el.classList.toggle('hidden', view !== 'annual');
-            });
-        }
-
-        function calculateTotals() {
-            document.querySelectorAll('tr[data-target]').forEach(row => {
-                const target = parseFloat(row.dataset.target) || 0;
-                let value = 0;
-                const view = periodSelect.value;
-
-                if (view === 'monthly') {
-                    row.querySelectorAll('.month-input').forEach(inp => value += Number(inp.value) || 0);
-                    const cell = row.querySelector('.monthly-total');
-                    if (cell) {
-                        cell.querySelector('strong').textContent = value;
-                        applyColor(cell, value, target);
-                    }
-                } else if (view === 'quarterly') {
-                    row.querySelectorAll('.qtr-input').forEach(inp => value += Number(inp.value) || 0);
-                    const cell = row.querySelector('.qtr-total');
-                    if (cell) {
-                        cell.querySelector('strong').textContent = value;
-                        applyColor(cell, value, target);
-                    }
-                } else if (view === 'semiannual') {
-                    row.querySelectorAll('.semi-input').forEach(inp => value += Number(inp.value) || 0);
-                    const cell = row.querySelector('.semi-total');
-                    if (cell) {
-                        cell.querySelector('strong').textContent = value;
-                        applyColor(cell, value, target);
-                    }
-                } else if (view === 'annual') {
-                    const inp = row.querySelector('.annual-input');
-                    if (inp) {
-                        value = Number(inp.value) || 0;
-                        applyColor(inp.parentElement, value, target);
-                    }
-                }
-            });
-        }
-
-        function applyColor(cell, value, target) {
-            if (target <= 0) return;
-            const percent = (value / target) * 100;
-            cell.classList.remove('cell-green', 'cell-amber', 'cell-red');
-            if (percent >= 100) cell.classList.add('cell-green');
-            else if (percent >= 85) cell.classList.add('cell-amber');
-            else cell.classList.add('cell-red');
-        }
-
-        document.querySelectorAll('input[type="number"]').forEach(input => {
-            input.addEventListener('input', calculateTotals);
-        });
-
-        periodSelect.addEventListener('change', () => {
-            updateView();
-            calculateTotals();
-        });
-
-        // Initialize
-        periodSelect.value = 'monthly';
-        updateView();
-        calculateTotals();
-    </script>
 </body>
-
 </html>
