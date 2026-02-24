@@ -42,6 +42,31 @@
     background-color: #3b82f6;
     /* blue-500 */
   }
+
+  /* JS controlled hidden state for large screens */
+  #sidebar.js-hidden {
+    transform: translateX(-100%) !important;
+  }
+
+  /* When sidebar is collapsed, remove the left margin from main content on large screens */
+  @media (min-width: 1024px) {
+    .sidebar-collapsed {
+      margin-left: 0 !important;
+    }
+  }
+
+  /* Toggle button padding on md and a smooth shift when sidebar toggles */
+  #toggleSidebar {
+    transition: margin 0.2s ease, padding 0.2s ease;
+  }
+  @media (min-width: 768px) {
+    #toggleSidebar { padding-left: 0.5rem; padding-right: 0.5rem; }
+  }
+  @media (min-width: 1024px) {
+    /* When sidebar visible, move toggle button to the right edge of the sidebar */
+    #toggleSidebar.shift-right { margin-left: 16rem; }
+    #toggleSidebar.shift-right { transform: translateX(0); }
+  }
 </style>
 
 <body class="bg-gray-50 text-gray-800 antialiased">
@@ -171,7 +196,7 @@
   </aside>
 
   <!-- MAIN CONTENT -->
-  <div class="lg:ml-64 min-h-screen flex flex-col">
+  <div id="mainContent" class="lg:ml-64 min-h-screen flex flex-col">
 
 
 
@@ -185,22 +210,67 @@
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('toggleSidebar');
     const backdrop = document.getElementById('backdrop');
+    const mainContent = document.getElementById('mainContent');
 
-    toggleBtn.addEventListener('click', () => {
+    const handleToggle = () => {
+      // Toggle both the Tailwind utility and a JS-specific class so it works across breakpoints
       sidebar.classList.toggle('-translate-x-full');
-      backdrop.classList.toggle('hidden');
-    });
+      sidebar.classList.toggle('js-hidden');
 
-    backdrop.addEventListener('click', () => {
-      sidebar.classList.add('-translate-x-full');
-      backdrop.classList.add('hidden');
-    });
+      // Toggle backdrop for small screens
+      if (backdrop) backdrop.classList.toggle('hidden');
+
+      // For large screens, collapse or expand the main content margin
+      if (window.innerWidth >= 1024 && mainContent) {
+        mainContent.classList.toggle('sidebar-collapsed');
+      }
+      // Update toggle button position after changing sidebar state
+      updateTogglePosition();
+    };
+
+    const updateTogglePosition = () => {
+      if (!toggleBtn) return;
+      // On desktop, shift the toggle to the right when sidebar is visible
+      if (window.innerWidth >= 1024) {
+        if (!sidebar.classList.contains('js-hidden')) {
+          toggleBtn.classList.add('shift-right');
+        } else {
+          toggleBtn.classList.remove('shift-right');
+        }
+      } else {
+        // remove desktop shift classes on smaller screens
+        toggleBtn.classList.remove('shift-right');
+      }
+      // ensure md padding active when width >= 768
+      if (window.innerWidth >= 768) {
+        toggleBtn.classList.add('md-px-2');
+      } else {
+        toggleBtn.classList.remove('md-px-2');
+      }
+    };
+
+    if (toggleBtn) toggleBtn.addEventListener('click', handleToggle);
+
+    // Update position on load and resize
+    updateTogglePosition();
+    window.addEventListener('resize', updateTogglePosition);
+
+    if (backdrop) {
+      backdrop.addEventListener('click', () => {
+        sidebar.classList.add('-translate-x-full');
+        sidebar.classList.add('js-hidden');
+        backdrop.classList.add('hidden');
+        if (mainContent) mainContent.classList.add('sidebar-collapsed');
+      });
+    }
 
     // Optional: close sidebar on escape key
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         sidebar.classList.add('-translate-x-full');
-        backdrop.classList.add('hidden');
+        sidebar.classList.add('js-hidden');
+        if (backdrop) backdrop.classList.add('hidden');
+        if (mainContent) mainContent.classList.add('sidebar-collapsed');
       }
     });
   </script>
