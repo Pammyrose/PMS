@@ -100,10 +100,10 @@
         Programs
       </a>
 
-      <details class="group" {{ request()->routeIs(['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing']) ? 'open' : '' }}>
+      <details class="group" {{ request()->routeIs(['gass_physical', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing']) ? 'open' : '' }}>
 
         <summary class="flex items-center px-4 py-3 rounded-lg cursor-pointer list-none
-  {{ request()->routeIs(['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'])
+  {{ request()->routeIs(['gass_physical', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'])
   ? 'bg-blue-500'
   : 'hover:bg-blue-500' }}">
 
@@ -116,8 +116,8 @@
         <div class="ml-6 mt-2 space-y-1 max-h-[360px] overflow-y-auto pr-2 scrollbar-modern">
 
 
-          <a href="{{ route('gass') }}"
-            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('gass') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <a href="{{ route('gass_physical') }}"
+            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('gass_physical') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
             <i class="fa-solid fa-briefcase mr-3 w-5 text-center"></i> GASS
           </a>
 

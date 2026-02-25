@@ -4,10 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Physical extends Model
+class Gass_Physical extends Model
 {
 
-protected $table = 'physical';
+protected $table = 'gass_physical';
 protected $fillable = [
     'user_id', 'office_id',
     'programs_id', 'performance_indicator', 'target',
@@ -49,7 +49,7 @@ protected $fillable = [
 
     public function program()
     {
-                return $this->belongsTo(Program::class);
+        return $this->belongsTo(Gass_Pap::class, 'programs_id');
     }
 
     // Helper method example

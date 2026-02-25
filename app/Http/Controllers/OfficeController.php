@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\Pap;
 use App\Models\Office;
-use App\Models\Program;
+use App\Models\Gass_Pap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +19,7 @@ class OfficeController extends Controller
             ->get();
 
 
-        $programs = Program::select('title','program','activities','subactivities','project')->latest()->get();
+        $programs = Gass_Pap::select('title','program','activities','subactivities','project')->latest()->get();
 
         return view('admin.target_form', compact('penros', 'programs'));
     }
@@ -56,7 +56,7 @@ class OfficeController extends Controller
                 ? $request->cenro_id
                 : $request->penro_id;
 
-            $pap = Pap::create([
+            $pap = Gass_Pap::create([
                 'title' => $validated['title'],
                 'program' => $validated['program'] ?? null,
                 'project' => $validated['project'] ?? null,

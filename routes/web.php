@@ -26,7 +26,8 @@ Route::prefix('programs')->name('programs.')->group(function () {
 
 //sidebar
 Route::get('/target', function () {return view('admin.target');})->middleware('auth')->name('target');
-Route::get('/gass', function () { return view('admin.gass.gass'); })->middleware('auth')->name('gass');
+
+Route::get('/gass_physical', [GassController::class, 'index'])->middleware('auth')->name('gass_physical');
 Route::get('/sto', function () { return view('admin.sto'); })->middleware('auth')->name('sto');
 Route::get('/enf', function () { return view('admin.enf'); })->middleware('auth')->name('enf');
 Route::get('/pa', function () { return view('admin.pa'); })->middleware('auth')->name('pa');
@@ -38,7 +39,7 @@ Route::get('/paria', function () { return view('admin.paria'); })->middleware('a
 Route::get('/cobb', function () { return view('admin.cobb'); })->middleware('auth')->name('cobb');
 Route::get('/continuing', function () { return view('admin.continuing'); })->middleware('auth')->name('continuing');
 Route::get('/programs_view', function () {
-    $programs = \App\Models\Program::latest()->get();
+    $programs = \App\Models\Gass_Pap::latest()->get();
     return view('admin.programs', compact('programs'));
 })->middleware('auth')->name('programs');
 
@@ -52,26 +53,14 @@ Route::get('/target_form', [OfficeController::class, 'create'])
     ->name('target_form');
 
 Route::get('/gass', [GassController::class, 'overview'])->name('gass');
-Route::prefix('admin/gass')->name('admin.gass.')->middleware('auth')->group(function () {
-
-    Route::get('/physical/{program?}', [GassController::class, 'index'])
-        ->name('physical');
-
-        Route::post('/physical/save', [GassController::class, 'save'])
-    ->name('physical.save');
-
-
-Route::get('/indicators', [GassController::class, 'indicatorsIndex'])
-        ->name('indicators');
-
-    Route::get('/indicators/create', [GassController::class, 'createIndicator'])
-        ->name('indicators.create');
-
-    Route::post('/indicators', [GassController::class, 'storeIndicator'])
-        ->name('indicators.store');
-
-    Route::patch('/indicators/{indicator}', [GassController::class, 'update'])
-        ->name('indicators.update');
+Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware('auth')->group(function () {
+    Route::get('/physical/{program?}', [GassController::class, 'index'])->name('physical');
+    Route::post('/physical/save', [GassController::class, 'save'])->name('physical.save');
+    Route::get('/indicators', [GassController::class, 'indicatorsIndex'])->name('indicators');
+    Route::get('/indicators/create', [GassController::class, 'createIndicator'])->name('indicators.create');
+    Route::post('/indicators', [GassController::class, 'storeIndicator'])->name('indicators.store');
+    Route::patch('/indicators/{indicator}', [GassController::class, 'update'])->name('indicators.update');
+    Route::delete('/indicators/{indicator}', [GassController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
 

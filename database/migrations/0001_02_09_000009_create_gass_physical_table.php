@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
 public function up(): void
     {
-        Schema::create('physical', function (Blueprint $table) {
+        Schema::create('gass_physical', function (Blueprint $table) {
             $table->id();
 
             $table->unsignedBigInteger('user_id');
@@ -26,7 +26,7 @@ public function up(): void
 
             $table->foreign('programs_id')
                 ->references('id')
-                ->on('programs')
+                ->on('gass_pap')
                 ->onDelete('restrict');
 
             // Main fields
@@ -68,6 +68,6 @@ public function up(): void
 
     public function down(): void
     {
-        Schema::dropIfExists('physical');
+        Schema::dropIfExists('gass_physical');
     }
 };

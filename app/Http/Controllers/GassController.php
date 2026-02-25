@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Physical;
-use App\Models\Program;
-use App\Models\Indicator;
+use App\Models\Gass_Physical;
+use App\Models\Gass_Pap;
+use App\Models\Gass_Indicator;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,7 +17,7 @@ class GassController extends Controller
      * - If a specific program is provided → show only entries for that program
      * - Otherwise → show entries for all programs
      */
-    public function index(Request $request, Program $program)
+    public function index(Request $request, Gass_Pap $program = null)
     {
         $year = $request->query('year', 2025);
         $office_id = $request->query('office_id', 1);   // change default later if needed
@@ -25,27 +25,62 @@ class GassController extends Controller
         if ($program) {
             // single program view
             $programs = collect([$program]);
-            $entries = Physical::where('programs_id', $program->id)
+            $entries = Gass_Physical::where('programs_id', $program->id)
                 ->where('year', $year)
                 ->where('office_id', $office_id)
                 ->get();
         } else {
             // GASS overview — all programs
-            $programs = Program::latest()->get();
-            $entries = Physical::where('year', $year)
+            $programs = Gass_Pap::latest()->get();
+            $entries = Gass_Physical::where('year', $year)
                 ->where('office_id', $office_id)
                 ->get();
         }
 
-        // Fetch all indicators and key them by program_id
-        $indicators = Indicator::all()->keyBy('program_id');
+        // Fetch all indicators keyed by program_id
+        $indicators = Gass_Indicator::get()->groupBy('program_id');
+
+        // Prepare indicators data for JavaScript (flat structure by program_id)
+        $indicatorsForJs = [];
+        foreach ($indicators as $programId => $programIndicators) {
+            $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) {
+                $officeIds = collect($indicator->office_id ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter()
+                    ->values();
+
+                $officeList = Office::whereIn('id', $officeIds->all())
+                    ->get(['id', 'name'])
+                    ->map(fn ($office) => [
+                        'id' => $office->id,
+                        'name' => $office->name,
+                    ])
+                    ->values()
+                    ->all();
+
+                return [
+                    'id' => $indicator->id,
+                    'name' => $indicator->name,
+                    'program_id' => $indicator->program_id,
+                    'office_id' => $officeIds->first(),
+                    'office_ids' => $officeIds->all(),
+                    'office_list' => $officeList,
+                ];
+            })->toArray();
+        }
+        
         $existing = $entries->keyBy('programs_id');
+        
+        // Get all offices organized by parent for the modal
+        $offices = Office::whereNull('parent_id')->with('children')->get();
 
         return view('admin.gass.gass_physical', compact(
             'entries',
             'programs',
             'existing',
             'indicators',
+            'indicatorsForJs',
+            'offices',
             'year',
             'office_id',
             'program'
@@ -57,7 +92,7 @@ class GassController extends Controller
      */
     public function overview()
     {
-        $allPrograms = Program::with('indicator.office')->latest()->get();
+        $allPrograms = Gass_Pap::with('indicator.office')->latest()->get();
         
         // Get all offices organized by parent with children loaded
         $offices = Office::whereNull('parent_id')->with('children')->get();
@@ -138,14 +173,14 @@ class GassController extends Controller
             }
 
             // Check if exists first
-            $existing = Physical::where([
+            $existing = Gass_Physical::where([
                 'programs_id' => $data['programs_id'],
                 'year' => $data['year'],
                 'period_type' => $data['period_type'],
                 'office_id' => $officeId,
             ])->first();
 
-            $record = Physical::updateOrCreate(
+            $record = Gass_Physical::updateOrCreate(
                 [
                     'programs_id' => $data['programs_id'],
                     'year' => $data['year'],
@@ -209,7 +244,7 @@ class GassController extends Controller
 
     public function indicatorsIndex(Request $request)
     {
-        $indicators = Indicator::latest()->get();
+        $indicators = Gass_Indicator::latest()->get();
 
         return view('admin.gass.indicators', compact('indicators'));
     }
@@ -227,54 +262,114 @@ class GassController extends Controller
      */
     public function storeIndicator(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'target' => 'nullable|string|max:100',
-            'budget' => 'nullable|numeric|min:0',
-            'deadline' => 'nullable|date',
-            'program_id' => 'nullable|exists:programs,id',
-            'office_id' => 'nullable|exists:offices,id',
+        $baseValidated = $request->validate([
+            'indicator_name' => 'required|string|max:255',
+            'program_id' => 'required|exists:gass_pap,id',
+            'office_id' => 'required|array|min:1',
+            'office_id.*' => 'required|exists:offices,id',
         ]);
 
-        $validated['user_id'] = Auth::id();
-        $validated['office_id'] = $request->input('office_id');
+        $indicatorName = trim($baseValidated['indicator_name']);
 
-        $indicator = Indicator::create($validated);
+        $officeIds = collect($baseValidated['office_id'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
 
-        if ($request->wantsJson()) {
+        $indicator = Gass_Indicator::firstOrNew([
+            'program_id' => $baseValidated['program_id'],
+            'name' => $indicatorName,
+        ]);
+
+        $wasNew = !$indicator->exists;
+
+        $indicator->fill([
+            'user_id' => Auth::id(),
+            'name' => $indicatorName,
+            'office_id' => $officeIds,
+        ]);
+        $indicator->save();
+
+        $createdCount = $wasNew ? 1 : 0;
+        $updatedCount = $wasNew ? 0 : 1;
+        $message = "$createdCount created, $updatedCount updated successfully.";
+
+        if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
             return response()->json([
-                'message' => 'Indicator created successfully.',
+                'message' => $message,
+                'success' => true,
+                'created_count' => $createdCount,
+                'updated_count' => $updatedCount,
                 'indicator' => $indicator
             ]);
         }
 
-        return redirect()->route('admin.gass.indicators')
-            ->with('success', 'Indicator created successfully.');
+        return redirect()->route('gass_physical')
+            ->with('success', $message);
     }
 
     /**
      * Update indicator
      */
-    public function editProgram(Program $program)
+    public function editProgram(Gass_Pap $program)
     {
         return view('admin.gass.program_edit', compact('program'));
     }
 
-public function update(Request $request, Indicator $indicator)
+public function update(Request $request, Gass_Indicator $indicator)
 {
     $validated = $request->validate([
-        'name'     => 'nullable|string|max:255',
-        'target'   => 'nullable|string|max:255',
-        'deadline' => 'nullable|date',
-        'office_id' => 'nullable|exists:offices,id',
+        'indicator_name' => 'nullable|string|max:255',
+        'office_id' => 'nullable|array|min:1',
+        'office_id.*' => 'required|exists:offices,id',
     ]);
 
-    $validated['office_id'] = $request->input('office_id');
-    $indicator->update($validated);
+    $newName = isset($validated['indicator_name']) ? trim($validated['indicator_name']) : null;
+    $nameChanged = $newName !== null && $newName !== '' && $newName !== $indicator->name;
 
-    if ($request->wantsJson()) {
+    if ($nameChanged) {
+        $newIndicator = new Gass_Indicator();
+        $newIndicator->program_id = $indicator->program_id;
+        $newIndicator->user_id = Auth::id();
+        $newIndicator->name = $newName;
+        $newIndicator->office_id = isset($validated['office_id'])
+            ? collect($validated['office_id'])->map(fn ($id) => (int) $id)->unique()->values()->all()
+            : ($indicator->office_id ?? []);
+        $newIndicator->save();
+
+        if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+            return response()->json([
+                'message' => 'Indicator changed. A new indicator ID was created.',
+                'success' => true,
+                'indicator' => $newIndicator,
+                'created_new' => true,
+            ]);
+        }
+
+        return redirect()
+            ->back()
+            ->with('success', 'Indicator changed. A new indicator ID was created.');
+    }
+
+    $updateData = [];
+    if ($newName !== null && $newName !== '') {
+        $updateData['name'] = $newName;
+    }
+    if (isset($validated['office_id'])) {
+        $updateData['office_id'] = collect($validated['office_id'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    $indicator->update($updateData);
+
+    if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
         return response()->json([
             'message' => 'Indicator updated successfully.',
+            'success' => true,
             'indicator' => $indicator
         ]);
     }
@@ -282,5 +377,21 @@ public function update(Request $request, Indicator $indicator)
     return redirect()
         ->back()
         ->with('success', 'Indicator updated successfully.');
+}
+
+public function destroyIndicator(Request $request, Gass_Indicator $indicator)
+{
+    $indicator->delete();
+
+    if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+        return response()->json([
+            'message' => 'Indicator deleted successfully.',
+            'success' => true,
+        ]);
+    }
+
+    return redirect()
+        ->back()
+        ->with('success', 'Indicator deleted successfully.');
 }
 }

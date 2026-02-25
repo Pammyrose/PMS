@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-use App\Models\Program;
+use App\Models\Gass_Pap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -9,7 +9,7 @@ class ProgramController extends Controller
 {
 public function index()
 {
-    $programs = Program::latest()->get();
+    $programs = Gass_Pap::latest()->get();
 
 return view('admin.programs', ['programs' => $programs]);
 }
@@ -32,7 +32,7 @@ public function create()
         try {
             DB::beginTransaction();
 
-            Program::create($validated); // cleaner
+            Gass_Pap::create($validated); // cleaner
 
             DB::commit();
 
@@ -48,9 +48,9 @@ public function create()
         }
     }
 
-    public function edit(Program $program)
+    public function edit(Gass_Pap $program)
     {
-        $programs = Program::latest()->get();           // ← add this line
+        $programs = Gass_Pap::latest()->get();           // ← add this line
     
     return view('admin.programs', [
         'programs' => $programs,
@@ -58,7 +58,7 @@ public function create()
     ]);
     }
 
-public function update(Request $request, Program $program)
+public function update(Request $request, Gass_Pap $program)
     {
         $validated = $request->validate([
             'title'         => 'required|string|max:255',
