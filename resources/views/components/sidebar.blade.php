@@ -121,8 +121,8 @@
             <i class="fa-solid fa-briefcase mr-3 w-5 text-center"></i> GASS
           </a>
 
-          <a href="{{ route('sto') }}"
-            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('sto') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <a href="{{ route('gass') }}"
+            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('gass') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
             <i class="fa-solid fa-gears mr-3 w-5 text-center"></i> STO
           </a>
 

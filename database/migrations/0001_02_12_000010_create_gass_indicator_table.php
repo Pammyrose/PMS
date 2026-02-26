@@ -10,6 +10,7 @@ return new class extends Migration {
         Schema::create('gass_indicators', function (Blueprint $table) {
             $table->id();
             $table->string('name')->nullable();                     // e.g. "Number of training sessions conducted"
+            $table->string('indicator_type')->nullable();           // non-comulative, comulative, semi-comulative
             $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('set null');
             $table->foreignId('program_id')->nullable()->constrained('gass_pap')->onDelete('cascade');
             $table->foreignId('office_id')->nullable()->constrained('offices')->onDelete('set null');

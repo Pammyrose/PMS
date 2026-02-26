@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Gass_Physical;
 use App\Models\Gass_Pap;
 use App\Models\Gass_Indicator;
+use App\Models\Gass_Target;
+use App\Models\Gass_Accomplishment;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -61,6 +63,7 @@ class GassController extends Controller
                 return [
                     'id' => $indicator->id,
                     'name' => $indicator->name,
+                    'indicator_type' => $indicator->indicator_type,
                     'program_id' => $indicator->program_id,
                     'office_id' => $officeIds->first(),
                     'office_ids' => $officeIds->all(),
@@ -70,6 +73,20 @@ class GassController extends Controller
         }
         
         $existing = $entries->keyBy('programs_id');
+
+        $targets = Gass_Target::where('year', $year)
+            ->where('office_id', $office_id)
+            ->get()
+            ->keyBy('indicator_id')
+            ->map(fn ($row) => $this->formatSectionRecordForJs($row))
+            ->toArray();
+
+        $accomplishments = Gass_Accomplishment::where('year', $year)
+            ->where('office_id', $office_id)
+            ->get()
+            ->keyBy('indicator_id')
+            ->map(fn ($row) => $this->formatSectionRecordForJs($row))
+            ->toArray();
         
         // Get all offices organized by parent for the modal
         $offices = Office::whereNull('parent_id')->with('children')->get();
@@ -80,6 +97,8 @@ class GassController extends Controller
             'existing',
             'indicators',
             'indicatorsForJs',
+            'targets',
+            'accomplishments',
             'offices',
             'year',
             'office_id',
@@ -92,7 +111,7 @@ class GassController extends Controller
      */
     public function overview()
     {
-        $allPrograms = Gass_Pap::with('indicator.office')->latest()->get();
+        $allPrograms = Gass_Pap::with('indicator')->latest()->get();
         
         // Get all offices organized by parent with children loaded
         $offices = Office::whereNull('parent_id')->with('children')->get();
@@ -264,6 +283,7 @@ class GassController extends Controller
     {
         $baseValidated = $request->validate([
             'indicator_name' => 'required|string|max:255',
+            'indicator_type' => 'required|string|in:non-comulative,comulative,semi-comulative',
             'program_id' => 'required|exists:gass_pap,id',
             'office_id' => 'required|array|min:1',
             'office_id.*' => 'required|exists:offices,id',
@@ -287,6 +307,7 @@ class GassController extends Controller
         $indicator->fill([
             'user_id' => Auth::id(),
             'name' => $indicatorName,
+            'indicator_type' => $baseValidated['indicator_type'],
             'office_id' => $officeIds,
         ]);
         $indicator->save();
@@ -321,6 +342,7 @@ public function update(Request $request, Gass_Indicator $indicator)
 {
     $validated = $request->validate([
         'indicator_name' => 'nullable|string|max:255',
+        'indicator_type' => 'nullable|string|in:non-comulative,comulative,semi-comulative',
         'office_id' => 'nullable|array|min:1',
         'office_id.*' => 'required|exists:offices,id',
     ]);
@@ -333,6 +355,11 @@ public function update(Request $request, Gass_Indicator $indicator)
         $newIndicator->program_id = $indicator->program_id;
         $newIndicator->user_id = Auth::id();
         $newIndicator->name = $newName;
+        if (isset($validated['indicator_type'])) {
+            $newIndicator->indicator_type = $validated['indicator_type'];
+        } else {
+            $newIndicator->indicator_type = $indicator->indicator_type;
+        }
         $newIndicator->office_id = isset($validated['office_id'])
             ? collect($validated['office_id'])->map(fn ($id) => (int) $id)->unique()->values()->all()
             : ($indicator->office_id ?? []);
@@ -355,6 +382,9 @@ public function update(Request $request, Gass_Indicator $indicator)
     $updateData = [];
     if ($newName !== null && $newName !== '') {
         $updateData['name'] = $newName;
+    }
+    if (isset($validated['indicator_type'])) {
+        $updateData['indicator_type'] = $validated['indicator_type'];
     }
     if (isset($validated['office_id'])) {
         $updateData['office_id'] = collect($validated['office_id'])
@@ -393,5 +423,186 @@ public function destroyIndicator(Request $request, Gass_Indicator $indicator)
     return redirect()
         ->back()
         ->with('success', 'Indicator deleted successfully.');
+}
+
+public function storeTargets(Request $request)
+{
+    $validated = $request->validate([
+        'entries' => 'required|array',
+        'entries.*.program_id' => 'required|exists:gass_pap,id',
+        'entries.*.indicator_id' => 'required|exists:gass_indicators,id',
+        'entries.*.year' => 'required|integer|min:2000|max:2100',
+        'entries.*.office_id' => 'nullable|exists:offices,id',
+        'entries.*.jan' => 'nullable|numeric|min:0',
+        'entries.*.feb' => 'nullable|numeric|min:0',
+        'entries.*.mar' => 'nullable|numeric|min:0',
+        'entries.*.q1' => 'nullable|numeric|min:0',
+        'entries.*.apr' => 'nullable|numeric|min:0',
+        'entries.*.may' => 'nullable|numeric|min:0',
+        'entries.*.jun' => 'nullable|numeric|min:0',
+        'entries.*.q2' => 'nullable|numeric|min:0',
+        'entries.*.jul' => 'nullable|numeric|min:0',
+        'entries.*.aug' => 'nullable|numeric|min:0',
+        'entries.*.sep' => 'nullable|numeric|min:0',
+        'entries.*.q3' => 'nullable|numeric|min:0',
+        'entries.*.oct' => 'nullable|numeric|min:0',
+        'entries.*.nov' => 'nullable|numeric|min:0',
+        'entries.*.dec' => 'nullable|numeric|min:0',
+        'entries.*.q4' => 'nullable|numeric|min:0',
+        'entries.*.annual_total' => 'nullable|numeric|min:0',
+    ]);
+
+    $userId = Auth::id();
+    $createdCount = 0;
+    $updatedCount = 0;
+
+    foreach ($validated['entries'] as $entry) {
+        $record = Gass_Target::firstOrNew([
+            'indicator_id' => $entry['indicator_id'],
+            'year' => $entry['year'],
+            'office_id' => $entry['office_id'] ?? null,
+        ]);
+
+        $wasExisting = $record->exists;
+
+        $record->fill([
+            'user_id' => $userId,
+            'program_id' => $entry['program_id'],
+            'jan' => $entry['jan'] ?? 0,
+            'feb' => $entry['feb'] ?? 0,
+            'mar' => $entry['mar'] ?? 0,
+            'q1' => $entry['q1'] ?? 0,
+            'apr' => $entry['apr'] ?? 0,
+            'may' => $entry['may'] ?? 0,
+            'jun' => $entry['jun'] ?? 0,
+            'q2' => $entry['q2'] ?? 0,
+            'jul' => $entry['jul'] ?? 0,
+            'aug' => $entry['aug'] ?? 0,
+            'sep' => $entry['sep'] ?? 0,
+            'q3' => $entry['q3'] ?? 0,
+            'oct' => $entry['oct'] ?? 0,
+            'nov' => $entry['nov'] ?? 0,
+            'dec' => $entry['dec'] ?? 0,
+            'q4' => $entry['q4'] ?? 0,
+            'annual_total' => $entry['annual_total'] ?? 0,
+        ]);
+
+        $record->save();
+
+        if ($wasExisting) {
+            $updatedCount++;
+        } else {
+            $createdCount++;
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => "$createdCount created, $updatedCount updated successfully.",
+        'created_count' => $createdCount,
+        'updated_count' => $updatedCount,
+    ]);
+}
+
+public function storeAccomplishments(Request $request)
+{
+    $validated = $request->validate([
+        'entries' => 'required|array',
+        'entries.*.program_id' => 'required|exists:gass_pap,id',
+        'entries.*.indicator_id' => 'required|exists:gass_indicators,id',
+        'entries.*.year' => 'required|integer|min:2000|max:2100',
+        'entries.*.office_id' => 'nullable|exists:offices,id',
+        'entries.*.jan' => 'nullable|numeric|min:0',
+        'entries.*.feb' => 'nullable|numeric|min:0',
+        'entries.*.mar' => 'nullable|numeric|min:0',
+        'entries.*.q1' => 'nullable|numeric|min:0',
+        'entries.*.apr' => 'nullable|numeric|min:0',
+        'entries.*.may' => 'nullable|numeric|min:0',
+        'entries.*.jun' => 'nullable|numeric|min:0',
+        'entries.*.q2' => 'nullable|numeric|min:0',
+        'entries.*.jul' => 'nullable|numeric|min:0',
+        'entries.*.aug' => 'nullable|numeric|min:0',
+        'entries.*.sep' => 'nullable|numeric|min:0',
+        'entries.*.q3' => 'nullable|numeric|min:0',
+        'entries.*.oct' => 'nullable|numeric|min:0',
+        'entries.*.nov' => 'nullable|numeric|min:0',
+        'entries.*.dec' => 'nullable|numeric|min:0',
+        'entries.*.q4' => 'nullable|numeric|min:0',
+        'entries.*.annual_total' => 'nullable|numeric|min:0',
+    ]);
+
+    $userId = Auth::id();
+    $createdCount = 0;
+    $updatedCount = 0;
+
+    foreach ($validated['entries'] as $entry) {
+        $record = Gass_Accomplishment::firstOrNew([
+            'indicator_id' => $entry['indicator_id'],
+            'year' => $entry['year'],
+            'office_id' => $entry['office_id'] ?? null,
+        ]);
+
+        $wasExisting = $record->exists;
+
+        $record->fill([
+            'user_id' => $userId,
+            'program_id' => $entry['program_id'],
+            'jan' => $entry['jan'] ?? 0,
+            'feb' => $entry['feb'] ?? 0,
+            'mar' => $entry['mar'] ?? 0,
+            'q1' => $entry['q1'] ?? 0,
+            'apr' => $entry['apr'] ?? 0,
+            'may' => $entry['may'] ?? 0,
+            'jun' => $entry['jun'] ?? 0,
+            'q2' => $entry['q2'] ?? 0,
+            'jul' => $entry['jul'] ?? 0,
+            'aug' => $entry['aug'] ?? 0,
+            'sep' => $entry['sep'] ?? 0,
+            'q3' => $entry['q3'] ?? 0,
+            'oct' => $entry['oct'] ?? 0,
+            'nov' => $entry['nov'] ?? 0,
+            'dec' => $entry['dec'] ?? 0,
+            'q4' => $entry['q4'] ?? 0,
+            'annual_total' => $entry['annual_total'] ?? 0,
+        ]);
+
+        $record->save();
+
+        if ($wasExisting) {
+            $updatedCount++;
+        } else {
+            $createdCount++;
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => "$createdCount created, $updatedCount updated successfully.",
+        'created_count' => $createdCount,
+        'updated_count' => $updatedCount,
+    ]);
+}
+
+private function formatSectionRecordForJs($row): array
+{
+    return [
+        'jan' => (float) ($row->jan ?? 0),
+        'feb' => (float) ($row->feb ?? 0),
+        'mar' => (float) ($row->mar ?? 0),
+        'q1' => (float) ($row->q1 ?? 0),
+        'apr' => (float) ($row->apr ?? 0),
+        'may' => (float) ($row->may ?? 0),
+        'jun' => (float) ($row->jun ?? 0),
+        'q2' => (float) ($row->q2 ?? 0),
+        'jul' => (float) ($row->jul ?? 0),
+        'aug' => (float) ($row->aug ?? 0),
+        'sep' => (float) ($row->sep ?? 0),
+        'q3' => (float) ($row->q3 ?? 0),
+        'oct' => (float) ($row->oct ?? 0),
+        'nov' => (float) ($row->nov ?? 0),
+        'dec' => (float) ($row->dec ?? 0),
+        'q4' => (float) ($row->q4 ?? 0),
+        'annual_total' => (float) ($row->annual_total ?? 0),
+    ];
 }
 }

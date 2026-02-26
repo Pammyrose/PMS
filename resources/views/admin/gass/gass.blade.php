@@ -55,7 +55,7 @@
         <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-center gap-8">
           <div class="flex items-center gap-2">
             📁 <span class="font-medium">Programs:</span>
-            <span class="font-bold">{{ $programs->count() }}</span>
+            <span class="font-bold">3</span>
           </div>
           <div class="flex items-center gap-2">
             📊 <span class="font-medium">Physical:</span>
@@ -102,229 +102,270 @@
 
           <tbody class="divide-y divide-gray-100">
 
-            @forelse($programs as $program)
-              <!-- Program level -->
-              <tr class="bg-indigo-50/80 font-semibold text-base">
-                <td class="px-6 py-4 font-bold flex items-center justify-between" colspan="6">
-                  <span>
-                    {{ $program->title ?: '—' }}
-                    @if($program->program)
-                      <span class="text-gray-600 font-normal text-sm ml-3">
-                        • {{ $program->program }}
-                      </span>
-                    @endif
+            <!-- Example Program 1 -->
+            <tr class="bg-indigo-50/80 font-semibold text-base">
+              <td class="px-6 py-4 font-bold flex items-center justify-between" colspan="6">
+                <span>
+                  Tree Planting Program
+                  <span class="text-gray-600 font-normal text-sm ml-3">
+                    • Environmental Conservation
                   </span>
-                </td>
-              </tr>
+                </span>
+              </td>
+            </tr>
 
-              <!-- Activity / Project level – clickable to expand -->
-              <tr class="bg-gray-50/60 font-medium text-blue-700">
-                <td class="px-6 py-4 pl-12 grid grid-rows-2 gap-y-1 cursor-pointer group"
-                  onclick="toggleRow('content-{{ $program->id }}', 'icon-{{ $program->id }}')">
-
-                  <!-- Row 1 inside the cell -->
-                  @if($program->project)
-                    <div class="flex items-center justify-between">
-                      <span class="text-md ">
-                        Project: {{ $program->project }}
-                      </span>
-                      <i id="icon-{{ $program->id }}"
-                        class="fa-solid fa-chevron-down transition-transform group-hover:text-indigo-600"></i>
-                    </div>
-                  @endif
-
-                  <!-- Row 2 inside the cell -->
-
-                  <span class="text-sm text-gray-700 font-medium">
-                    {{ $program->activities ?: 'No activity specified' }}
+            <tr class="bg-gray-50/60 font-medium text-blue-700">
+              <td class="px-6 py-4 pl-12 grid grid-rows-2 gap-y-1 cursor-pointer group"
+                onclick="toggleRow('content-1', 'icon-1')">
+                <div class="flex items-center justify-between">
+                  <span class="text-md">
+                    Project: Reforestation Initiative 2025
                   </span>
+                  <i id="icon-1" class="fa-solid fa-chevron-down transition-transform group-hover:text-indigo-600"></i>
+                </div>
+                <span class="text-sm text-gray-700 font-medium">
+                  Community Tree Planting Activities
+                </span>
+              </td>
+              <td class="px-6 py-4 text-right"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4"></td>
+            </tr>
 
-                </td>
-                <td class="px-6 py-4 text-right"></td>
-                <td class="px-6 py-4 text-center"></td>
-                <td class="px-6 py-4 text-center"></td>
-                <td class="px-6 py-4 text-center"></td>
-                <td class="px-6 py-4"></td>
-              </tr>
+            <tr id="content-1" class="hidden">
+              <td colspan="6" class="p-0">
+                <table class="w-full">
+                  <tbody>
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4 pl-20 text-red-700 font-medium">
+                        Urban Greening
+                      </td>
+                      <td class="px-6 py-4 pl-20 text-gray-700 font-medium">
+                        <div class="text-xs font-bold text-red-700">Indicators</div>
+                        Number of seedlings planted
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Office</div>
+                        <span class="text-xs">DENR (Biodiversity, Climate)
+                        </span>
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Target</div>
+                        500,000 seedlings
+                      </td>
+                      <td class="px-6 py-4 text-center whitespace-nowrap">
+                        <div class="text-xs font-bold text-red-700">Deadline</div>
+                        30 Jun 2025
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="text-xs font-bold text-center text-red-700">Progress</div>
+                        <div class="flex items-center justify-center gap-3">
+                          <div class="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-500" style="width: 65%"></div>
+                          </div>
+                          <span class="font-medium">65%</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 text-left">
+                        <button type="button" onclick="this.nextElementSibling.classList.toggle('hidden')"
+                          class="text-gray-600 hover:text-gray-900">
+                          <i class="fa-solid fa-ellipsis-v text-lg"></i>
+                        </button>
+                        <div
+                          class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                          <button type="button"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50 w-full text-left bg-transparent border-0"
+                            data-bs-toggle="modal" data-bs-target="#editTargetModal"
+                            data-program-id="1"
+                            data-indicator-id="1"
+                            data-indicator-name="Number of seedlings planted"
+                            data-target="500,000 seedlings"
+                            data-deadline="2025-06-30"
+                            data-office-id="1">
+                            Edit Indicator
+                          </button>
+                          <a href="#"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Add Accomplishment
+                          </a>
+                          <a href="#" class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Generate Report
+                          </a>
+                          <hr class="my-1 border-gray-300">
+                          <button class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50">
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4 pl-20 text-gray-600 italic">
+                      </td>
+                      <td class="px-6 py-4 pl-20 text-gray-700 font-medium">
+                        <div class="text-xs font-bold text-red-700">Indicators</div>
+                        Area covered (hectares)
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Office</div>
+                        <span class="text-xs">DENR (Biodiversity, Climate)</span>
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Target</div>
+                        100 hectares
+                      </td>
+                      <td class="px-6 py-4 text-center whitespace-nowrap">
+                        <div class="text-xs font-bold text-red-700">Deadline</div>
+                        30 Jun 2025
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="text-xs font-bold text-center text-red-700">Progress</div>
+                        <div class="flex items-center justify-center gap-3">
+                          <div class="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-500" style="width: 78%"></div>
+                          </div>
+                          <span class="font-medium">78%</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 text-left">
+                        <button type="button" onclick="this.nextElementSibling.classList.toggle('hidden')"
+                          class="text-gray-600 hover:text-gray-900">
+                          <i class="fa-solid fa-ellipsis-v text-lg"></i>
+                        </button>
+                        <div
+                          class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                          <button type="button"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50 w-full text-left bg-transparent border-0"
+                            data-bs-toggle="modal" data-bs-target="#editTargetModal"
+                            data-program-id="1"
+                            data-indicator-id="2"
+                            data-indicator-name="Area covered (hectares)"
+                            data-target="100 hectares"
+                            data-deadline="2025-06-30"
+                            data-office-id="1">
+                            Edit Indicator
+                          </button>
+                          <a href="#"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Add Accomplishment
+                          </a>
+                          <a href="#" class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Generate Report
+                          </a>
+                          <hr class="my-1 border-gray-300">
+                          <button class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50">
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
 
-              <!-- Collapsible content – sub-activities -->
-              <tr id="content-{{ $program->id }}" class="hidden">
-                <td colspan="6" class="p-0">
-                  <table class="w-full">
-                    <tbody>
-                      @if(!empty($program->subactivities_map))
-                        @foreach($program->subactivities_map as $subactivity => $programsWithSub)
-                          @foreach($programsWithSub as $subData)
-                            @php
-                              $subProgram = $program->group_programs->firstWhere('id', $subData['program_id']);
-                              $indicator = $subData['indicator'];
-                            @endphp
-                            <tr class="hover:bg-gray-50">
-                              <td class="px-6 py-4 pl-20 text-red-700 font-medium">
-                                {{ $subactivity }}
-                              </td>
-                              <td class="px-6 py-4 pl-20 text-gray-700 font-medium">
-                                <div class="text-xs font-bold text-red-700">Indicators</div>
-                                {{ $indicator?->name ?? '—' }}
-                              </td>
-                              <td class="px-6 py-4 text-center">
-                                <div class="text-xs font-bold text-red-700">Office</div>
-                                @if($indicator && $indicator->office)
-                                  @php
-                                    $office = $indicator->office;
-                                    $parentOffice = $office->parent_id ? $office->parent : $office;
-                                    $displayText = $parentOffice->name;
-                                    if($parentOffice->children && $parentOffice->children->count() > 0) {
-                                      $childNames = $parentOffice->children->pluck('name')->implode(', ');
-                                      $displayText .= ' (' . $childNames . ')';
-                                    }
-                                  @endphp
-                                  <span class="text-xs">{{ $displayText }}</span>
-                                @else
-                                  —
-                                @endif
-                              </td>
-                              <td class="px-6 py-4 text-center">
-                                <div class="text-xs font-bold text-red-700">Target</div>
-                                {{ $indicator?->target ?? '—' }}
-                              </td>
-                              <td class="px-6 py-4 text-center whitespace-nowrap">
-                                <div class="text-xs font-bold text-red-700">Deadline</div>
-                                {{ $indicator?->deadline?->format('d M Y') ?? '—' }}
-                              </td>
-                              <td class="px-6 py-4">
-                                <div class="text-xs font-bold text-center text-red-700">Progress</div>
-                                <div class="flex items-center justify-center gap-3">
-                                  <div class="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                    <div class="h-full bg-emerald-500" style="width: 82%"></div>
-                                  </div>
-                                  <span class="font-medium">82%</span>
-                                </div>
-                              </td>
-                              <td class="px-6 py-4 text-left">
-                                <button type="button" onclick="this.nextElementSibling.classList.toggle('hidden')"
-                                  class="text-gray-600 hover:text-gray-900">
-                                  <i class="fa-solid fa-ellipsis-v text-lg"></i>
-                                </button>
-                                <div
-                                  class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
-                                  <button type="button"
-                                    class="block px-4 py-3 text-sm hover:bg-gray-50 w-full text-left bg-transparent border-0"
-                                    data-bs-toggle="modal" data-bs-target="#editTargetModal"
-                                    data-program-id="{{ $subData['program_id'] }}"
-                                    data-indicator-id="{{ $indicator?->id ?? '' }}"
-                                    data-indicator-name="{{ $indicator?->name ?? '' }}"
-                                    data-target="{{ $indicator?->target ?? '' }}"
-                                    data-deadline="{{ $indicator?->deadline?->format('Y-m-d') ?? '' }}"
-                                    data-office-id="{{ $indicator?->office_id ?? '' }}">
-                                    {{ $indicator ? 'Edit Indicator' : 'Add Indicator' }}
-                                  </button>
-                                  <a href="{{ route('admin.gass.physical', $subData['program_id']) }}"
-                                    class="block px-4 py-3 text-sm hover:bg-gray-50">
-                                    Add Accomplishment
-                                  </a>
-                                  <a href="#" class="block px-4 py-3 text-sm hover:bg-gray-50">
-                                    Generate Report
-                                  </a>
-                                  <hr class="my-1 border-gray-300">
-                                  <button class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50">
-                                    Delete
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          @endforeach
-                        @endforeach
-                      @else
-                        @php
-                          $baseIndicator = $program->indicator;
-                        @endphp
-                        <tr class="hover:bg-gray-50">
-                          <td class="px-6 py-4 pl-20 text-gray-600 italic">
-                            No sub-activities
-                          </td>
-                          <td class="px-6 py-4 pl-20 text-gray-700 font-medium">
-                            <div class="text-xs font-bold text-red-700">Indicators</div>
-                            {{ $baseIndicator?->name ?? '—' }}
-                          </td>
-                          <td class="px-6 py-4 text-center">
-                            <div class="text-xs font-bold text-red-700">Office</div>
-                            @if($baseIndicator && $baseIndicator->office)
-                              @php
-                                $office = $baseIndicator->office;
-                                $parentOffice = $office->parent_id ? $office->parent : $office;
-                                $displayText = $parentOffice->name;
-                                if($parentOffice->children && $parentOffice->children->count() > 0) {
-                                  $childNames = $parentOffice->children->pluck('name')->implode(', ');
-                                  $displayText .= ' (' . $childNames . ')';
-                                }
-                              @endphp
-                              <span class="text-xs">{{ $displayText }}</span>
-                            @else
-                              —
-                            @endif
-                          </td>
-                          <td class="px-6 py-4 text-center">
-                            <div class="text-xs font-bold text-red-700">Target</div>
-                            {{ $baseIndicator?->target ?? '—' }}
-                          </td>
-                          <td class="px-6 py-4 text-center whitespace-nowrap">
-                            <div class="text-xs font-bold text-red-700">Deadline</div>
-                            {{ $baseIndicator?->deadline?->format('d M Y') ?? '—' }}
-                          </td>
-                          <td class="px-6 py-4">
-                            <div class="text-xs font-bold text-center text-red-700">Progress</div>
-                            <div class="flex items-center justify-center gap-3">
-                              <div class="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div class="h-full bg-emerald-500" style="width: 82%"></div>
-                              </div>
-                              <span class="font-medium">82%</span>
-                            </div>
-                          </td>
-                          <td class="px-6 py-4 text-left">
-                            <button type="button" onclick="this.nextElementSibling.classList.toggle('hidden')"
-                              class="text-gray-600 hover:text-gray-900">
-                              <i class="fa-solid fa-ellipsis-v text-lg"></i>
-                            </button>
-                            <div
-                              class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
-                              <button type="button"
-                                class="block px-4 py-3 text-sm hover:bg-gray-50 w-full text-left bg-transparent border-0"
-                                data-bs-toggle="modal" data-bs-target="#editTargetModal"
-                                data-program-id="{{ $program->id }}" data-indicator-id="{{ $baseIndicator?->id ?? '' }}"
-                                data-indicator-name="{{ $baseIndicator?->name ?? '' }}"
-                                data-target="{{ $baseIndicator?->target ?? '' }}"
-                                data-deadline="{{ $baseIndicator?->deadline?->format('Y-m-d') ?? '' }}"
-                                data-office-id="{{ $baseIndicator?->office_id ?? '' }}">
-                                {{ $baseIndicator ? 'Edit Indicator' : 'Add Indicator' }}
-                              </button>
-                              <a href="{{ route('admin.gass.physical', $program->id) }}"
-                                class="block px-4 py-3 text-sm hover:bg-gray-50">
-                                Add Accomplishment
-                              </a>
-                              <a href="#" class="block px-4 py-3 text-sm hover:bg-gray-50">
-                                Generate Report
-                              </a>
-                              <hr class="my-1 border-gray-300">
-                              <button class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50">
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      @endif
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
+            <!-- Example Program 2 -->
+            <tr class="bg-indigo-50/80 font-semibold text-base">
+              <td class="px-6 py-4 font-bold flex items-center justify-between" colspan="6">
+                <span>
+                  Disaster Risk Reduction Program
+                  <span class="text-gray-600 font-normal text-sm ml-3">
+                    • Calamity Management
+                  </span>
+                </span>
+              </td>
+            </tr>
 
-            @empty
-              <tr>
-                <td colspan="6" class="py-12 text-center text-gray-500 italic">
-                  No programs recorded yet.
-                </td>
-              </tr>
-            @endforelse
+            <tr class="bg-gray-50/60 font-medium text-blue-700">
+              <td class="px-6 py-4 pl-12 grid grid-rows-2 gap-y-1 cursor-pointer group"
+                onclick="toggleRow('content-2', 'icon-2')">
+                <div class="flex items-center justify-between">
+                  <span class="text-md">
+                    Project: Emergency Response Capability
+                  </span>
+                  <i id="icon-2" class="fa-solid fa-chevron-down transition-transform group-hover:text-indigo-600"></i>
+                </div>
+                <span class="text-sm text-gray-700 font-medium">
+                  Community Preparedness & Response
+                </span>
+              </td>
+              <td class="px-6 py-4 text-right"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4 text-center"></td>
+              <td class="px-6 py-4"></td>
+            </tr>
+
+            <tr id="content-2" class="hidden">
+              <td colspan="6" class="p-0">
+                <table class="w-full">
+                  <tbody>
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4 pl-20 text-red-700 font-medium">
+                        Evacuation Drills
+                      </td>
+                      <td class="px-6 py-4 pl-20 text-gray-700 font-medium">
+                        <div class="text-xs font-bold text-red-700">Indicators</div>
+                        Number of drills conducted
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Office</div>
+                        <span class="text-xs">NDRRMC (Disasters)</span>
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <div class="text-xs font-bold text-red-700">Target</div>
+                        12 drills
+                      </td>
+                      <td class="px-6 py-4 text-center whitespace-nowrap">
+                        <div class="text-xs font-bold text-red-700">Deadline</div>
+                        31 Dec 2025
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="text-xs font-bold text-center text-red-700">Progress</div>
+                        <div class="flex items-center justify-center gap-3">
+                          <div class="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-500" style="width: 50%"></div>
+                          </div>
+                          <span class="font-medium">50%</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 text-left">
+                        <button type="button" onclick="this.nextElementSibling.classList.toggle('hidden')"
+                          class="text-gray-600 hover:text-gray-900">
+                          <i class="fa-solid fa-ellipsis-v text-lg"></i>
+                        </button>
+                        <div
+                          class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                          <button type="button"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50 w-full text-left bg-transparent border-0"
+                            data-bs-toggle="modal" data-bs-target="#editTargetModal"
+                            data-program-id="2"
+                            data-indicator-id="3"
+                            data-indicator-name="Number of drills conducted"
+                            data-target="12 drills"
+                            data-deadline="2025-12-31"
+                            data-office-id="2">
+                            Edit Indicator
+                          </button>
+                          <a href="#"
+                            class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Add Accomplishment
+                          </a>
+                          <a href="#" class="block px-4 py-3 text-sm hover:bg-gray-50">
+                            Generate Report
+                          </a>
+                          <hr class="my-1 border-gray-300">
+                          <button class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50">
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
 
           </tbody>
         </table>
@@ -375,9 +416,11 @@
               <label for="modal_office_id" class="form-label fw-bold">Office</label>
               <select name="office_id" id="modal_office_id" class="form-control form-control-lg">
                 <option value="">-- Select Office --</option>
-                @foreach($offices as $office)
-                  <option value="{{ $office->id }}">{{ $office->name }}</option>
-                @endforeach
+                <option value="1">DENR (Biodiversity, Climate)</option>
+                <option value="2">NDRRMC (Disasters)</option>
+                <option value="3">PAGASA (Weather)</option>
+                <option value="4">BFP (Fire Services)</option>
+                <option value="5">PNP (Police)</option>
               </select>
               @error('office_id')
                 <div class="text-danger small mt-1">{{ $message }}</div>

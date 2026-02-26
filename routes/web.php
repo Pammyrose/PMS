@@ -56,6 +56,8 @@ Route::get('/gass', [GassController::class, 'overview'])->name('gass');
 Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware('auth')->group(function () {
     Route::get('/physical/{program?}', [GassController::class, 'index'])->name('physical');
     Route::post('/physical/save', [GassController::class, 'save'])->name('physical.save');
+    Route::post('/targets/store', [GassController::class, 'storeTargets'])->name('targets.store');
+    Route::post('/accomplishments/store', [GassController::class, 'storeAccomplishments'])->name('accomplishments.store');
     Route::get('/indicators', [GassController::class, 'indicatorsIndex'])->name('indicators');
     Route::get('/indicators/create', [GassController::class, 'createIndicator'])->name('indicators.create');
     Route::post('/indicators', [GassController::class, 'storeIndicator'])->name('indicators.store');

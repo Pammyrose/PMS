@@ -11,6 +11,7 @@ class Gass_Indicator extends Model
 
     protected $fillable = [
         'name',
+        'indicator_type',
 
         'user_id',
         'program_id',
