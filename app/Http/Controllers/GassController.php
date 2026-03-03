@@ -10,6 +10,7 @@ use App\Models\Gass_Accomplishment;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class GassController extends Controller
@@ -21,26 +22,58 @@ class GassController extends Controller
      */
     public function index(Request $request, Gass_Pap $program = null)
     {
-        $year = $request->query('year', 2025);
+        $year = $request->query('year', now()->year);
         $office_id = $request->query('office_id', 1);   // change default later if needed
+        $search = trim((string) $request->query('search', ''));
+
+        $programsQuery = Gass_Pap::query();
 
         if ($program) {
-            // single program view
-            $programs = collect([$program]);
-            $entries = Gass_Physical::where('programs_id', $program->id)
-                ->where('year', $year)
-                ->where('office_id', $office_id)
-                ->get();
+            $programsQuery->whereKey($program->id);
         } else {
-            // GASS overview — all programs
-            $programs = Gass_Pap::latest()->get();
-            $entries = Gass_Physical::where('year', $year)
-                ->where('office_id', $office_id)
-                ->get();
+            $programsQuery->orderBy('created_at')->orderBy('id');
         }
 
+        if ($search !== '') {
+            $matchingOfficeIds = Office::query()
+                ->where('name', 'like', "%{$search}%")
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $programsQuery->where(function ($query) use ($search, $matchingOfficeIds) {
+                $query->where('title', 'like', "%{$search}%")
+                    ->orWhere('program', 'like', "%{$search}%")
+                    ->orWhere('project', 'like', "%{$search}%")
+                    ->orWhere('activities', 'like', "%{$search}%")
+                    ->orWhere('subactivities', 'like', "%{$search}%")
+                    ->orWhereHas('indicators', function ($indicatorQuery) use ($search, $matchingOfficeIds) {
+                        $indicatorQuery->where('name', 'like', "%{$search}%");
+
+                        if (!empty($matchingOfficeIds)) {
+                            $indicatorQuery->orWhere(function ($officeQuery) use ($matchingOfficeIds) {
+                                foreach ($matchingOfficeIds as $officeId) {
+                                    $officeQuery->orWhereJsonContains('office_id', $officeId)
+                                        ->orWhereJsonContains('office_id', (string) $officeId);
+                                }
+                            });
+                        }
+                    });
+            });
+        }
+
+        $programs = $programsQuery->get();
+        $programIds = $programs->pluck('id')->all();
+
+        $entries = Schema::hasTable('gass_physical')
+            ? Gass_Physical::whereIn('programs_id', $programIds)
+                ->where('year', $year)
+                ->where('office_id', $office_id)
+                ->get()
+            : collect();
+
         // Fetch all indicators keyed by program_id
-        $indicators = Gass_Indicator::get()->groupBy('program_id');
+        $indicators = Gass_Indicator::whereIn('program_id', $programIds)->get()->groupBy('program_id');
 
         // Prepare indicators data for JavaScript (flat structure by program_id)
         $indicatorsForJs = [];
@@ -75,18 +108,88 @@ class GassController extends Controller
         $existing = $entries->keyBy('programs_id');
 
         $targets = Gass_Target::where('year', $year)
-            ->where('office_id', $office_id)
             ->get()
-            ->keyBy('indicator_id')
-            ->map(fn ($row) => $this->formatSectionRecordForJs($row))
+            ->groupBy('indicator_id')
+            ->map(function ($rows) {
+                return $rows->mapWithKeys(function ($row) {
+                    $officeKey = (string) ((int) ($row->office_id ?? 0));
+                    return [$officeKey => $this->formatSectionRecordForJs($row)];
+                })->toArray();
+            })
             ->toArray();
 
         $accomplishments = Gass_Accomplishment::where('year', $year)
-            ->where('office_id', $office_id)
             ->get()
-            ->keyBy('indicator_id')
-            ->map(fn ($row) => $this->formatSectionRecordForJs($row))
+            ->groupBy('indicator_id')
+            ->map(function ($rows) {
+                return $rows->mapWithKeys(function ($row) {
+                    $officeKey = (string) ((int) ($row->office_id ?? 0));
+                    return [$officeKey => $this->formatSectionRecordForJs($row)];
+                })->toArray();
+            })
             ->toArray();
+
+        $papTitles = Gass_Pap::query()
+            ->select('title')
+            ->whereNotNull('title')
+            ->where('title', '!=', '')
+            ->distinct()
+            ->orderBy('title')
+            ->pluck('title');
+
+        $papProjects = Gass_Pap::query()
+            ->select('project')
+            ->whereNotNull('project')
+            ->where('project', '!=', '')
+            ->distinct()
+            ->orderBy('project')
+            ->pluck('project');
+
+        $papActivities = Gass_Pap::query()
+            ->select('activities')
+            ->whereNotNull('activities')
+            ->where('activities', '!=', '')
+            ->distinct()
+            ->orderBy('activities')
+            ->pluck('activities');
+
+        $papSubactivities = Gass_Pap::query()
+            ->select('subactivities')
+            ->whereNotNull('subactivities')
+            ->where('subactivities', '!=', '')
+            ->distinct()
+            ->orderBy('subactivities')
+            ->pluck('subactivities');
+
+        $papPrefillData = Gass_Pap::query()
+            ->with('indicators')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(function ($pap) {
+                return [
+                    'id' => (int) $pap->id,
+                    'title' => (string) ($pap->title ?? ''),
+                    'program' => (string) ($pap->program ?? ''),
+                    'project' => (string) ($pap->project ?? ''),
+                    'activities' => (string) ($pap->activities ?? ''),
+                    'subactivities' => (string) ($pap->subactivities ?? ''),
+                    'indicators' => $pap->indicators->map(function ($indicator) {
+                        return [
+                            'id' => (int) $indicator->id,
+                            'name' => (string) ($indicator->name ?? ''),
+                            'indicator_type' => (string) ($indicator->indicator_type ?? ''),
+                            'office_ids' => collect($indicator->office_id ?? [])
+                                ->map(fn ($id) => (int) $id)
+                                ->filter()
+                                ->values()
+                                ->all(),
+                        ];
+                    })->values()->all(),
+                ];
+            })
+            ->values()
+            ->all();
         
         // Get all offices organized by parent for the modal
         $offices = Office::whereNull('parent_id')->with('children')->get();
@@ -100,8 +203,14 @@ class GassController extends Controller
             'targets',
             'accomplishments',
             'offices',
+            'papTitles',
+            'papProjects',
+            'papActivities',
+            'papSubactivities',
+            'papPrefillData',
             'year',
             'office_id',
+            'search',
             'program'
         ));
     }
@@ -283,7 +392,7 @@ class GassController extends Controller
     {
         $baseValidated = $request->validate([
             'indicator_name' => 'required|string|max:255',
-            'indicator_type' => 'required|string|in:non-comulative,comulative,semi-comulative',
+            'indicator_type' => 'nullable|string|in:non-comulative,comulative,semi-comulative',
             'program_id' => 'required|exists:gass_pap,id',
             'office_id' => 'required|array|min:1',
             'office_id.*' => 'required|exists:offices,id',
@@ -307,7 +416,7 @@ class GassController extends Controller
         $indicator->fill([
             'user_id' => Auth::id(),
             'name' => $indicatorName,
-            'indicator_type' => $baseValidated['indicator_type'],
+            'indicator_type' => $baseValidated['indicator_type'] ?? null,
             'office_id' => $officeIds,
         ]);
         $indicator->save();

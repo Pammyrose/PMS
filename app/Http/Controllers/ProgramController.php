@@ -32,9 +32,17 @@ public function create()
         try {
             DB::beginTransaction();
 
-            Gass_Pap::create($validated); // cleaner
+            $pap = Gass_Pap::create($validated); // cleaner
 
             DB::commit();
+
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'PAP saved successfully.',
+                    'pap' => $pap,
+                ]);
+            }
 
             return redirect()
                 ->route('programs.index')           // ← better than back()

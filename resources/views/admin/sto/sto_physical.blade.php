@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Physical Performance (GASS) - PMS</title>
+    <title>Physical Performance (STO) - PMS</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -253,14 +253,14 @@
         <main class="flex-grow-1 p-3">
 
             <div class="year-header">
-                (GASS) - Physical Performance
+                (STO) - Physical Performance
             </div>
 
             <div class="bg-white rounded shadow p-3">
                 <!-- TABS -->
                 <div class="flex items-center mt-4">
                     <div class="flex gap-6">
-                        <a href="{{ route('gass_physical') }}">
+                        <a href="{{ route('sto') }}">
                             <button class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2">
                                 Physical
                             </button>
@@ -533,8 +533,8 @@
 
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
-        const targetStoreUrl = @json(route('admin.gass_physical.targets.store'));
-        const accompStoreUrl = @json(route('admin.gass_physical.accomplishments.store'));
+        const targetStoreUrl = @json(route('admin.sto.targets.store'));
+        const accompStoreUrl = @json(route('admin.sto.accomplishments.store'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);
 
@@ -1217,9 +1217,9 @@
                         aria-label="Close"></button>
                 </div>
 
-                <form id="addIndicatorForm" method="POST" action="{{ route('admin.gass_physical.indicators.store') }}"
-                    data-update-route-template="{{ route('admin.gass_physical.indicators.update', ':id') }}"
-                    data-delete-route-template="{{ route('admin.gass_physical.indicators.destroy', ':id') }}">
+                <form id="addIndicatorForm" method="POST" action="{{ route('admin.sto.indicators.store') }}"
+                    data-update-route-template="{{ route('admin.sto.indicators.update', ':id') }}"
+                    data-delete-route-template="{{ route('admin.sto.indicators.destroy', ':id') }}">
                     @csrf
                     <input type="hidden" id="indicator_id" name="indicator_id" value="">
 
@@ -1400,7 +1400,7 @@
                     papFormData.append('activities', papActivities);
                     papFormData.append('subactivities', papSubactivities);
 
-                    const papResponse = await fetch(@json(route('programs.store')), {
+                    const papResponse = await fetch(@json(route('admin.sto.pap.store')), {
                         method: 'POST',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',

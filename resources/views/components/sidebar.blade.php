@@ -94,12 +94,6 @@
         <i class="fa-solid fa-gauge mr-3 w-5 text-center"></i>
         Dashboard
       </a>
-      <a href="{{ route('programs') }}"
-        class="flex items-center px-4 py-3 rounded-lg {{ request()->routeIs('programs') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
-        <i class="fa-solid fa-folder mr-3 w-5 text-center"></i>
-        Programs
-      </a>
-
       <details class="group" {{ request()->routeIs(['gass_physical', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing']) ? 'open' : '' }}>
 
         <summary class="flex items-center px-4 py-3 rounded-lg cursor-pointer list-none
@@ -121,8 +115,8 @@
             <i class="fa-solid fa-briefcase mr-3 w-5 text-center"></i> GASS
           </a>
 
-          <a href="{{ route('gass') }}"
-            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('gass') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <a href="{{ route('sto') }}"
+            class="flex items-center px-4 py-2 rounded-lg {{ request()->routeIs('sto') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
             <i class="fa-solid fa-gears mr-3 w-5 text-center"></i> STO
           </a>
 
