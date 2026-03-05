@@ -174,6 +174,12 @@
         <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
         Users & Roles
       </a>
+
+      <a href="{{ route('history') }}"
+        class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('history') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+        <i class="fa-solid fa-clock-rotate-left mr-3 w-5 text-center"></i>
+        History
+      </a>
     </nav>
 
     <div class="absolute bottom-6 left-0 right-0 px-4">

@@ -270,6 +270,33 @@
                         </button>
                     </div>
                 </div>
+
+                    <div class="row g-3 mt-1 mb-2" id="performanceSummaryCards">
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+                                <div class="card-body text-white">
+                                    <div class="fw-bold small text-white text-center">Targets</div>
+                                    <div class="fs-3 fw-bold text-white text-center" id="summaryTargetTotal">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 bg-success text-white">
+                                <div class="card-body text-white">
+                                    <div class="fw-bold small text-white text-center">Accomplishments</div>
+                                    <div class="fs-3 fw-bold text-white text-center" id="summaryAccompTotal">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="card border-0 shadow-sm h-100 bg-danger text-white">
+                                <div class="card-body text-white">
+                                    <div class="fw-bold small text-white text-center">Pending</div>
+                                    <div class="fs-3 fw-bold text-white text-center" id="summaryNotYetDone">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 <div>
                     <div class="flex items-center justify-between mt-2">
                         <!-- Left side -->
@@ -375,6 +402,20 @@
                                                         <i class="fa-solid fa-circle-xmark text-danger me-2"
                                                             title="No indicator data yet"></i>
                                                     @endif
+                                                    <form method="POST" action="{{ route('admin.sto.pap.destroy', $program) }}"
+                                                        class="me-2 delete-program-form" id="deleteProgramForm-{{ $program->id }}"
+                                                        onsubmit="event.stopPropagation();">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="button" class="btn btn-sm text-danger py-0 px-1 border-0 bg-transparent"
+                                                            title="Delete PAP"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#deleteProgramConfirmModal"
+                                                            data-delete-form-id="deleteProgramForm-{{ $program->id }}"
+                                                            onclick="event.stopPropagation();">
+                                                            <i class="fa-solid fa-trash"></i>
+                                                        </button>
+                                                    </form>
                                                     <i id="icon-{{ $program->id }}"
                                                         class="fa-solid fa-chevron-down program-toggle-icon transition-transform group-hover:text-indigo-600"></i>
                                                 </span>
@@ -546,6 +587,170 @@
             "annual_total"
         ];
 
+        let saveSuccessAlertTimeout = null;
+        let saveErrorAlertTimeout = null;
+
+        function showTopRightSuccessAlert(message = 'Data saved successfully.', options = {}) {
+            const {
+                reload = false,
+                duration = 1800,
+            } = options;
+
+            const saveSuccessAlertWrapper = document.getElementById('saveSuccessAlertWrapper');
+            const saveSuccessAlert = document.getElementById('saveSuccessAlert');
+            const saveSuccessMessage = document.getElementById('saveSuccessMessage');
+
+            if (!saveSuccessAlertWrapper || !saveSuccessAlert) {
+                console.warn(message);
+                if (reload) location.reload();
+                return;
+            }
+
+            if (saveSuccessMessage) {
+                saveSuccessMessage.textContent = message;
+            }
+
+            saveSuccessAlertWrapper.classList.remove('d-none');
+
+            if (saveSuccessAlertTimeout) {
+                clearTimeout(saveSuccessAlertTimeout);
+            }
+
+            const closeButton = saveSuccessAlert.querySelector('.btn-close');
+            if (closeButton) {
+                closeButton.onclick = function () {
+                    if (saveSuccessAlertTimeout) {
+                        clearTimeout(saveSuccessAlertTimeout);
+                    }
+                    saveSuccessAlertWrapper.classList.add('d-none');
+                    if (reload) location.reload();
+                };
+            }
+
+            saveSuccessAlertTimeout = setTimeout(() => {
+                saveSuccessAlertWrapper.classList.add('d-none');
+                if (reload) location.reload();
+            }, duration);
+        }
+
+        function showTopRightErrorAlert(message = 'An error occurred.', options = {}) {
+            const {
+                duration = 2200,
+            } = options;
+
+            const saveErrorAlertWrapper = document.getElementById('saveErrorAlertWrapper');
+            const saveErrorAlert = document.getElementById('saveErrorAlert');
+            const saveErrorMessage = document.getElementById('saveErrorMessage');
+
+            if (!saveErrorAlertWrapper || !saveErrorAlert) {
+                console.warn(message);
+                return;
+            }
+
+            if (saveErrorMessage) {
+                saveErrorMessage.textContent = message;
+            }
+
+            saveErrorAlertWrapper.classList.remove('d-none');
+
+            if (saveErrorAlertTimeout) {
+                clearTimeout(saveErrorAlertTimeout);
+            }
+
+            const closeButton = saveErrorAlert.querySelector('.btn-close');
+            if (closeButton) {
+                closeButton.onclick = function () {
+                    if (saveErrorAlertTimeout) {
+                        clearTimeout(saveErrorAlertTimeout);
+                    }
+                    saveErrorAlertWrapper.classList.add('d-none');
+                };
+            }
+
+            saveErrorAlertTimeout = setTimeout(() => {
+                saveErrorAlertWrapper.classList.add('d-none');
+            }, duration);
+        }
+
+        const MONTH_COLS = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14];
+
+        function buildMonthlyMapFromStored(sourceData) {
+            const result = new Map();
+
+            Object.entries(sourceData || {}).forEach(([indicatorId, offices]) => {
+                Object.entries(offices || {}).forEach(([officeId, officeData]) => {
+                    MONTH_COLS.forEach(colIndex => {
+                        const monthKey = PERIOD_KEYS[colIndex];
+                        if (!monthKey) return;
+
+                        const value = Number(officeData?.[monthKey] ?? 0);
+                        const safeValue = Number.isFinite(value) ? value : 0;
+                        const key = `${indicatorId}|${officeId}|${monthKey}`;
+
+                        result.set(key, safeValue);
+                    });
+                });
+            });
+
+            return result;
+        }
+
+        function applyMonthlyMapFromInputs(sectionType, targetMap) {
+            const selector = `.month-box[data-section="${sectionType}"]`;
+
+            Array.from(document.querySelectorAll(selector)).forEach(input => {
+                const colIndex = Number(input.dataset.col);
+                if (!MONTH_COLS.includes(colIndex)) return;
+
+                const monthKey = PERIOD_KEYS[colIndex];
+                const officeId = String(input.dataset.officeId || '').trim();
+                const row = input.closest('tr[data-indicator-id]');
+                const indicatorId = String(row?.dataset?.indicatorId || '').trim();
+
+                if (!indicatorId || !officeId || !monthKey) return;
+
+                const value = Number(input.value);
+                const safeValue = Number.isFinite(value) ? value : 0;
+                const key = `${indicatorId}|${officeId}|${monthKey}`;
+
+                targetMap.set(key, safeValue);
+            });
+        }
+
+        function formatSummaryNumber(value) {
+            return new Intl.NumberFormat().format(Number(value || 0));
+        }
+
+        function refreshSummaryCards() {
+            const targetMap = buildMonthlyMapFromStored(existingTargetsByIndicator);
+            const accompMap = buildMonthlyMapFromStored(existingAccompByIndicator);
+
+            applyMonthlyMapFromInputs('target', targetMap);
+            applyMonthlyMapFromInputs('accomp', accompMap);
+
+            let targetTotal = 0;
+            let accompTotal = 0;
+            let pendingTotal = 0;
+
+            targetMap.forEach((targetValue, key) => {
+                const safeTarget = Number.isFinite(targetValue) ? targetValue : 0;
+                const accompValue = Number(accompMap.get(key) ?? 0);
+                const safeAccomp = Number.isFinite(accompValue) ? accompValue : 0;
+
+                targetTotal += safeTarget;
+                accompTotal += Math.min(safeAccomp, safeTarget);
+                pendingTotal += Math.max(safeTarget - safeAccomp, 0);
+            });
+
+            const summaryTargetTotal = document.getElementById('summaryTargetTotal');
+            const summaryAccompTotal = document.getElementById('summaryAccompTotal');
+            const summaryNotYetDone = document.getElementById('summaryNotYetDone');
+
+            if (summaryTargetTotal) summaryTargetTotal.textContent = formatSummaryNumber(targetTotal);
+            if (summaryAccompTotal) summaryAccompTotal.textContent = formatSummaryNumber(accompTotal);
+            if (summaryNotYetDone) summaryNotYetDone.textContent = formatSummaryNumber(pendingTotal);
+        }
+
         function toggleTargetColumns() {
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
@@ -558,12 +763,14 @@
 
                 addColumns(headerRow, groupRow, "Targets", "target");
                 addInputCells("target");
+                refreshSummaryCards();
             } else {
                 targetsVisible = false;
                 document.getElementById("targetBtn").innerHTML = '<i class="fa fa-plus me-1"></i> Targets';
                 document.getElementById("targetBtn").classList.replace("btn-outline-primary", "btn-primary");
 
-                removeColumns(groupRow, headerRow);
+                removeSectionColumns(groupRow, headerRow, 'target');
+                refreshSummaryCards();
             }
         }
 
@@ -579,12 +786,14 @@
 
                 addColumns(headerRow, groupRow, "Accomplishments", "accomp");
                 addInputCells("accomp");
+                refreshSummaryCards();
             } else {
                 accompVisible = false;
                 document.getElementById("accompBtn").innerHTML = '<i class="fa fa-plus me-1"></i> Accomplishments';
                 document.getElementById("accompBtn").classList.replace("btn-outline-success", "btn-success");
 
-                removeColumns(groupRow, headerRow);
+                removeSectionColumns(groupRow, headerRow, 'accomp');
+                refreshSummaryCards();
             }
         }
 
@@ -696,6 +905,7 @@
             }
 
             recalculateSectionRows(sectionType);
+            refreshSummaryCards();
         }
 
         function recalculateSectionRows(sectionType) {
@@ -811,7 +1021,7 @@
 
             if (requireVisible && !shouldBeVisible) {
                 if (showAlerts) {
-                    alert(`Please open ${isTarget ? 'Targets' : 'Accomplishments'} first before saving.`);
+                    showTopRightErrorAlert(`Please open ${isTarget ? 'Targets' : 'Accomplishments'} first before saving.`);
                 }
                 return { success: false, skipped: true, message: 'Section is not visible.' };
             }
@@ -819,7 +1029,7 @@
             const entries = collectSectionEntries(sectionType);
             if (entries.length === 0) {
                 if (showAlerts) {
-                    alert('No indicator rows available to save.');
+                    showTopRightErrorAlert('No indicator rows available to save.');
                 }
                 return { success: false, skipped: true, message: 'No rows to save.' };
             }
@@ -846,17 +1056,17 @@
                 }
 
                 if (showAlerts) {
-                    alert(data.message || `${isTarget ? 'Targets' : 'Accomplishments'} saved successfully.`);
+                    showTopRightSuccessAlert('Data saved successfully.');
                 }
 
                 return {
                     success: true,
-                    message: data.message || `${isTarget ? 'Targets' : 'Accomplishments'} saved successfully.`,
+                    message: 'Data saved successfully.',
                 };
             } catch (error) {
                 console.error(`${sectionType} save error:`, error);
                 if (showAlerts) {
-                    alert(`Error saving ${isTarget ? 'targets' : 'accomplishments'}. Please try again.`);
+                    showTopRightErrorAlert(`Error saving ${isTarget ? 'targets' : 'accomplishments'}. Please try again.`);
                 }
 
                 return {
@@ -871,7 +1081,7 @@
             const saveAccomp = accompVisible;
 
             if (!saveTarget && !saveAccomp) {
-                alert('Please open Targets and/or Accomplishments first before saving.');
+                showTopRightErrorAlert('Please open Targets and/or Accomplishments first before saving.');
                 return;
             }
 
@@ -887,30 +1097,54 @@
 
             const failed = results.filter(result => !result.success);
             if (failed.length > 0) {
-                alert('Some entries failed to save. Please try again.');
+                showTopRightErrorAlert('Some entries failed to save. Please try again.');
                 return;
             }
 
-            alert('Targets and Accomplishments saved successfully.');
+            showTopRightSuccessAlert('Data saved successfully.');
         }
 
-        function removeColumns(groupRow, mainHeader) {
-            // Remove group title cells
-            while (groupRow.children.length > 0) {
-                groupRow.removeChild(groupRow.lastChild);
+        function removeSectionColumns(groupRow, mainHeader, sectionType) {
+            const groupCell = groupRow.querySelector(`.group-${sectionType}`);
+            if (!groupCell) {
+                refreshSummaryCards();
+                return;
             }
 
-            // Remove month columns from main header
+            const groupIndex = Array.from(groupRow.children).indexOf(groupCell) - 4;
+            if (groupIndex < 0) {
+                refreshSummaryCards();
+                return;
+            }
+
+            const firstDynamicHeaderIndex = 4 + (groupIndex * COL_COUNT);
+
             for (let i = 0; i < COL_COUNT; i++) {
-                if (mainHeader.lastChild) mainHeader.removeChild(mainHeader.lastChild);
+                const headerCell = mainHeader.children[firstDynamicHeaderIndex];
+                if (headerCell) {
+                    mainHeader.removeChild(headerCell);
+                }
             }
 
-            // Remove cells from data rows
             document.querySelectorAll("tbody tr[data-row-id]").forEach(row => {
                 for (let i = 0; i < COL_COUNT; i++) {
-                    if (row.lastChild) row.removeChild(row.lastChild);
+                    const dataCell = row.children[firstDynamicHeaderIndex];
+                    if (dataCell) {
+                        row.removeChild(dataCell);
+                    }
                 }
             });
+
+            groupCell.remove();
+
+            const hasDynamicGroups = groupRow.querySelectorAll('.group-header').length > 0;
+            if (!hasDynamicGroups) {
+                while (groupRow.firstChild) {
+                    groupRow.removeChild(groupRow.firstChild);
+                }
+            }
+
+            refreshSummaryCards();
         }
 
         function updateTotals(e) {
@@ -941,6 +1175,8 @@
             if (accompInputs.length === 12) {
                 updateSection(accompInputs, allInputs, 'accomp', indicatorType, officeId);
             }
+
+            refreshSummaryCards();
         }
 
         function getIndicatorTypeForRow(row) {
@@ -1206,6 +1442,42 @@
         const papPrefillData = {!! json_encode($papPrefillData ?? []) !!};
     </script>
 
+    <div id="saveSuccessAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
+        style="z-index: 1080; max-width: 420px;">
+        <div class="alert alert-success alert-dismissible fade show shadow" role="alert" id="saveSuccessAlert">
+            <strong>Success!</strong>
+            <span id="saveSuccessMessage">Data saved successfully.</span>
+            <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+    </div>
+
+    <div id="saveErrorAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
+        style="z-index: 1080; max-width: 420px;">
+        <div class="alert alert-danger alert-dismissible fade show shadow" role="alert" id="saveErrorAlert">
+            <strong>Error!</strong>
+            <span id="saveErrorMessage">An error occurred.</span>
+            <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+    </div>
+
+    <div class="modal fade" id="deleteProgramConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirm Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    are you sure you want to delete?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteProgramBtn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Add Indicator Modal -->
     <div class="modal fade" id="addIndicatorModal" tabindex="-1" aria-labelledby="addIndicatorModalLabel"
         aria-hidden="true">
@@ -1341,7 +1613,7 @@
                     <div class="modal-footer bg-light">
                         <button type="button" class="btn btn-outline-secondary"
                             data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Add Indicator</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
                     </div>
                 </form>
             </div>
@@ -1371,17 +1643,17 @@
             const indicatorType = (indicatorTypeToggle?.checked ? document.getElementById('modal_indicator_type').value : '').trim();
 
             if (!papTitle) {
-                alert('Please input title.');
+                showTopRightErrorAlert('Please input title.');
                 return;
             }
 
             if (!indicatorName) {
-                alert('Please input a performance indicator.');
+                showTopRightErrorAlert('Please input a performance indicator.');
                 return;
             }
 
             if (selectedOffices.length === 0) {
-                alert('Please select at least one office.');
+                showTopRightErrorAlert('Please select at least one office.');
                 return;
             }
 
@@ -1471,13 +1743,14 @@
                 document.getElementById('indicator_id').value = '';
                 document.querySelectorAll('.parent-office-checkbox').forEach(cb => cb.checked = false);
                 currentProgramIndicators = [];
-                alert('PAP and indicator saved successfully.');
-                setTimeout(() => {
-                    location.reload();
-                }, 500);
+                const successMessage = shouldUpdateExistingIndicator
+                    ? 'Data updated successfully.'
+                    : 'Data saved successfully.';
+
+                showTopRightSuccessAlert(successMessage, { reload: true, duration: 1800 });
             } catch (error) {
                 console.error('Save error:', error);
-                alert(error?.message || 'An error occurred while saving PAP and indicator.');
+                showTopRightErrorAlert(error?.message || 'An error occurred while saving PAP and indicator.');
             } finally {
                 if (submitButton) submitButton.disabled = false;
             }
@@ -1556,6 +1829,30 @@
             });
 
             applyProgramSearch();
+
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const deleteModalElement = document.getElementById('deleteProgramConfirmModal');
+            const confirmDeleteBtn = document.getElementById('confirmDeleteProgramBtn');
+            if (!deleteModalElement || !confirmDeleteBtn) return;
+
+            let selectedDeleteFormId = '';
+
+            deleteModalElement.addEventListener('show.bs.modal', function (event) {
+                const trigger = event.relatedTarget;
+                selectedDeleteFormId = trigger?.getAttribute('data-delete-form-id') || '';
+            });
+
+            confirmDeleteBtn.addEventListener('click', function () {
+                if (!selectedDeleteFormId) return;
+
+                const form = document.getElementById(selectedDeleteFormId);
+                if (!form) return;
+
+                form.submit();
+            });
+        });
+            refreshSummaryCards();
         }
     </script>
 

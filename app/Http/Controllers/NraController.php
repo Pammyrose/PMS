@@ -229,6 +229,23 @@ class NraController extends Controller
         }
     }
 
+    public function destroyPap(Nra_Pap $program)
+    {
+        DB::beginTransaction();
+        try {
+            Nra_Target::where('program_id', $program->id)->delete();
+            Nra_Accomplishment::where('program_id', $program->id)->delete();
+            Nra_Indicator::where('program_id', $program->id)->delete();
+            $program->delete();
+
+            DB::commit();
+            return redirect()->back()->with('success', 'PAP deleted successfully.');
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Failed to delete PAP. Please try again.');
+        }
+    }
+
     public function storeIndicator(Request $request)
     {
         $baseValidated = $request->validate([

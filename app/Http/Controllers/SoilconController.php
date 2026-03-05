@@ -229,6 +229,23 @@ class SoilconController extends Controller
         }
     }
 
+    public function destroyPap(Soilcon_Pap $program)
+    {
+        DB::beginTransaction();
+        try {
+            Soilcon_Target::where('program_id', $program->id)->delete();
+            Soilcon_Accomplishment::where('program_id', $program->id)->delete();
+            Soilcon_Indicator::where('program_id', $program->id)->delete();
+            $program->delete();
+
+            DB::commit();
+            return redirect()->back()->with('success', 'PAP deleted successfully.');
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Failed to delete PAP. Please try again.');
+        }
+    }
+
     public function storeIndicator(Request $request)
     {
         $baseValidated = $request->validate([

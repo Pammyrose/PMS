@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 use App\Models\Gass_Pap;
+use App\Models\Gass_Indicator;
+use App\Models\Gass_Target;
+use App\Models\Gass_Accomplishment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -90,6 +93,26 @@ public function update(Request $request, Gass_Pap $program)
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->withErrors(['error' => 'Failed to update: ' . $e->getMessage()]);
+        }
+    }
+
+    public function destroy(Gass_Pap $program)
+    {
+        try {
+            DB::beginTransaction();
+
+            Gass_Target::where('program_id', $program->id)->delete();
+            Gass_Accomplishment::where('program_id', $program->id)->delete();
+            Gass_Indicator::where('program_id', $program->id)->delete();
+            $program->delete();
+
+            DB::commit();
+
+            return redirect()->back()->with('success', 'Program has been successfully deleted.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return redirect()->back()->with('error', 'Failed to delete program. Please try again.');
         }
     }
 }
