@@ -10,6 +10,7 @@ use App\Models\Gass_Accomplishment;
 use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
@@ -385,6 +386,53 @@ class GassController extends Controller
         return view('admin.gass.indicator_create');
     }
 
+    public function storePap(Request $request)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'program' => 'nullable|string|max:150',
+            'project' => 'nullable|string|max:150',
+            'activities' => 'nullable|string',
+            'subactivities' => 'nullable|string',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $pap = Gass_Pap::create($validated);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PAP saved successfully.',
+                'pap' => $pap,
+            ]);
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function destroyPap(Gass_Pap $program)
+    {
+        DB::beginTransaction();
+        try {
+            Gass_Target::where('program_id', $program->id)->delete();
+            Gass_Accomplishment::where('program_id', $program->id)->delete();
+            Gass_Indicator::where('program_id', $program->id)->delete();
+            $program->delete();
+
+            DB::commit();
+            return redirect()->back()->with('success', 'PAP deleted successfully.');
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Failed to delete PAP. Please try again.');
+        }
+    }
+
     /**
      * Store new indicator
      */
@@ -638,6 +686,7 @@ public function storeAccomplishments(Request $request)
         'entries.*.dec' => 'nullable|numeric|min:0',
         'entries.*.q4' => 'nullable|numeric|min:0',
         'entries.*.annual_total' => 'nullable|numeric|min:0',
+        'entries.*.remarks' => 'nullable|string',
     ]);
 
     $userId = Auth::id();
@@ -656,23 +705,24 @@ public function storeAccomplishments(Request $request)
         $record->fill([
             'user_id' => $userId,
             'program_id' => $entry['program_id'],
-            'jan' => $entry['jan'] ?? 0,
-            'feb' => $entry['feb'] ?? 0,
-            'mar' => $entry['mar'] ?? 0,
-            'q1' => $entry['q1'] ?? 0,
-            'apr' => $entry['apr'] ?? 0,
-            'may' => $entry['may'] ?? 0,
-            'jun' => $entry['jun'] ?? 0,
-            'q2' => $entry['q2'] ?? 0,
-            'jul' => $entry['jul'] ?? 0,
-            'aug' => $entry['aug'] ?? 0,
-            'sep' => $entry['sep'] ?? 0,
-            'q3' => $entry['q3'] ?? 0,
-            'oct' => $entry['oct'] ?? 0,
-            'nov' => $entry['nov'] ?? 0,
-            'dec' => $entry['dec'] ?? 0,
-            'q4' => $entry['q4'] ?? 0,
-            'annual_total' => $entry['annual_total'] ?? 0,
+            'jan' => array_key_exists('jan', $entry) ? ($entry['jan'] ?? 0) : ($record->jan ?? 0),
+            'feb' => array_key_exists('feb', $entry) ? ($entry['feb'] ?? 0) : ($record->feb ?? 0),
+            'mar' => array_key_exists('mar', $entry) ? ($entry['mar'] ?? 0) : ($record->mar ?? 0),
+            'q1' => array_key_exists('q1', $entry) ? ($entry['q1'] ?? 0) : ($record->q1 ?? 0),
+            'apr' => array_key_exists('apr', $entry) ? ($entry['apr'] ?? 0) : ($record->apr ?? 0),
+            'may' => array_key_exists('may', $entry) ? ($entry['may'] ?? 0) : ($record->may ?? 0),
+            'jun' => array_key_exists('jun', $entry) ? ($entry['jun'] ?? 0) : ($record->jun ?? 0),
+            'q2' => array_key_exists('q2', $entry) ? ($entry['q2'] ?? 0) : ($record->q2 ?? 0),
+            'jul' => array_key_exists('jul', $entry) ? ($entry['jul'] ?? 0) : ($record->jul ?? 0),
+            'aug' => array_key_exists('aug', $entry) ? ($entry['aug'] ?? 0) : ($record->aug ?? 0),
+            'sep' => array_key_exists('sep', $entry) ? ($entry['sep'] ?? 0) : ($record->sep ?? 0),
+            'q3' => array_key_exists('q3', $entry) ? ($entry['q3'] ?? 0) : ($record->q3 ?? 0),
+            'oct' => array_key_exists('oct', $entry) ? ($entry['oct'] ?? 0) : ($record->oct ?? 0),
+            'nov' => array_key_exists('nov', $entry) ? ($entry['nov'] ?? 0) : ($record->nov ?? 0),
+            'dec' => array_key_exists('dec', $entry) ? ($entry['dec'] ?? 0) : ($record->dec ?? 0),
+            'q4' => array_key_exists('q4', $entry) ? ($entry['q4'] ?? 0) : ($record->q4 ?? 0),
+            'annual_total' => array_key_exists('annual_total', $entry) ? ($entry['annual_total'] ?? 0) : ($record->annual_total ?? 0),
+            'remarks' => array_key_exists('remarks', $entry) ? ($entry['remarks'] ?? null) : ($record->remarks ?? null),
         ]);
 
         $record->save();
@@ -712,6 +762,7 @@ private function formatSectionRecordForJs($row): array
         'dec' => (float) ($row->dec ?? 0),
         'q4' => (float) ($row->q4 ?? 0),
         'annual_total' => (float) ($row->annual_total ?? 0),
+        'remarks' => (string) ($row->remarks ?? ''),
     ];
 }
 }

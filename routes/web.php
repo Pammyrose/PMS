@@ -50,6 +50,8 @@ Route::put('/users/{user}', [UserController::class, 'update'])->name('users.upda
 Route::get('/gass', [GassController::class, 'overview'])->name('gass');
 Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [GassController::class, 'index'])->name('physical');
+    Route::post('/pap', [GassController::class, 'storePap'])->name('pap.store');
+    Route::delete('/pap/{program}', [GassController::class, 'destroyPap'])->name('pap.destroy');
     Route::post('/targets/store', [GassController::class, 'storeTargets'])->name('targets.store');
     Route::post('/accomplishments/store', [GassController::class, 'storeAccomplishments'])->name('accomplishments.store');
     Route::post('/indicators', [GassController::class, 'storeIndicator'])->name('indicators.store');

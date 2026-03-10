@@ -814,6 +814,8 @@
             PERIODS.forEach(p => {
                 const th = document.createElement("th");
                 th.classList.add("month-header", "text-center");
+                th.classList.add(`dynamic-header-${type}`);
+                th.dataset.dynamicSection = type;
                 if (p.type === "quarter") th.classList.add("quarter");
                 if (p.type === "annual") th.classList.add("annual");
 
@@ -844,6 +846,8 @@
                 PERIODS.forEach((period, idx) => {
                     const td = document.createElement("td");
                     td.classList.add("p-1", "text-center");
+                    td.classList.add(`dynamic-cell-${sectionType}`);
+                    td.dataset.dynamicSection = sectionType;
 
                     const wrapper = document.createElement("div");
                     wrapper.className = "office-lines";
@@ -858,6 +862,7 @@
                         const input = document.createElement("input");
                         input.type = "number";
                         input.className = `month-box ${sectionType}-box`;
+                        input.style.width = "70px";
                         input.style.maxWidth = "92px";
                         input.value = "0";
                         input.min = "0";
@@ -1111,29 +1116,12 @@
                 return;
             }
 
-            const groupIndex = Array.from(groupRow.children).indexOf(groupCell) - 4;
-            if (groupIndex < 0) {
-                refreshSummaryCards();
-                return;
-            }
+            mainHeader
+                .querySelectorAll(`th[data-dynamic-section="${sectionType}"]`)
+                .forEach(cell => cell.remove());
 
-            const firstDynamicHeaderIndex = 4 + (groupIndex * COL_COUNT);
-
-            for (let i = 0; i < COL_COUNT; i++) {
-                const headerCell = mainHeader.children[firstDynamicHeaderIndex];
-                if (headerCell) {
-                    mainHeader.removeChild(headerCell);
-                }
-            }
-
-            document.querySelectorAll("tbody tr[data-row-id]").forEach(row => {
-                for (let i = 0; i < COL_COUNT; i++) {
-                    const dataCell = row.children[firstDynamicHeaderIndex];
-                    if (dataCell) {
-                        row.removeChild(dataCell);
-                    }
-                }
-            });
+            document.querySelectorAll(`tbody tr[data-row-id] td[data-dynamic-section="${sectionType}"]`)
+                .forEach(cell => cell.remove());
 
             groupCell.remove();
 

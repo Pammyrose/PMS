@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\EditHistory;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 
 class HistoryController extends Controller
 {
@@ -17,6 +19,26 @@ class HistoryController extends Controller
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
         ]);
+
+        if (!Schema::hasTable('edit_histories')) {
+            $histories = new LengthAwarePaginator(
+                items: [],
+                total: 0,
+                perPage: 25,
+                currentPage: max(1, (int) $request->query('page', 1)),
+                options: [
+                    'path' => $request->url(),
+                    'query' => $request->query(),
+                ]
+            );
+
+            $modules = collect();
+            $users = collect();
+            $editedParts = collect();
+            $actions = collect();
+
+            return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'editedParts', 'actions'));
+        }
 
         $historyQuery = EditHistory::query()
             ->when(!empty($filters['module']), function ($query) use ($filters) {

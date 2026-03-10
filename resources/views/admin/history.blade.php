@@ -28,18 +28,18 @@
                     <thead class="text-md px-10 py-4 bg-gradient-to-r from-primary to-primarydark text-white border-b rounded-base border-default">
                         <tr>
                             <th scope="col" class="px-6 py-3 font-medium">Date/Time</th>
-                            <th scope="col" class="px-6 py-3 font-medium">User</th>
-                            <th scope="col" class="px-6 py-3 font-medium">Module</th>
-                            <th scope="col" class="px-6 py-3 font-medium">Edited Part</th>
-                            <th scope="col" class="px-6 py-3 font-medium">Fields Changed</th>
+                            <th scope="col" class="px-6 py-3 font-medium text-center">User</th>
+                            <th scope="col" class="px-6 py-3 font-medium text-center">Module</th>
+                            <th scope="col" class="px-6 py-3 font-medium text-center">Edited Part</th>
+                            <th scope="col" class="px-6 py-3 font-medium text-center">Input Changed</th>
                         </tr>
                     </thead>
                     <tbody>
                             @forelse($histories as $row)
                                 <tr class="bg-neutral-primary border-b border-default">
                                     <td class="px-6 py-4">{{ optional($row->created_at)->format('M d, Y h:i A') }}</td>
-                                    <td class="px-6 py-4">{{ $row->user_name ?? 'Unknown user' }}</td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-6 py-4 text-center">{{ $row->user_name ?? 'Unknown user' }}</td>
+                                    <td class="px-6 py-4 text-center">
                                         @php
                                             $moduleLabel = match (strtolower((string) $row->module)) {
                                                 'gass_physical', 'gass' => 'GASS',
@@ -55,8 +55,8 @@
                                         @endphp
                                         {{ $moduleLabel }}
                                     </td>
-                                    <td class="px-6 py-4">{{ strtoupper(str_replace('_', ' ', $row->edited_part)) }}</td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-6 py-4 text-center">{{ strtoupper(str_replace('_', ' ', $row->edited_part)) }}</td>
+                                    <td class="px-6 py-4 text-center">
                                         @php
                                             $changed = is_array($row->changed_fields) ? $row->changed_fields : [];
                                             $snapshot = is_array($row->request_snapshot) ? $row->request_snapshot : [];
@@ -134,7 +134,7 @@
                                                         return $label . ': ' . $values[0];
                                                     }
 
-                                                    return $label . ': ' . $values[0] . ' (+' . (count($values) - 1) . ' more)';
+                                                    return $label . ': ' . $values[0] ;
                                                 }
 
                                                 return $field;

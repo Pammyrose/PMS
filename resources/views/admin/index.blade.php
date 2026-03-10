@@ -87,7 +87,7 @@
               </div>
             </div>
           </div>
-
+<a href="{{ route('gass_physical') }}" class="text-decoration-none">
           <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
             <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Physical Targets</p>
             <div class="flex items-center justify-center mt-4">
@@ -102,6 +102,7 @@
               </div>
             </div>
           </div>
+          </a>
 
           <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
             <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Financial Utilization</p>

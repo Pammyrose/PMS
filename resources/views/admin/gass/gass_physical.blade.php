@@ -240,6 +240,33 @@
             background-color: #2772fd !important;
             border-color: #2772fd !important;
         }
+
+        .remarks-header {
+            background: #fef3c7;
+            color: #92400e;
+            font-weight: 700;
+            min-width: 280px;
+        }
+
+        .remarks-box {
+            width: 100%;
+            min-width: 200px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            padding: 2px 6px;
+            height: 30px;
+            min-height: 30px;
+            max-height: 30px;
+            resize: none;
+            overflow-y: auto;
+            line-height: 1.2;
+        }
+
+        td[data-dynamic-section="remarks"] .input-line {
+            width: 100%;
+            justify-content: flex-start;
+        }
     </style>
 </head>
 
@@ -297,7 +324,6 @@
                             </div>
                         </div>
                     </div>
-
                 <div>
                     <div class="flex items-center justify-between mt-2">
                         <!-- Left side -->
@@ -307,40 +333,40 @@
                                 <i class="fa fa-plus me-1"></i> Add PAP
                             </button>
 
-                <form 
-                    method="GET" 
-                    action="{{ url()->current() }}" 
-                    class="d-flex align-items-center gap-2 flex-wrap" 
-                    id="papSearchForm"
-                    role="search"
-                 >
-                    {{-- Preserve important filters --}}
-                    @if(request()->filled('year'))
-                        <input type="hidden" name="year" value="{{ $year ?? now()->year }}">
-                    @endif
-                    @if(request()->filled('office_id'))
-                        <input type="hidden" name="office_id" value="{{ request('office_id') }}">
-                    @endif
+                            <form 
+    method="GET" 
+    action="{{ url()->current() }}" 
+    class="d-flex align-items-center gap-2 flex-wrap" 
+    id="papSearchForm"
+    role="search"
+>
+    {{-- Preserve important filters --}}
+    @if(request()->filled('year'))
+        <input type="hidden" name="year" value="{{ $year ?? now()->year }}">
+    @endif
+    @if(request()->filled('office_id'))
+        <input type="hidden" name="office_id" value="{{ request('office_id') }}">
+    @endif
 
-                    <div class="position-relative flex-grow-1" style="min-width: 320px; max-width: 480px;">
-                        <input
-                            type="search"
-                            name="search"
-                            id="papSearchInput"
-                            class="form-control form-control pe-5 ps-4 shadow-sm"
-                            placeholder="Search…"
-                            value="{{ old('search', $search ?? '') }}"
-                            autocomplete="off"
-                            aria-label="Search programs, projects and activities"
-                            required
-                        >
-                        <!-- Search icon inside input (very common pattern) -->
-                        <span class="position-absolute top-50 end-0 translate-middle-y pe-3 text-muted">
-                            <i class="bi bi-search"></i>
-                        </span>
-                    </div>
+    <div class="position-relative flex-grow-1" style="min-width: 320px; max-width: 480px;">
+        <input
+            type="search"
+            name="search"
+            id="papSearchInput"
+            class="form-control form-control pe-5 ps-4 shadow-sm"
+            placeholder="Search…"
+            value="{{ old('search', $search ?? '') }}"
+            autocomplete="off"
+            aria-label="Search programs, projects and activities"
+            required
+        >
+        <!-- Search icon inside input (very common pattern) -->
+        <span class="position-absolute top-50 end-0 translate-middle-y pe-3 text-muted">
+            <i class="bi bi-search"></i>
+        </span>
+    </div>
 
-                </form>
+</form>
                         </div>
 
                         <!-- Right side -->
@@ -348,17 +374,20 @@
                             <button onclick="toggleTargetColumns()" class="btn btn-danger btn-sm" id="targetBtn">
                                 <i class="fa fa-plus me-1"></i> Targets
                             </button>
+                            <button onclick="toggleMonthInputs()" class="btn btn-outline-secondary btn-sm" id="monthBtn" disabled>
+                                <i class="fa fa-calendar-days me-1"></i> Months
+                            </button>
                             <button onclick="toggleAccompColumns()" class="btn btn-success btn-sm" id="accompBtn">
                                 <i class="fa fa-plus me-1"></i> Accomplishments
+                            </button>
+                            <button onclick="toggleRemarksColumn()" class="btn btn-warning btn-sm" id="remarksBtn">
+                                <i class="fa fa-plus me-1"></i> Remarks
                             </button>
                             <button onclick="saveAllSectionEntries()" class="btn btn-primary btn-sm" id="saveAllBtn">
                                 <i class="fa fa-floppy-disk me-1"></i> Save
                             </button>
                         </div>
                     </div>
-
-
-                    
 
 
                     <div class="table-container">
@@ -379,10 +408,11 @@
                             <tbody class="text-gray-800">
                                 @foreach($programs as $program)
                                     @php
+                                        $programCoreKey = strtolower(trim((string) ($program->title ?? ''))) . '|' . strtolower(trim((string) ($program->program ?? ''))) . '|' . strtolower(trim((string) ($program->project ?? '')));
                                         $hasIndicatorData = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
                                     @endphp
-                                    <tr class="program-header group" data-program-id="{{ $program->id }}"
-                                        onclick="toggleRow('content-{{ $program->id }}', 'icon-{{ $program->id }}')">
+                                    <tr class="program-header group" data-program-id="{{ $program->id }}" data-core-key="{{ $programCoreKey }}"
+                                        onclick='toggleRowsByCoreKey(@json($programCoreKey))'>
                                         <td class="px-6 py-4" colspan="4">
                                             <div class="flex items-center justify-between">
                                                 <span>
@@ -406,7 +436,7 @@
                                                         <i class="fa-solid fa-circle-xmark text-danger me-2"
                                                             title="No indicator data yet"></i>
                                                     @endif
-                                                    <form method="POST" action="{{ route('programs.destroy', $program) }}"
+                                                    <form method="POST" action="{{ route('admin.gass_physical.pap.destroy', $program) }}"
                                                         class="me-2 delete-program-form" id="deleteProgramForm-{{ $program->id }}"
                                                         onsubmit="event.stopPropagation();">
                                                         @csrf
@@ -432,6 +462,9 @@
                                         @endphp
                                         @foreach($indicators[$program->id] as $indicator)
                                             @php
+                                                $indicatorSyncKey = $programCoreKey
+                                                    . '|' . strtolower(trim((string) ($indicator->name ?? '')))
+                                                    . '|' . strtolower(trim((string) ($indicator->indicator_type ?? '')));
                                                 $officeIds = collect($indicator->office_id ?? [])
                                                     ->map(fn($id) => (int) $id)
                                                     ->filter()
@@ -479,14 +512,15 @@
                                             @endphp
                                             <tr class="data-row @if($loop->first) first-indicator-row @endif"
                                                 data-row-id="{{ $program->id }}" data-indicator-id="{{ $indicator->id }}"
+                                                data-core-key="{{ $programCoreKey }}"
+                                                data-sync-key="{{ $indicatorSyncKey }}"
                                                 data-indicator-type="{{ $indicator->indicator_type ?? '' }}"
                                                 data-office-ids="{{ implode(',', $officeIds) }}"
                                                 data-office-names="{{ $selectedParents->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
                                                 data-input-office-ids="{{ $inputOffices->pluck('id')->implode(',') }}"
                                                 data-input-office-names="{{ $inputOffices->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
                                                 data-input-break-indices="{{ implode(',', $groupBreakIndices) }}"
-                                                id="content-{{ $program->id }}-{{ $loop->index }}" @if($loop->first)
-                                                style="display:none;" @endif>
+                                                id="content-{{ $program->id }}-{{ $loop->index }}" style="display:none;">
                                                 @if($loop->first)
                                                     <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $indicatorCount }}">
                                                         {{ $program->activities }}<br>
@@ -518,6 +552,8 @@
                                         @endforeach
                                     @else
                                         <tr class="data-row first-indicator-row" data-row-id="{{ $program->id }}"
+                                            data-core-key="{{ $programCoreKey }}"
+                                            data-sync-key="{{ $programCoreKey }}|no-indicator|"
                                             data-indicator-type="" data-office-ids="" data-office-names=""
                                             data-input-office-ids="" data-input-office-names="" data-input-break-indices=""
                                             id="content-{{ $program->id }}-0" style="display:none;">
@@ -574,6 +610,8 @@
 
         let targetsVisible = false;
         let accompVisible = false;
+        let remarksVisible = false;
+        let monthInputsVisible = false;
         let totalsListenerRegistered = false;
 
         const currentYear = Number(@json($year ?? now()->year));
@@ -755,50 +793,136 @@
             if (summaryNotYetDone) summaryNotYetDone.textContent = formatSummaryNumber(pendingTotal);
         }
 
+        function applyMonthInputVisibility() {
+            document.querySelectorAll('th[data-period-type="month"]').forEach(cell => {
+                cell.style.display = monthInputsVisible ? '' : 'none';
+            });
+
+            document.querySelectorAll('td[data-period-type="month"]').forEach(cell => {
+                cell.style.display = monthInputsVisible ? '' : 'none';
+            });
+
+            refreshGroupHeaderColspans();
+        }
+
+        function refreshGroupHeaderColspans() {
+            const groupRow = document.getElementById('groupHeaders');
+            if (!groupRow) return;
+
+            ['target', 'accomp', 'remarks'].forEach(sectionType => {
+                const groupCell = groupRow.querySelector(`.group-${sectionType}`);
+                if (!groupCell) return;
+
+                const visibleCount = Array.from(
+                    document.querySelectorAll(`thead tr:not(.group-row) th[data-dynamic-section="${sectionType}"]`)
+                ).filter(cell => cell.style.display !== 'none').length;
+
+                groupCell.colSpan = Math.max(visibleCount, 1);
+            });
+        }
+
+        function refreshMonthButtonState() {
+            const monthBtn = document.getElementById('monthBtn');
+            if (!monthBtn) return;
+
+            const canToggleMonths = targetsVisible || accompVisible;
+            if (!canToggleMonths) {
+                monthInputsVisible = false;
+            }
+
+            monthBtn.disabled = !canToggleMonths;
+            monthBtn.innerHTML = monthInputsVisible
+                ? '<i class="fa fa-eye-slash me-1"></i> Hide Months'
+                : '<i class="fa fa-calendar-days me-1"></i> Show Months';
+
+            applyMonthInputVisibility();
+        }
+
+        function toggleMonthInputs() {
+            if (!targetsVisible && !accompVisible) return;
+            monthInputsVisible = !monthInputsVisible;
+            refreshMonthButtonState();
+        }
+
         function toggleTargetColumns() {
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
+            const hadVisibleSection = targetsVisible || accompVisible;
 
             if (!targetsVisible) {
                 targetsVisible = true;
+                if (!hadVisibleSection) {
+                    monthInputsVisible = false;
+                }
                 document.getElementById("targetBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Targets';
                 document.getElementById("targetBtn").classList.replace("btn-primary", "btn-outline-primary");
 
                 addColumns(headerRow, groupRow, "Targets", "target");
                 addInputCells("target");
+                refreshMonthButtonState();
+                refreshSummaryCards();
             } else {
                 targetsVisible = false;
                 document.getElementById("targetBtn").innerHTML = '<i class="fa fa-plus me-1"></i> Targets';
                 document.getElementById("targetBtn").classList.replace("btn-outline-primary", "btn-primary");
 
                 removeSectionColumns(groupRow, headerRow, 'target');
+                refreshMonthButtonState();
+                refreshSummaryCards();
             }
-
-            refreshSummaryCards();
         }
 
         function toggleAccompColumns() {
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
+            const hadVisibleSection = targetsVisible || accompVisible;
 
             if (!accompVisible) {
                 accompVisible = true;
+                if (!hadVisibleSection) {
+                    monthInputsVisible = false;
+                }
                 document.getElementById("accompBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Accomplishments';
                 document.getElementById("accompBtn").classList.replace("btn-success", "btn-outline-success");
 
                 addColumns(headerRow, groupRow, "Accomplishments", "accomp");
                 addInputCells("accomp");
+                refreshMonthButtonState();
+                refreshSummaryCards();
             } else {
                 accompVisible = false;
                 document.getElementById("accompBtn").innerHTML = '<i class="fa fa-plus me-1"></i> Accomplishments';
                 document.getElementById("accompBtn").classList.replace("btn-outline-success", "btn-success");
 
                 removeSectionColumns(groupRow, headerRow, 'accomp');
+                refreshMonthButtonState();
+                refreshSummaryCards();
             }
+        }
 
-            refreshSummaryCards();
+        function toggleRemarksColumn() {
+            const table = document.getElementById('performanceTable');
+            const headerRow = table.querySelector('thead tr:not(.group-row)');
+            const groupRow = document.getElementById('groupHeaders');
+
+            if (!remarksVisible) {
+                remarksVisible = true;
+                document.getElementById('remarksBtn').innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Remarks';
+                document.getElementById('remarksBtn').classList.replace('btn-warning', 'btn-outline-warning');
+
+                addRemarksColumn(headerRow, groupRow);
+                addRemarksCells();
+                refreshSummaryCards();
+            } else {
+                remarksVisible = false;
+                document.getElementById('remarksBtn').innerHTML = '<i class="fa fa-plus me-1"></i> Remarks';
+                document.getElementById('remarksBtn').classList.replace('btn-outline-warning', 'btn-warning');
+
+                removeSectionColumns(groupRow, headerRow, 'remarks');
+                refreshSummaryCards();
+            }
         }
 
         function addColumns(mainHeader, groupHeader, title, type) {
@@ -813,11 +937,19 @@
             thGroup.colSpan = COL_COUNT;
             thGroup.className = `group-header group-${type}`;
             thGroup.textContent = title;
-            groupHeader.appendChild(thGroup);
+            const remarksGroup = groupHeader.querySelector('.group-remarks');
+            if (remarksGroup) {
+                groupHeader.insertBefore(thGroup, remarksGroup);
+            } else {
+                groupHeader.appendChild(thGroup);
+            }
 
             PERIODS.forEach(p => {
                 const th = document.createElement("th");
                 th.classList.add("month-header", "text-center");
+                th.classList.add(`dynamic-header-${type}`);
+                th.dataset.dynamicSection = type;
+                th.dataset.periodType = p.type;
                 if (p.type === "quarter") th.classList.add("quarter");
                 if (p.type === "annual") th.classList.add("annual");
 
@@ -830,8 +962,89 @@
                     th.classList.add("accomp-month");
                 }
 
-                mainHeader.appendChild(th);
+                const remarksHeader = mainHeader.querySelector('th[data-dynamic-section="remarks"]');
+                if (remarksHeader) {
+                    mainHeader.insertBefore(th, remarksHeader);
+                } else {
+                    mainHeader.appendChild(th);
+                }
             });
+        }
+
+        function addRemarksColumn(mainHeader, groupHeader) {
+            if (mainHeader.querySelector('th[data-dynamic-section="remarks"]')) {
+                return;
+            }
+
+            if (groupHeader.children.length === 0) {
+                for (let i = 0; i < 4; i++) {
+                    const emptyTh = document.createElement('th');
+                    groupHeader.appendChild(emptyTh);
+                }
+            }
+
+            const groupCell = document.createElement('th');
+            groupCell.colSpan = 1;
+            groupCell.className = 'group-header group-remarks';
+            groupCell.textContent = '';
+            groupHeader.appendChild(groupCell);
+
+            const th = document.createElement('th');
+            th.className = 'month-header remarks-header text-center';
+            th.dataset.dynamicSection = 'remarks';
+            th.textContent = 'Remarks';
+            mainHeader.appendChild(th);
+        }
+
+        function addRemarksCells() {
+            document.querySelectorAll('tbody tr[data-row-id]').forEach(row => {
+                const existingRemarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
+                if (existingRemarksCell) {
+                    existingRemarksCell.remove();
+                }
+
+                const indicatorId = row.dataset.indicatorId;
+                const existingRowDataByOffice = indicatorId ? (existingAccompByIndicator[String(indicatorId)] || {}) : {};
+                const assignedOffices = getAssignedOfficesForRow(row);
+                const groupBreakIndices = getInputBreakIndicesForRow(row);
+
+                const td = document.createElement('td');
+                td.classList.add('p-1');
+                td.dataset.dynamicSection = 'remarks';
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'office-lines';
+
+                const officeEntries = assignedOffices.length > 0
+                    ? assignedOffices
+                    : [{ id: currentOfficeId || null, name: 'Office' }];
+
+                officeEntries.forEach((office, officeIndex) => {
+                    const officeId = Number(office?.id || 0) || null;
+                    const officeData = officeId ? existingRowDataByOffice[String(officeId)] : null;
+
+                    const input = document.createElement('textarea');
+                    input.className = 'remarks-box';
+                    input.placeholder = 'Add comment';
+                    input.rows = 1;
+                    input.value = String(officeData?.remarks || '');
+                    input.dataset.section = 'remarks';
+                    input.dataset.officeId = officeId ? String(officeId) : '';
+
+                    const inputLine = document.createElement('div');
+                    inputLine.className = 'input-line';
+                    if (groupBreakIndices.includes(officeIndex)) {
+                        inputLine.classList.add('mb-3');
+                    }
+                    inputLine.appendChild(input);
+                    wrapper.appendChild(inputLine);
+                });
+
+                td.appendChild(wrapper);
+                row.appendChild(td);
+            });
+
+            refreshGroupHeaderColspans();
         }
 
         function addInputCells(sectionType) {
@@ -848,6 +1061,9 @@
                 PERIODS.forEach((period, idx) => {
                     const td = document.createElement("td");
                     td.classList.add("p-1", "text-center");
+                    td.classList.add(`dynamic-cell-${sectionType}`);
+                    td.dataset.dynamicSection = sectionType;
+                    td.dataset.periodType = period.type;
 
                     const wrapper = document.createElement("div");
                     wrapper.className = "office-lines";
@@ -862,7 +1078,8 @@
                         const input = document.createElement("input");
                         input.type = "number";
                         input.className = `month-box ${sectionType}-box`;
-                        input.style.maxWidth = "92px";
+                        input.style.width = "70px";
+                        input.style.maxWidth = "150px";
                         input.value = "0";
                         input.min = "0";
                         input.step = "any";
@@ -899,7 +1116,13 @@
                     });
 
                     td.appendChild(wrapper);
-                    row.appendChild(td);
+
+                    const remarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
+                    if (remarksCell) {
+                        row.insertBefore(td, remarksCell);
+                    } else {
+                        row.appendChild(td);
+                    }
                 });
             });
 
@@ -909,6 +1132,7 @@
             }
 
             recalculateSectionRows(sectionType);
+            applyMonthInputVisibility();
             refreshSummaryCards();
         }
 
@@ -973,6 +1197,74 @@
                 .filter(Boolean);
         }
 
+        function getRemarksByOfficeForRow(row) {
+            const remarksInputs = Array.from(row.querySelectorAll('.remarks-box'));
+            return remarksInputs.reduce((acc, input) => {
+                const officeId = String(input.dataset.officeId || '').trim();
+                if (!officeId) return acc;
+                acc[officeId] = String(input.value || '').trim();
+                return acc;
+            }, {});
+        }
+
+        function collectAccomplishmentEntries() {
+            return Array.from(document.querySelectorAll('tbody tr[data-row-id]'))
+                .flatMap(row => {
+                    const indicatorId = Number(row.dataset.indicatorId || 0);
+                    const programId = Number(row.dataset.rowId || 0);
+                    if (!indicatorId || !programId) return [];
+
+                    const officeIds = new Set();
+                    getAssignedOfficeIdsForRow(row).forEach(id => officeIds.add(String(id)));
+
+                    const accompInputs = Array.from(row.querySelectorAll('.month-box[data-section="accomp"]'));
+                    accompInputs.forEach(input => {
+                        const officeId = String(input.dataset.officeId || '').trim();
+                        if (officeId) officeIds.add(officeId);
+                    });
+
+                    const remarksByOffice = getRemarksByOfficeForRow(row);
+                    Object.keys(remarksByOffice).forEach(officeId => officeIds.add(String(officeId)));
+
+                    if (officeIds.size === 0) {
+                        officeIds.add(String(currentOfficeId || '0'));
+                    }
+
+                    const existingByOffice = existingAccompByIndicator[String(indicatorId)] || {};
+
+                    return Array.from(officeIds).map(officeId => {
+                        const entry = {
+                            program_id: programId,
+                            indicator_id: indicatorId,
+                            office_id: Number(officeId) || (currentOfficeId || null),
+                            year: currentYear,
+                        };
+
+                        const officeInputs = accompInputs
+                            .filter(input => String(input.dataset.officeId || '') === String(officeId));
+
+                        const existingOfficeData = existingByOffice[String(officeId)] || {};
+
+                        PERIOD_KEYS.forEach((key, index) => {
+                            const matchingInput = officeInputs.find(input => Number(input.dataset.col) === index);
+                            if (matchingInput) {
+                                const value = Number(matchingInput.value);
+                                entry[key] = Number.isFinite(value) ? value : 0;
+                                return;
+                            }
+
+                            const existingValue = Number(existingOfficeData[key] ?? 0);
+                            entry[key] = Number.isFinite(existingValue) ? existingValue : 0;
+                        });
+
+                        entry.remarks = String(remarksByOffice[String(officeId)] ?? existingOfficeData.remarks ?? '').trim();
+
+                        return entry;
+                    });
+                })
+                .filter(Boolean);
+        }
+
         function getAssignedOfficeIdsForRow(row) {
             const raw = String(row?.dataset?.inputOfficeIds || row?.dataset?.officeIds || '').trim();
             if (!raw) return [];
@@ -1021,7 +1313,7 @@
             } = options;
 
             const isTarget = sectionType === 'target';
-            const shouldBeVisible = isTarget ? targetsVisible : accompVisible;
+            const shouldBeVisible = isTarget ? targetsVisible : (accompVisible || remarksVisible);
 
             if (requireVisible && !shouldBeVisible) {
                 if (showAlerts) {
@@ -1030,7 +1322,9 @@
                 return { success: false, skipped: true, message: 'Section is not visible.' };
             }
 
-            const entries = collectSectionEntries(sectionType);
+            const entries = isTarget
+                ? collectSectionEntries('target')
+                : collectAccomplishmentEntries();
             if (entries.length === 0) {
                 if (showAlerts) {
                     showTopRightErrorAlert('No indicator rows available to save.');
@@ -1082,10 +1376,10 @@
 
         async function saveAllSectionEntries() {
             const saveTarget = targetsVisible;
-            const saveAccomp = accompVisible;
+            const saveAccomp = accompVisible || remarksVisible;
 
             if (!saveTarget && !saveAccomp) {
-                showTopRightErrorAlert('Please open Targets and/or Accomplishments first before saving.');
+                showTopRightErrorAlert('Please open Targets, Accomplishments, and/or Remarks first before saving.');
                 return;
             }
 
@@ -1115,29 +1409,12 @@
                 return;
             }
 
-            const groupIndex = Array.from(groupRow.children).indexOf(groupCell) - 4;
-            if (groupIndex < 0) {
-                refreshSummaryCards();
-                return;
-            }
+            mainHeader
+                .querySelectorAll(`th[data-dynamic-section="${sectionType}"]`)
+                .forEach(cell => cell.remove());
 
-            const firstDynamicHeaderIndex = 4 + (groupIndex * COL_COUNT);
-
-            for (let i = 0; i < COL_COUNT; i++) {
-                const headerCell = mainHeader.children[firstDynamicHeaderIndex];
-                if (headerCell) {
-                    mainHeader.removeChild(headerCell);
-                }
-            }
-
-            document.querySelectorAll("tbody tr[data-row-id]").forEach(row => {
-                for (let i = 0; i < COL_COUNT; i++) {
-                    const dataCell = row.children[firstDynamicHeaderIndex];
-                    if (dataCell) {
-                        row.removeChild(dataCell);
-                    }
-                }
-            });
+            document.querySelectorAll(`tbody tr[data-row-id] td[data-dynamic-section="${sectionType}"]`)
+                .forEach(cell => cell.remove());
 
             groupCell.remove();
 
@@ -1163,8 +1440,11 @@
 
             const allInputs = row.querySelectorAll('.month-box');
             const officeId = String(input.dataset.officeId || '');
+            const sectionType = String(input.dataset.section || '');
 
-            if (!officeId) return;
+            if (!officeId || !sectionType) return;
+
+            const syncedRows = syncMonthValueAcrossCoreRows(input);
 
             // Group by section
             const targetInputs = Array.from(allInputs).filter(i => i.dataset.section === 'target' && String(i.dataset.officeId || '') === officeId && PERIODS[Number(i.dataset.col)]?.type === 'month');
@@ -1180,7 +1460,56 @@
                 updateSection(accompInputs, allInputs, 'accomp', indicatorType, officeId);
             }
 
+            syncedRows.forEach(syncedRow => {
+                recalculateRowOfficeSection(syncedRow, sectionType, officeId);
+            });
+
             refreshSummaryCards();
+        }
+
+        function recalculateRowOfficeSection(row, sectionType, officeId) {
+            if (!row || !sectionType || !officeId) return;
+
+            const indicatorType = getIndicatorTypeForRow(row);
+            const allInputs = row.querySelectorAll('.month-box');
+            const monthInputs = Array.from(allInputs).filter(i =>
+                i.dataset.section === sectionType
+                && String(i.dataset.officeId || '') === String(officeId)
+                && PERIODS[Number(i.dataset.col)]?.type === 'month'
+            );
+
+            if (monthInputs.length === 12) {
+                updateSection(monthInputs, allInputs, sectionType, indicatorType, officeId);
+            }
+        }
+
+        function syncMonthValueAcrossCoreRows(sourceInput) {
+            const sourceRow = sourceInput.closest('tr[data-core-key]');
+            const coreKey = String(sourceRow?.dataset?.coreKey || '').trim();
+            if (!coreKey) return [];
+
+            const sectionType = String(sourceInput.dataset.section || '');
+            const col = String(sourceInput.dataset.col || '');
+            const officeId = String(sourceInput.dataset.officeId || '');
+            if (!sectionType || col === '' || !officeId) return [];
+
+            const touchedRows = new Set();
+
+            document.querySelectorAll('.month-box').forEach(candidate => {
+                if (candidate === sourceInput) return;
+                if (String(candidate.dataset.section || '') !== sectionType) return;
+                if (String(candidate.dataset.col || '') !== col) return;
+                if (String(candidate.dataset.officeId || '') !== officeId) return;
+
+                const candidateRow = candidate.closest('tr[data-core-key]');
+                if (!candidateRow) return;
+                if (String(candidateRow.dataset.coreKey || '').trim() !== coreKey) return;
+
+                candidate.value = sourceInput.value;
+                touchedRows.add(candidateRow);
+            });
+
+            return Array.from(touchedRows);
         }
 
         function getIndicatorTypeForRow(row) {
@@ -1262,31 +1591,128 @@
             return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
         }
 
-        function findPapByTitle(titleValue) {
+        function getNormalizedPapCoreKey(item) {
+            return [
+                normalizePapField(item?.title),
+                normalizePapField(item?.program),
+                normalizePapField(item?.project),
+            ].join('|');
+        }
+
+        function getUniquePapCoreEntries() {
+            const source = Array.isArray(papPrefillData) ? papPrefillData : [];
+            const seen = new Set();
+
+            return source.filter(item => {
+                const key = getNormalizedPapCoreKey(item);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        }
+
+        function buildPapDropdownValue(item) {
+            const title = String(item?.title || '').trim();
+            const program = String(item?.program || '').trim();
+            const project = String(item?.project || '').trim();
+
+            return `${title} | ${program} | ${project}`;
+        }
+
+        function parsePapDropdownValue(rawValue) {
+            const raw = String(rawValue || '').trim();
+            if (!raw.includes('|')) return null;
+
+            const parts = raw.split(/\s*\|\s*/);
+            if (parts.length < 3) return null;
+
+            return {
+                title: parts[0]?.trim() || '',
+                program: parts[1]?.trim() || '',
+                project: parts.slice(2).join(' | ').trim(),
+            };
+        }
+
+        function normalizePapCoreInputsFromDropdownValue() {
+            const titleInput = document.getElementById('pap_title');
+            const programInput = document.getElementById('pap_program');
+            const projectInput = document.getElementById('pap_project');
+
+            if (!titleInput) return null;
+
+            const parsed = parsePapDropdownValue(titleInput.value);
+            if (!parsed) return null;
+
+            titleInput.value = parsed.title;
+            if (programInput) {
+                programInput.value = parsed.program;
+            }
+            if (projectInput) {
+                projectInput.value = parsed.project;
+            }
+
+            return parsed;
+        }
+
+        function findPapByCoreFields({ titleValue, programValue, projectValue }) {
             const normalizedTitle = normalizePapField(titleValue);
+            const normalizedProgram = normalizePapField(programValue);
+            const normalizedProject = normalizePapField(projectValue);
             if (!normalizedTitle) return null;
 
-            return (papPrefillData || []).find(item =>
+            const byTitle = (papPrefillData || []).filter(item =>
                 normalizePapField(item?.title) === normalizedTitle
-            ) || null;
+            );
+            if (byTitle.length === 0) return null;
+
+            const byTitleProgram = normalizedProgram
+                ? byTitle.filter(item => normalizePapField(item?.program) === normalizedProgram)
+                : byTitle;
+
+            const byCore = normalizedProject
+                ? byTitleProgram.filter(item => normalizePapField(item?.project) === normalizedProject)
+                : byTitleProgram;
+
+            return byCore[0] || byTitleProgram[0] || byTitle[0] || null;
         }
 
         function applyPapFieldsFromTitleSelection() {
             const titleInput = document.getElementById('pap_title');
-            const matchedPap = findPapByTitle(titleInput?.value);
+            const programInput = document.getElementById('pap_program');
+            const projectInput = document.getElementById('pap_project');
+
+            normalizePapCoreInputsFromDropdownValue();
+
+            const matchedPap = findPapByCoreFields({
+                titleValue: titleInput?.value,
+                programValue: programInput?.value,
+                projectValue: projectInput?.value,
+            });
             if (!matchedPap) return null;
 
-            const papProgramInput = document.getElementById('pap_program');
-            const papProjectInput = document.getElementById('pap_project');
             const papActivitiesInput = document.getElementById('pap_activities');
             const papSubactivitiesInput = document.getElementById('pap_subactivities');
 
-            if (papProgramInput) papProgramInput.value = String(matchedPap.program || '');
-            if (papProjectInput) papProjectInput.value = String(matchedPap.project || '');
+            if (programInput) programInput.value = String(matchedPap.program || '');
+            if (projectInput) projectInput.value = String(matchedPap.project || '');
             if (papActivitiesInput) papActivitiesInput.value = String(matchedPap.activities || '');
             if (papSubactivitiesInput) papSubactivitiesInput.value = String(matchedPap.subactivities || '');
 
             return matchedPap;
+        }
+
+        function populatePapTitleDropdown() {
+            const titleOptions = document.getElementById('pap_title_options');
+            if (!titleOptions) return;
+
+            const uniqueEntries = getUniquePapCoreEntries();
+            titleOptions.innerHTML = '';
+
+            uniqueEntries.forEach(item => {
+                const option = document.createElement('option');
+                option.value = buildPapDropdownValue(item);
+                titleOptions.appendChild(option);
+            });
         }
 
         function findMatchingPapFromModal() {
@@ -1375,21 +1801,28 @@
 
         // Handle Add Indicator Form Submission
         document.addEventListener('DOMContentLoaded', function () {
-            // toggleRow function for program header collapse/expand
-            window.toggleRow = function (contentId, iconId) {
-                const table = document.getElementById("performanceTable");
-                const programId = contentId.replace('content-', '');
-                const rows = table.querySelectorAll(`tr[id^="content-${programId}-"]`);
-                const icon = document.getElementById(iconId);
+            populatePapTitleDropdown();
 
+            // Toggle all rows that share the same title/program/project core key.
+            window.toggleRowsByCoreKey = function (coreKey) {
+                if (!coreKey) return;
+
+                const rows = Array.from(document.querySelectorAll('tbody tr.data-row'))
+                    .filter(row => String(row.dataset.coreKey || '') === String(coreKey));
+                if (!rows.length) return;
+
+                const shouldShow = Array.from(rows).some(row => row.style.display === 'none');
                 rows.forEach(row => {
-                    const isHidden = row.style.display === 'none';
-                    row.style.display = isHidden ? 'table-row' : 'none';
+                    row.style.display = shouldShow ? 'table-row' : 'none';
                 });
 
-                if (icon) {
-                    icon.classList.toggle('rotate-180');
-                }
+                const headers = Array.from(document.querySelectorAll('tbody tr.program-header'))
+                    .filter(row => String(row.dataset.coreKey || '') === String(coreKey))
+                    .map(row => row.querySelector('.program-toggle-icon'))
+                    .filter(Boolean);
+                headers.forEach(icon => {
+                    icon.classList.toggle('rotate-180', shouldShow);
+                });
             };
 
             const papFieldIds = ['pap_title', 'pap_program', 'pap_project', 'pap_activities', 'pap_subactivities'];
@@ -1446,23 +1879,23 @@
         const papPrefillData = {!! json_encode($papPrefillData ?? []) !!};
     </script>
 
-        <div id="saveSuccessAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
-                style="z-index: 1080; max-width: 420px;">
-                <div class="alert alert-success alert-dismissible fade show shadow" role="alert" id="saveSuccessAlert">
-                        <strong>Success!</strong>
-                        <span id="saveSuccessMessage">Data saved successfully.</span>
-                        <button type="button" class="btn-close" aria-label="Close"></button>
-                </div>
+    <div id="saveSuccessAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
+        style="z-index: 1080; max-width: 420px;">
+        <div class="alert alert-success alert-dismissible fade show shadow" role="alert" id="saveSuccessAlert">
+            <strong>Success!</strong>
+            <span id="saveSuccessMessage">Data saved successfully.</span>
+            <button type="button" class="btn-close" aria-label="Close"></button>
         </div>
+    </div>
 
-        <div id="saveErrorAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
-            style="z-index: 1080; max-width: 420px;">
-            <div class="alert alert-danger alert-dismissible fade show shadow" role="alert" id="saveErrorAlert">
-                <strong>Error!</strong>
-                <span id="saveErrorMessage">An error occurred.</span>
-                <button type="button" class="btn-close" aria-label="Close"></button>
-            </div>
+    <div id="saveErrorAlertWrapper" class="position-fixed top-20 end-0 p-3 d-none"
+        style="z-index: 1080; max-width: 420px;">
+        <div class="alert alert-danger alert-dismissible fade show shadow" role="alert" id="saveErrorAlert">
+            <strong>Error!</strong>
+            <span id="saveErrorMessage">An error occurred.</span>
+            <button type="button" class="btn-close" aria-label="Close"></button>
         </div>
+    </div>
 
     <div class="modal fade" id="deleteProgramConfirmModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1549,6 +1982,7 @@
                                     @endforeach
                                 </datalist>
                             </div>
+
                         </div>
                         <h4
                             class="font-extrabold text-2xl bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent pb-1 border-b-2 border-blue-200 inline-block">
@@ -1676,7 +2110,7 @@
                     papFormData.append('activities', papActivities);
                     papFormData.append('subactivities', papSubactivities);
 
-                    const papResponse = await fetch(@json(route('programs.store')), {
+                    const papResponse = await fetch(@json(route('admin.gass_physical.pap.store')), {
                         method: 'POST',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
@@ -1747,7 +2181,6 @@
                 document.getElementById('indicator_id').value = '';
                 document.querySelectorAll('.parent-office-checkbox').forEach(cb => cb.checked = false);
                 currentProgramIndicators = [];
-
                 const successMessage = shouldUpdateExistingIndicator
                     ? 'Data updated successfully.'
                     : 'Data saved successfully.';
@@ -1834,7 +2267,7 @@
             });
 
             applyProgramSearch();
-        }
+
 
         document.addEventListener('DOMContentLoaded', function () {
             const deleteModalElement = document.getElementById('deleteProgramConfirmModal');
@@ -1857,12 +2290,11 @@
                 form.submit();
             });
         });
-
-        refreshSummaryCards();
-
-
+            refreshSummaryCards();
+        }
     </script>
 
 </body>
 
 </html>
+

@@ -19,6 +19,7 @@ class Gass_Accomplishment extends Model
         'jul', 'aug', 'sep', 'q3',
         'oct', 'nov', 'dec', 'q4',
         'annual_total',
+        'remarks',
     ];
 
     protected $casts = [
@@ -28,5 +29,6 @@ class Gass_Accomplishment extends Model
         'jul' => 'float', 'aug' => 'float', 'sep' => 'float', 'q3' => 'float',
         'oct' => 'float', 'nov' => 'float', 'dec' => 'float', 'q4' => 'float',
         'annual_total' => 'float',
+        'remarks' => 'string',
     ];
 }
