@@ -10,10 +10,10 @@ class Gass_Target extends Model
 
     protected $fillable = [
         'user_id',
-        'office_id',
+        'office_ids',
         'program_id',
         'indicator_id',
-        'year',
+        'years',
         'jan', 'feb', 'mar', 'q1',
         'apr', 'may', 'jun', 'q2',
         'jul', 'aug', 'sep', 'q3',
@@ -22,7 +22,7 @@ class Gass_Target extends Model
     ];
 
     protected $casts = [
-        'year' => 'integer',
+        'years' => 'integer',
         'jan' => 'float', 'feb' => 'float', 'mar' => 'float', 'q1' => 'float',
         'apr' => 'float', 'may' => 'float', 'jun' => 'float', 'q2' => 'float',
         'jul' => 'float', 'aug' => 'float', 'sep' => 'float', 'q3' => 'float',

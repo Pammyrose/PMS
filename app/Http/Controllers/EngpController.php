@@ -176,7 +176,9 @@ class EngpController extends Controller
             ->values()
             ->all();
 
-        $offices = Office::whereNull('parent_id')->with('children')->get();
+        $offices = Office::groupedForUi();
+
+        $yearOptions = collect(range((int) now()->year + 2, 2020))->values();
 
         return view('admin.engp.engp_physical', compact(
             'entries',
@@ -193,6 +195,7 @@ class EngpController extends Controller
             'papSubactivities',
             'papPrefillData',
             'year',
+            'yearOptions',
             'office_id',
             'search',
             'program'
@@ -352,6 +355,9 @@ class EngpController extends Controller
             'entries.*.dec' => 'nullable|numeric|min:0',
             'entries.*.q4' => 'nullable|numeric|min:0',
             'entries.*.annual_total' => 'nullable|numeric|min:0',
+            'entries.*.car_totals' => 'nullable|array',
+            'entries.*.group_totals' => 'nullable|array',
+            'entries.*.remarks' => 'nullable|string',
         ]);
 
         $userId = Auth::id();
@@ -387,6 +393,9 @@ class EngpController extends Controller
                 'dec' => $entry['dec'] ?? 0,
                 'q4' => $entry['q4'] ?? 0,
                 'annual_total' => $entry['annual_total'] ?? 0,
+                'car_totals' => array_key_exists('car_totals', $entry) ? ($entry['car_totals'] ?? null) : ($record->car_totals ?? null),
+                'group_totals' => array_key_exists('group_totals', $entry) ? ($entry['group_totals'] ?? null) : ($record->group_totals ?? null),
+                'remarks' => array_key_exists('remarks', $entry) ? ($entry['remarks'] ?? null) : ($record->remarks ?? null),
             ]);
 
             $record->save();
@@ -431,6 +440,9 @@ class EngpController extends Controller
             'entries.*.dec' => 'nullable|numeric|min:0',
             'entries.*.q4' => 'nullable|numeric|min:0',
             'entries.*.annual_total' => 'nullable|numeric|min:0',
+            'entries.*.car_totals' => 'nullable|array',
+            'entries.*.group_totals' => 'nullable|array',
+            'entries.*.remarks' => 'nullable|string',
         ]);
 
         $userId = Auth::id();
@@ -466,6 +478,9 @@ class EngpController extends Controller
                 'dec' => $entry['dec'] ?? 0,
                 'q4' => $entry['q4'] ?? 0,
                 'annual_total' => $entry['annual_total'] ?? 0,
+                'car_totals' => array_key_exists('car_totals', $entry) ? ($entry['car_totals'] ?? null) : ($record->car_totals ?? null),
+                'group_totals' => array_key_exists('group_totals', $entry) ? ($entry['group_totals'] ?? null) : ($record->group_totals ?? null),
+                'remarks' => array_key_exists('remarks', $entry) ? ($entry['remarks'] ?? null) : ($record->remarks ?? null),
             ]);
 
             $record->save();
@@ -505,6 +520,9 @@ class EngpController extends Controller
             'dec' => (float) ($row->dec ?? 0),
             'q4' => (float) ($row->q4 ?? 0),
             'annual_total' => (float) ($row->annual_total ?? 0),
+            'car_totals' => is_array($row->car_totals ?? null) ? $row->car_totals : [],
+            'group_totals' => is_array($row->group_totals ?? null) ? $row->group_totals : [],
+            'remarks' => (string) ($row->remarks ?? ''),
         ];
     }
 }

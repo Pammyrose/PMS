@@ -3,16 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gass_Physical;
-use App\Models\Gass_Pap;
 use App\Models\Gass_Indicator;
 use App\Models\Gass_Target;
 use App\Models\Gass_Accomplishment;
 use App\Models\Office;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class GassController extends Controller
 {
@@ -21,50 +22,22 @@ class GassController extends Controller
      * - If a specific program is provided → show only entries for that program
      * - Otherwise → show entries for all programs
      */
-    public function index(Request $request, Gass_Pap $program = null)
+    public function index(Request $request, $program = null)
     {
         $year = $request->query('year', now()->year);
         $office_id = $request->query('office_id', 1);   // change default later if needed
         $search = trim((string) $request->query('search', ''));
 
-        $programsQuery = Gass_Pap::query();
-
-        if ($program) {
-            $programsQuery->whereKey($program->id);
-        } else {
-            $programsQuery->orderBy('created_at')->orderBy('id');
-        }
-
-        if ($search !== '') {
-            $matchingOfficeIds = Office::query()
-                ->where('name', 'like', "%{$search}%")
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
-
-            $programsQuery->where(function ($query) use ($search, $matchingOfficeIds) {
-                $query->where('title', 'like', "%{$search}%")
-                    ->orWhere('program', 'like', "%{$search}%")
-                    ->orWhere('project', 'like', "%{$search}%")
-                    ->orWhere('activities', 'like', "%{$search}%")
-                    ->orWhere('subactivities', 'like', "%{$search}%")
-                    ->orWhereHas('indicators', function ($indicatorQuery) use ($search, $matchingOfficeIds) {
-                        $indicatorQuery->where('name', 'like', "%{$search}%");
-
-                        if (!empty($matchingOfficeIds)) {
-                            $indicatorQuery->orWhere(function ($officeQuery) use ($matchingOfficeIds) {
-                                foreach ($matchingOfficeIds as $officeId) {
-                                    $officeQuery->orWhereJsonContains('office_id', $officeId)
-                                        ->orWhereJsonContains('office_id', (string) $officeId);
-                                }
-                            });
-                        }
-                    });
-            });
-        }
-
-        $programs = $programsQuery->get();
+        $programId = $program !== null ? (int) $program : null;
+        $programs = $this->getGassPrograms($programId, $search);
         $programIds = $programs->pluck('id')->all();
+        $indicatorTypeOptions = DB::table('indicator_types')
+            ->select('id', 'name')
+            ->orderBy('id')
+            ->get();
+
+        $indicatorTypeMap = $indicatorTypeOptions
+            ->mapWithKeys(fn ($row) => [(int) $row->id => (string) $row->name]);
 
         $entries = Schema::hasTable('gass_physical')
             ? Gass_Physical::whereIn('programs_id', $programIds)
@@ -73,13 +46,13 @@ class GassController extends Controller
                 ->get()
             : collect();
 
-        // Fetch all indicators keyed by program_id
-        $indicators = Gass_Indicator::whereIn('program_id', $programIds)->get()->groupBy('program_id');
+        // Fetch indicators grouped by program from section metadata.
+        $indicators = $this->getIndicatorsGroupedByProgram($programIds);
 
         // Prepare indicators data for JavaScript (flat structure by program_id)
         $indicatorsForJs = [];
         foreach ($indicators as $programId => $programIndicators) {
-            $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) {
+            $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) use ($programId) {
                 $officeIds = collect($indicator->office_id ?? [])
                     ->map(fn ($id) => (int) $id)
                     ->filter()
@@ -97,8 +70,9 @@ class GassController extends Controller
                 return [
                     'id' => $indicator->id,
                     'name' => $indicator->name,
-                    'indicator_type' => $indicator->indicator_type,
-                    'program_id' => $indicator->program_id,
+                    'indicator_type_id' => (int) ($indicator->indicator_type_id ?? 0) ?: null,
+                    'indicator_type' => $indicatorTypeMap[(int) ($indicator->indicator_type_id ?? 0)] ?? '',
+                    'program_id' => (int) $programId,
                     'office_id' => $officeIds->first(),
                     'office_ids' => $officeIds->all(),
                     'office_list' => $officeList,
@@ -108,66 +82,62 @@ class GassController extends Controller
         
         $existing = $entries->keyBy('programs_id');
 
-        $targets = Gass_Target::where('year', $year)
+        $targets = Gass_Target::where('years', $year)
             ->get()
-            ->groupBy('indicator_id')
-            ->map(function ($rows) {
-                return $rows->mapWithKeys(function ($row) {
-                    $officeKey = (string) ((int) ($row->office_id ?? 0));
-                    return [$officeKey => $this->formatSectionRecordForJs($row)];
-                })->toArray();
-            })
-            ->toArray();
+            ->reduce(function (array $carry, $row) {
+                $meta = $this->parseSectionValues($row->values ?? null);
+                $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+                if ($indicatorId <= 0) {
+                    return $carry;
+                }
 
-        $accomplishments = Gass_Accomplishment::where('year', $year)
+                $officeKey = (string) ((int) ($row->office_ids ?? 0));
+                $carry[(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
+
+                return $carry;
+            }, []);
+
+        $accomplishments = Gass_Accomplishment::where('years', $year)
             ->get()
-            ->groupBy('indicator_id')
-            ->map(function ($rows) {
-                return $rows->mapWithKeys(function ($row) {
-                    $officeKey = (string) ((int) ($row->office_id ?? 0));
-                    return [$officeKey => $this->formatSectionRecordForJs($row)];
-                })->toArray();
-            })
-            ->toArray();
+            ->reduce(function (array $carry, $row) {
+                $meta = $this->parseSectionValues($row->values ?? null);
+                $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+                if ($indicatorId <= 0) {
+                    return $carry;
+                }
 
-        $papTitles = Gass_Pap::query()
-            ->select('title')
-            ->whereNotNull('title')
-            ->where('title', '!=', '')
-            ->distinct()
-            ->orderBy('title')
-            ->pluck('title');
+                $officeKey = (string) ((int) ($row->office_ids ?? 0));
+                $carry[(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
 
-        $papProjects = Gass_Pap::query()
-            ->select('project')
-            ->whereNotNull('project')
-            ->where('project', '!=', '')
-            ->distinct()
-            ->orderBy('project')
-            ->pluck('project');
+                return $carry;
+            }, []);
 
-        $papActivities = Gass_Pap::query()
-            ->select('activities')
-            ->whereNotNull('activities')
-            ->where('activities', '!=', '')
-            ->distinct()
-            ->orderBy('activities')
-            ->pluck('activities');
+        $papTitles = $programs->pluck('title')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sort()
+            ->values();
 
-        $papSubactivities = Gass_Pap::query()
-            ->select('subactivities')
-            ->whereNotNull('subactivities')
-            ->where('subactivities', '!=', '')
-            ->distinct()
-            ->orderBy('subactivities')
-            ->pluck('subactivities');
+        $papProjects = $programs->pluck('project')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sort()
+            ->values();
 
-        $papPrefillData = Gass_Pap::query()
-            ->with('indicators')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(function ($pap) {
+        $papActivities = $programs->pluck('activities')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sort()
+            ->values();
+
+        $papSubactivities = $programs->pluck('subactivities')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sort()
+            ->values();
+
+        $papPrefillData = $programs
+            ->map(function ($pap) use ($indicators) {
                 return [
                     'id' => (int) $pap->id,
                     'title' => (string) ($pap->title ?? ''),
@@ -175,25 +145,31 @@ class GassController extends Controller
                     'project' => (string) ($pap->project ?? ''),
                     'activities' => (string) ($pap->activities ?? ''),
                     'subactivities' => (string) ($pap->subactivities ?? ''),
-                    'indicators' => $pap->indicators->map(function ($indicator) {
-                        return [
-                            'id' => (int) $indicator->id,
-                            'name' => (string) ($indicator->name ?? ''),
-                            'indicator_type' => (string) ($indicator->indicator_type ?? ''),
-                            'office_ids' => collect($indicator->office_id ?? [])
-                                ->map(fn ($id) => (int) $id)
-                                ->filter()
-                                ->values()
-                                ->all(),
-                        ];
-                    })->values()->all(),
+                    'indicators' => ($indicators[$pap->id] ?? collect())
+                        ->map(function ($indicator) {
+                            return [
+                                'id' => (int) $indicator->id,
+                                'name' => (string) ($indicator->name ?? ''),
+                                'indicator_type_id' => (int) ($indicator->indicator_type_id ?? 0) ?: null,
+                                'indicator_type' => (string) ($indicatorTypeMap[(int) ($indicator->indicator_type_id ?? 0)] ?? ''),
+                                'office_ids' => collect($indicator->office_id ?? [])
+                                    ->map(fn ($id) => (int) $id)
+                                    ->filter()
+                                    ->values()
+                                    ->all(),
+                            ];
+                        })
+                        ->values()
+                        ->all(),
                 ];
             })
             ->values()
             ->all();
         
         // Get all offices organized by parent for the modal
-        $offices = Office::whereNull('parent_id')->with('children')->get();
+        $offices = Office::groupedForUi();
+
+        $yearOptions = collect(range((int) now()->year + 2, 2020))->values();
 
         return view('admin.gass.gass_physical', compact(
             'entries',
@@ -209,7 +185,9 @@ class GassController extends Controller
             'papActivities',
             'papSubactivities',
             'papPrefillData',
+            'indicatorTypeOptions',
             'year',
+            'yearOptions',
             'office_id',
             'search',
             'program'
@@ -221,10 +199,11 @@ class GassController extends Controller
      */
     public function overview()
     {
-        $allPrograms = Gass_Pap::with('indicator')->latest()->get();
+        $allPrograms = $this->getGassPrograms();
+        $indicators = $this->getIndicatorsGroupedByProgram($allPrograms->pluck('id')->all());
         
         // Get all offices organized by parent with children loaded
-        $offices = Office::whereNull('parent_id')->with('children')->get();
+        $offices = Office::groupedForUi();
         
         // Group programs by title, program, project, and activities
         $grouped = $allPrograms->groupBy(function ($program) {
@@ -247,7 +226,7 @@ class GassController extends Controller
                     }
                     $subactivitiesMap[$trimmedSub][] = [
                         'program_id' => $program->id,
-                        'indicator' => $program->indicator,
+                        'indicator' => ($program->indicators ?? collect())->first(),
                     ];
                 }
             }
@@ -259,6 +238,11 @@ class GassController extends Controller
             
             return $base;
         })->values();
+
+        $grouped->each(function ($program) use ($indicators) {
+            $program->indicator = ($indicators[$program->id] ?? collect())->first();
+            $program->indicators = $indicators[$program->id] ?? collect();
+        });
 
         $programs = $grouped;
         return view('admin.gass.gass', compact('programs', 'offices'));
@@ -398,7 +382,7 @@ class GassController extends Controller
 
         DB::beginTransaction();
         try {
-            $pap = Gass_Pap::create($validated);
+            $pap = $this->storePapHierarchyInPpa($validated);
             DB::commit();
 
             return response()->json([
@@ -416,14 +400,89 @@ class GassController extends Controller
         }
     }
 
-    public function destroyPap(Gass_Pap $program)
+    private function storePapHierarchyInPpa(array $papData): object
+    {
+        $typeId = $this->getGassTypeId();
+        $recordTypeIds = $this->getGassRecordTypeIds();
+
+        $levels = [
+            ['record_type' => 'PROGRAM', 'name' => trim((string) ($papData['title'] ?? ''))],
+            ['record_type' => 'PROJECT', 'name' => trim((string) ($papData['program'] ?? ''))],
+            ['record_type' => 'MAIN ACTIVITY', 'name' => trim((string) ($papData['project'] ?? ''))],
+            ['record_type' => 'SUB-ACTIVITY', 'name' => trim((string) ($papData['activities'] ?? ''))],
+            ['record_type' => 'SUB-SUB-ACTIVITY', 'name' => trim((string) ($papData['subactivities'] ?? ''))],
+        ];
+
+        $parentDetailId = null;
+        $rootPpaId = null;
+
+        foreach ($levels as $index => $level) {
+            if ($level['name'] === '') {
+                continue;
+            }
+
+            $recordTypeId = $recordTypeIds[$level['record_type']] ?? null;
+
+            if (!$recordTypeId) {
+                throw new \RuntimeException("Record type {$level['record_type']} is not configured.");
+            }
+
+            $detailId = DB::table('ppa_details')->insertGetId([
+                'parent_id' => $parentDetailId,
+                'column_order' => $index + 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $ppaId = DB::table('ppa')->insertGetId([
+                'name' => $level['name'],
+                'types_id' => $typeId,
+                'record_type_id' => $recordTypeId,
+                'ppa_details_id' => $detailId,
+                'indicator_id' => null,
+                'office_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            if ($rootPpaId === null) {
+                $rootPpaId = $ppaId;
+            }
+
+            $parentDetailId = $detailId;
+        }
+
+        if ($rootPpaId === null) {
+            throw new \RuntimeException('No PPA hierarchy rows were created.');
+        }
+
+        return (object) [
+            'id' => $rootPpaId,
+            'title' => (string) ($papData['title'] ?? ''),
+            'program' => (string) ($papData['program'] ?? ''),
+            'project' => (string) ($papData['project'] ?? ''),
+            'activities' => (string) ($papData['activities'] ?? ''),
+            'subactivities' => (string) ($papData['subactivities'] ?? ''),
+        ];
+    }
+
+    public function destroyPap($program)
     {
         DB::beginTransaction();
         try {
-            Gass_Target::where('program_id', $program->id)->delete();
-            Gass_Accomplishment::where('program_id', $program->id)->delete();
-            Gass_Indicator::where('program_id', $program->id)->delete();
-            $program->delete();
+            $programRow = $this->findGassProgram((int) $program);
+
+            if (!$programRow) {
+                abort(404);
+            }
+
+            $detailIds = $this->collectPpaDetailTreeIds((int) $programRow->ppa_details_id);
+
+            $this->deleteProgramSectionRows($programRow->id, Gass_Target::query()->get());
+            $this->deleteProgramSectionRows($programRow->id, Gass_Accomplishment::query()->get());
+
+            DB::table('ppa')->whereIn('ppa_details_id', $detailIds)->delete();
+            DB::table('ppa_details')->whereIn('id', array_reverse($detailIds))->delete();
 
             DB::commit();
             return redirect()->back()->with('success', 'PAP deleted successfully.');
@@ -438,36 +497,50 @@ class GassController extends Controller
      */
     public function storeIndicator(Request $request)
     {
+        $programExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
+            $query->where('types_id', $this->getGassTypeId())
+                ->where('record_type_id', $this->getGassRecordTypeIds()['PROGRAM']);
+        });
+
         $baseValidated = $request->validate([
             'indicator_name' => 'required|string|max:255',
-            'indicator_type' => 'nullable|string|in:non-comulative,comulative,semi-comulative',
-            'program_id' => 'required|exists:gass_pap,id',
+            'indicator_type_id' => 'nullable|exists:indicator_types,id',
+            'program_id' => ['required', $programExistsRule],
             'office_id' => 'required|array|min:1',
             'office_id.*' => 'required|exists:offices,id',
         ]);
 
         $indicatorName = trim($baseValidated['indicator_name']);
 
-        $officeIds = collect($baseValidated['office_id'])
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
-
         $indicator = Gass_Indicator::firstOrNew([
-            'program_id' => $baseValidated['program_id'],
             'name' => $indicatorName,
         ]);
 
         $wasNew = !$indicator->exists;
 
-        $indicator->fill([
-            'user_id' => Auth::id(),
-            'name' => $indicatorName,
-            'indicator_type' => $baseValidated['indicator_type'] ?? null,
-            'office_id' => $officeIds,
-        ]);
+        $indicator->name = $indicatorName;
+        if ($this->hasIndicatorColumn('user_id')) {
+            $indicator->user_id = Auth::id();
+        }
+
+        if ($this->hasIndicatorColumn('indicator_type_id')) {
+            $indicator->indicator_type_id = isset($baseValidated['indicator_type_id'])
+                ? (int) $baseValidated['indicator_type_id']
+                : null;
+        }
+
+        $selectedOfficeIds = collect($baseValidated['office_id'])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($this->hasIndicatorColumn('office_id')) {
+            $indicator->office_id = $selectedOfficeIds;
+        }
+
         $indicator->save();
+        $this->syncProgramIndicatorInPpa((int) $baseValidated['program_id'], (int) $indicator->id, $selectedOfficeIds);
 
         $createdCount = $wasNew ? 1 : 0;
         $updatedCount = $wasNew ? 0 : 1;
@@ -490,37 +563,61 @@ class GassController extends Controller
     /**
      * Update indicator
      */
-    public function editProgram(Gass_Pap $program)
+    public function editProgram($program)
     {
+        $program = $this->findGassProgram((int) $program);
+
+        if (!$program) {
+            abort(404);
+        }
+
         return view('admin.gass.program_edit', compact('program'));
     }
 
 public function update(Request $request, Gass_Indicator $indicator)
 {
+    $programExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
+        $query->where('types_id', $this->getGassTypeId())
+            ->where('record_type_id', $this->getGassRecordTypeIds()['PROGRAM']);
+    });
+
     $validated = $request->validate([
         'indicator_name' => 'nullable|string|max:255',
-        'indicator_type' => 'nullable|string|in:non-comulative,comulative,semi-comulative',
+        'indicator_type_id' => 'nullable|exists:indicator_types,id',
+        'program_id' => ['nullable', $programExistsRule],
         'office_id' => 'nullable|array|min:1',
         'office_id.*' => 'required|exists:offices,id',
     ]);
 
     $newName = isset($validated['indicator_name']) ? trim($validated['indicator_name']) : null;
     $nameChanged = $newName !== null && $newName !== '' && $newName !== $indicator->name;
+    $selectedOfficeIds = isset($validated['office_id'])
+        ? collect($validated['office_id'])->map(fn ($id) => (int) $id)->unique()->values()->all()
+        : null;
 
     if ($nameChanged) {
         $newIndicator = new Gass_Indicator();
-        $newIndicator->program_id = $indicator->program_id;
-        $newIndicator->user_id = Auth::id();
         $newIndicator->name = $newName;
-        if (isset($validated['indicator_type'])) {
-            $newIndicator->indicator_type = $validated['indicator_type'];
-        } else {
-            $newIndicator->indicator_type = $indicator->indicator_type;
+
+        if ($this->hasIndicatorColumn('user_id')) {
+            $newIndicator->user_id = Auth::id();
         }
-        $newIndicator->office_id = isset($validated['office_id'])
-            ? collect($validated['office_id'])->map(fn ($id) => (int) $id)->unique()->values()->all()
-            : ($indicator->office_id ?? []);
+
+        if ($this->hasIndicatorColumn('indicator_type_id') && isset($validated['indicator_type_id'])) {
+            $newIndicator->indicator_type_id = (int) $validated['indicator_type_id'];
+        } elseif ($this->hasIndicatorColumn('indicator_type_id')) {
+            $newIndicator->indicator_type_id = $indicator->indicator_type_id;
+        }
+
+        if ($this->hasIndicatorColumn('office_id')) {
+            $newIndicator->office_id = $selectedOfficeIds ?? ($indicator->office_id ?? []);
+        }
+
         $newIndicator->save();
+
+        if (!empty($validated['program_id'])) {
+            $this->syncProgramIndicatorInPpa((int) $validated['program_id'], (int) $newIndicator->id, $selectedOfficeIds ?? ($newIndicator->office_id ?? []));
+        }
 
         if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
             return response()->json([
@@ -540,18 +637,18 @@ public function update(Request $request, Gass_Indicator $indicator)
     if ($newName !== null && $newName !== '') {
         $updateData['name'] = $newName;
     }
-    if (isset($validated['indicator_type'])) {
-        $updateData['indicator_type'] = $validated['indicator_type'];
+    if ($this->hasIndicatorColumn('indicator_type_id') && isset($validated['indicator_type_id'])) {
+        $updateData['indicator_type_id'] = (int) $validated['indicator_type_id'];
     }
-    if (isset($validated['office_id'])) {
-        $updateData['office_id'] = collect($validated['office_id'])
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
+    if ($this->hasIndicatorColumn('office_id') && isset($validated['office_id'])) {
+        $updateData['office_id'] = $selectedOfficeIds;
     }
 
     $indicator->update($updateData);
+
+    if (!empty($validated['program_id'])) {
+        $this->syncProgramIndicatorInPpa((int) $validated['program_id'], (int) $indicator->id, $selectedOfficeIds ?? ($indicator->office_id ?? []));
+    }
 
     if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
         return response()->json([
@@ -584,11 +681,16 @@ public function destroyIndicator(Request $request, Gass_Indicator $indicator)
 
 public function storeTargets(Request $request)
 {
+    $programExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
+        $query->where('types_id', $this->getGassTypeId())
+            ->where('record_type_id', $this->getGassRecordTypeIds()['PROGRAM']);
+    });
+
     $validated = $request->validate([
         'entries' => 'required|array',
-        'entries.*.program_id' => 'required|exists:gass_pap,id',
-        'entries.*.indicator_id' => 'required|exists:gass_indicators,id',
-        'entries.*.year' => 'required|integer|min:2000|max:2100',
+        'entries.*.program_id' => ['required', $programExistsRule],
+        'entries.*.indicator_id' => 'required|exists:indicators,id',
+            'entries.*.year' => 'required|integer|min:2000|max:2100',
         'entries.*.office_id' => 'nullable|exists:offices,id',
         'entries.*.jan' => 'nullable|numeric|min:0',
         'entries.*.feb' => 'nullable|numeric|min:0',
@@ -607,6 +709,8 @@ public function storeTargets(Request $request)
         'entries.*.dec' => 'nullable|numeric|min:0',
         'entries.*.q4' => 'nullable|numeric|min:0',
         'entries.*.annual_total' => 'nullable|numeric|min:0',
+        'entries.*.car_totals' => 'nullable|array',
+        'entries.*.group_totals' => 'nullable|array',
     ]);
 
     $userId = Auth::id();
@@ -614,34 +718,48 @@ public function storeTargets(Request $request)
     $updatedCount = 0;
 
     foreach ($validated['entries'] as $entry) {
-        $record = Gass_Target::firstOrNew([
-            'indicator_id' => $entry['indicator_id'],
-            'year' => $entry['year'],
-            'office_id' => $entry['office_id'] ?? null,
-        ]);
+        $entryYear = (int) ($entry['years'] ?? $entry['year']);
+        $officeId = isset($entry['office_id']) ? (int) $entry['office_id'] : null;
+        $programId = (int) $entry['program_id'];
+        $indicatorId = (int) $entry['indicator_id'];
+
+        $record = Gass_Target::query()
+            ->where('years', $entryYear)
+            ->where('office_ids', $officeId)
+            ->get()
+            ->first(function ($candidate) use ($programId, $indicatorId) {
+                $meta = $this->parseSectionValues($candidate->values ?? null);
+                return (int) ($meta['program_id'] ?? 0) === $programId
+                    && (int) ($meta['indicator_id'] ?? 0) === $indicatorId;
+            }) ?? new Gass_Target();
 
         $wasExisting = $record->exists;
 
-        $record->fill([
+        $record->office_ids = $officeId;
+        $record->years = $entryYear;
+        $record->jan = $entry['jan'] ?? 0;
+        $record->feb = $entry['feb'] ?? 0;
+        $record->mar = $entry['mar'] ?? 0;
+        $record->q1 = $entry['q1'] ?? 0;
+        $record->apr = $entry['apr'] ?? 0;
+        $record->may = $entry['may'] ?? 0;
+        $record->jun = $entry['jun'] ?? 0;
+        $record->q2 = $entry['q2'] ?? 0;
+        $record->jul = $entry['jul'] ?? 0;
+        $record->aug = $entry['aug'] ?? 0;
+        $record->sep = $entry['sep'] ?? 0;
+        $record->q3 = $entry['q3'] ?? 0;
+        $record->oct = $entry['oct'] ?? 0;
+        $record->nov = $entry['nov'] ?? 0;
+        $record->dec = $entry['dec'] ?? 0;
+        $record->q4 = $entry['q4'] ?? 0;
+        $record->annual_total = $entry['annual_total'] ?? 0;
+        $record->values = json_encode([
             'user_id' => $userId,
-            'program_id' => $entry['program_id'],
-            'jan' => $entry['jan'] ?? 0,
-            'feb' => $entry['feb'] ?? 0,
-            'mar' => $entry['mar'] ?? 0,
-            'q1' => $entry['q1'] ?? 0,
-            'apr' => $entry['apr'] ?? 0,
-            'may' => $entry['may'] ?? 0,
-            'jun' => $entry['jun'] ?? 0,
-            'q2' => $entry['q2'] ?? 0,
-            'jul' => $entry['jul'] ?? 0,
-            'aug' => $entry['aug'] ?? 0,
-            'sep' => $entry['sep'] ?? 0,
-            'q3' => $entry['q3'] ?? 0,
-            'oct' => $entry['oct'] ?? 0,
-            'nov' => $entry['nov'] ?? 0,
-            'dec' => $entry['dec'] ?? 0,
-            'q4' => $entry['q4'] ?? 0,
-            'annual_total' => $entry['annual_total'] ?? 0,
+            'program_id' => $programId,
+            'indicator_id' => $indicatorId,
+            'car_totals' => $entry['car_totals'] ?? [],
+            'group_totals' => $entry['group_totals'] ?? [],
         ]);
 
         $record->save();
@@ -663,11 +781,16 @@ public function storeTargets(Request $request)
 
 public function storeAccomplishments(Request $request)
 {
+    $programExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
+        $query->where('types_id', $this->getGassTypeId())
+            ->where('record_type_id', $this->getGassRecordTypeIds()['PROGRAM']);
+    });
+
     $validated = $request->validate([
         'entries' => 'required|array',
-        'entries.*.program_id' => 'required|exists:gass_pap,id',
-        'entries.*.indicator_id' => 'required|exists:gass_indicators,id',
-        'entries.*.year' => 'required|integer|min:2000|max:2100',
+        'entries.*.program_id' => ['required', $programExistsRule],
+        'entries.*.indicator_id' => 'required|exists:indicators,id',
+            'entries.*.year' => 'required|integer|min:2000|max:2100',
         'entries.*.office_id' => 'nullable|exists:offices,id',
         'entries.*.jan' => 'nullable|numeric|min:0',
         'entries.*.feb' => 'nullable|numeric|min:0',
@@ -686,6 +809,8 @@ public function storeAccomplishments(Request $request)
         'entries.*.dec' => 'nullable|numeric|min:0',
         'entries.*.q4' => 'nullable|numeric|min:0',
         'entries.*.annual_total' => 'nullable|numeric|min:0',
+        'entries.*.car_totals' => 'nullable|array',
+        'entries.*.group_totals' => 'nullable|array',
         'entries.*.remarks' => 'nullable|string',
     ]);
 
@@ -694,35 +819,52 @@ public function storeAccomplishments(Request $request)
     $updatedCount = 0;
 
     foreach ($validated['entries'] as $entry) {
-        $record = Gass_Accomplishment::firstOrNew([
-            'indicator_id' => $entry['indicator_id'],
-            'year' => $entry['year'],
-            'office_id' => $entry['office_id'] ?? null,
-        ]);
+        $entryYear = (int) ($entry['years'] ?? $entry['year']);
+        $officeId = isset($entry['office_id']) ? (int) $entry['office_id'] : null;
+        $programId = (int) $entry['program_id'];
+        $indicatorId = (int) $entry['indicator_id'];
+
+        $record = Gass_Accomplishment::query()
+            ->where('years', $entryYear)
+            ->where('office_ids', $officeId)
+            ->get()
+            ->first(function ($candidate) use ($programId, $indicatorId) {
+                $meta = $this->parseSectionValues($candidate->values ?? null);
+                return (int) ($meta['program_id'] ?? 0) === $programId
+                    && (int) ($meta['indicator_id'] ?? 0) === $indicatorId;
+            }) ?? new Gass_Accomplishment();
 
         $wasExisting = $record->exists;
 
-        $record->fill([
+        $record->office_ids = $officeId;
+        $record->years = $entryYear;
+        $record->jan = array_key_exists('jan', $entry) ? ($entry['jan'] ?? 0) : ($record->jan ?? 0);
+        $record->feb = array_key_exists('feb', $entry) ? ($entry['feb'] ?? 0) : ($record->feb ?? 0);
+        $record->mar = array_key_exists('mar', $entry) ? ($entry['mar'] ?? 0) : ($record->mar ?? 0);
+        $record->q1 = array_key_exists('q1', $entry) ? ($entry['q1'] ?? 0) : ($record->q1 ?? 0);
+        $record->apr = array_key_exists('apr', $entry) ? ($entry['apr'] ?? 0) : ($record->apr ?? 0);
+        $record->may = array_key_exists('may', $entry) ? ($entry['may'] ?? 0) : ($record->may ?? 0);
+        $record->jun = array_key_exists('jun', $entry) ? ($entry['jun'] ?? 0) : ($record->jun ?? 0);
+        $record->q2 = array_key_exists('q2', $entry) ? ($entry['q2'] ?? 0) : ($record->q2 ?? 0);
+        $record->jul = array_key_exists('jul', $entry) ? ($entry['jul'] ?? 0) : ($record->jul ?? 0);
+        $record->aug = array_key_exists('aug', $entry) ? ($entry['aug'] ?? 0) : ($record->aug ?? 0);
+        $record->sep = array_key_exists('sep', $entry) ? ($entry['sep'] ?? 0) : ($record->sep ?? 0);
+        $record->q3 = array_key_exists('q3', $entry) ? ($entry['q3'] ?? 0) : ($record->q3 ?? 0);
+        $record->oct = array_key_exists('oct', $entry) ? ($entry['oct'] ?? 0) : ($record->oct ?? 0);
+        $record->nov = array_key_exists('nov', $entry) ? ($entry['nov'] ?? 0) : ($record->nov ?? 0);
+        $record->dec = array_key_exists('dec', $entry) ? ($entry['dec'] ?? 0) : ($record->dec ?? 0);
+        $record->q4 = array_key_exists('q4', $entry) ? ($entry['q4'] ?? 0) : ($record->q4 ?? 0);
+        $record->annual_total = array_key_exists('annual_total', $entry) ? ($entry['annual_total'] ?? 0) : ($record->annual_total ?? 0);
+        $rawRemarks = array_key_exists('remarks', $entry)
+            ? ($entry['remarks'] ?? null)
+            : $this->decodeRemarksFromStorage($record->remarks ?? null);
+        $record->remarks = $this->encodeRemarksForStorage($rawRemarks);
+        $record->values = json_encode([
             'user_id' => $userId,
-            'program_id' => $entry['program_id'],
-            'jan' => array_key_exists('jan', $entry) ? ($entry['jan'] ?? 0) : ($record->jan ?? 0),
-            'feb' => array_key_exists('feb', $entry) ? ($entry['feb'] ?? 0) : ($record->feb ?? 0),
-            'mar' => array_key_exists('mar', $entry) ? ($entry['mar'] ?? 0) : ($record->mar ?? 0),
-            'q1' => array_key_exists('q1', $entry) ? ($entry['q1'] ?? 0) : ($record->q1 ?? 0),
-            'apr' => array_key_exists('apr', $entry) ? ($entry['apr'] ?? 0) : ($record->apr ?? 0),
-            'may' => array_key_exists('may', $entry) ? ($entry['may'] ?? 0) : ($record->may ?? 0),
-            'jun' => array_key_exists('jun', $entry) ? ($entry['jun'] ?? 0) : ($record->jun ?? 0),
-            'q2' => array_key_exists('q2', $entry) ? ($entry['q2'] ?? 0) : ($record->q2 ?? 0),
-            'jul' => array_key_exists('jul', $entry) ? ($entry['jul'] ?? 0) : ($record->jul ?? 0),
-            'aug' => array_key_exists('aug', $entry) ? ($entry['aug'] ?? 0) : ($record->aug ?? 0),
-            'sep' => array_key_exists('sep', $entry) ? ($entry['sep'] ?? 0) : ($record->sep ?? 0),
-            'q3' => array_key_exists('q3', $entry) ? ($entry['q3'] ?? 0) : ($record->q3 ?? 0),
-            'oct' => array_key_exists('oct', $entry) ? ($entry['oct'] ?? 0) : ($record->oct ?? 0),
-            'nov' => array_key_exists('nov', $entry) ? ($entry['nov'] ?? 0) : ($record->nov ?? 0),
-            'dec' => array_key_exists('dec', $entry) ? ($entry['dec'] ?? 0) : ($record->dec ?? 0),
-            'q4' => array_key_exists('q4', $entry) ? ($entry['q4'] ?? 0) : ($record->q4 ?? 0),
-            'annual_total' => array_key_exists('annual_total', $entry) ? ($entry['annual_total'] ?? 0) : ($record->annual_total ?? 0),
-            'remarks' => array_key_exists('remarks', $entry) ? ($entry['remarks'] ?? null) : ($record->remarks ?? null),
+            'program_id' => $programId,
+            'indicator_id' => $indicatorId,
+            'car_totals' => $entry['car_totals'] ?? [],
+            'group_totals' => $entry['group_totals'] ?? [],
         ]);
 
         $record->save();
@@ -742,7 +884,7 @@ public function storeAccomplishments(Request $request)
     ]);
 }
 
-private function formatSectionRecordForJs($row): array
+private function formatSectionRecordForJs($row, array $meta = []): array
 {
     return [
         'jan' => (float) ($row->jan ?? 0),
@@ -762,7 +904,406 @@ private function formatSectionRecordForJs($row): array
         'dec' => (float) ($row->dec ?? 0),
         'q4' => (float) ($row->q4 ?? 0),
         'annual_total' => (float) ($row->annual_total ?? 0),
-        'remarks' => (string) ($row->remarks ?? ''),
+        'car_totals' => is_array($meta['car_totals'] ?? null) ? $meta['car_totals'] : [],
+        'group_totals' => is_array($meta['group_totals'] ?? null) ? $meta['group_totals'] : [],
+        'remarks' => $this->decodeRemarksFromStorage($row->remarks ?? null),
     ];
+}
+
+private function encodeRemarksForStorage($remarks): ?string
+{
+    if ($remarks === null) {
+        return null;
+    }
+
+    $normalized = trim((string) $remarks);
+    if ($normalized === '') {
+        return null;
+    }
+
+    return json_encode($normalized);
+}
+
+private function decodeRemarksFromStorage($raw): string
+{
+    if ($raw === null) {
+        return '';
+    }
+
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+
+        if (is_string($decoded)) {
+            return $decoded;
+        }
+
+        if (is_array($decoded)) {
+            if (isset($decoded['text']) && is_string($decoded['text'])) {
+                return $decoded['text'];
+            }
+
+            return '';
+        }
+
+        return $raw;
+    }
+
+    return (string) $raw;
+}
+
+private function parseSectionValues($raw): array
+{
+    if (is_array($raw)) {
+        return $raw;
+    }
+
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+private function syncProgramIndicatorInPpa(int $programId, int $indicatorId, array $officeIds = []): void
+{
+    if ($programId <= 0 || $indicatorId <= 0) {
+        return;
+    }
+
+    $normalizedOfficeIds = collect($officeIds)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    DB::table('ppa')
+        ->where('id', $programId)
+        ->update([
+            'indicator_id' => $indicatorId,
+            'office_id' => !empty($normalizedOfficeIds) ? json_encode($normalizedOfficeIds) : null,
+            'updated_at' => now(),
+        ]);
+}
+
+private function hasIndicatorColumn(string $column): bool
+{
+    static $columnCache = [];
+
+    if (!array_key_exists($column, $columnCache)) {
+        $columnCache[$column] = Schema::hasColumn('indicators', $column);
+    }
+
+    return $columnCache[$column];
+}
+
+private function getIndicatorsGroupedByProgram(array $programIds): Collection
+{
+    $programIds = collect($programIds)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->values();
+
+    $grouped = $programIds->mapWithKeys(fn ($id) => [$id => collect()]);
+    if ($programIds->isEmpty()) {
+        return $grouped;
+    }
+
+    $programIndicatorRows = DB::table('ppa')
+        ->whereIn('id', $programIds->all())
+        ->whereNotNull('indicator_id')
+        ->get(['id', 'indicator_id', 'office_id']);
+
+    $allIndicatorIds = $programIndicatorRows
+        ->pluck('indicator_id')
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values();
+
+    if ($allIndicatorIds->isEmpty()) {
+        return $grouped;
+    }
+
+    $indicatorsById = Gass_Indicator::query()
+        ->whereIn('id', $allIndicatorIds->all())
+        ->get()
+        ->keyBy(fn ($row) => (int) $row->id);
+
+    foreach ($programIndicatorRows as $programIndicatorRow) {
+        $programId = (int) ($programIndicatorRow->id ?? 0);
+        $indicatorId = (int) ($programIndicatorRow->indicator_id ?? 0);
+        if ($programId <= 0 || $indicatorId <= 0) {
+            continue;
+        }
+
+        $indicator = $indicatorsById->get($indicatorId);
+        if (!$indicator) {
+            continue;
+        }
+
+        // Make row-compatible office ids available from ppa.office_id JSON.
+        $indicator->office_id = $this->parseJsonIdArray($programIndicatorRow->office_id ?? null);
+
+        $grouped->put($programId, collect([$indicator]));
+    }
+
+    return $grouped;
+}
+
+private function parseJsonIdArray($raw): array
+{
+    if (is_array($raw)) {
+        return collect($raw)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    return collect($decoded)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+}
+
+private function collectProgramIndicatorIds(array &$indicatorIdsByProgram, Collection $rows): void
+{
+    $validProgramIds = array_fill_keys(array_map('intval', array_keys($indicatorIdsByProgram)), true);
+
+    foreach ($rows as $row) {
+        $meta = $this->parseSectionValues($row->values ?? null);
+        $programId = (int) ($meta['program_id'] ?? 0);
+        $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+        if ($programId <= 0 || $indicatorId <= 0) {
+            continue;
+        }
+
+        if (!isset($validProgramIds[$programId])) {
+            continue;
+        }
+
+        $indicatorIdsByProgram[$programId][] = $indicatorId;
+    }
+}
+
+private function deleteProgramSectionRows(int $programId, Collection $rows): void
+{
+    $idsToDelete = $rows
+        ->filter(function ($row) use ($programId) {
+            $meta = $this->parseSectionValues($row->values ?? null);
+            return (int) ($meta['program_id'] ?? 0) === $programId;
+        })
+        ->pluck('id')
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->values()
+        ->all();
+
+    if (empty($idsToDelete)) {
+        return;
+    }
+
+    $modelClass = get_class($rows->first());
+    $modelClass::query()->whereIn('id', $idsToDelete)->delete();
+}
+
+private function getGassPrograms(?int $programId = null, string $search = ''): Collection
+{
+    $recordTypeIds = $this->getGassRecordTypeIds();
+    $typeId = $this->getGassTypeId();
+
+    $query = DB::table('ppa as program_ppa')
+        ->join('ppa_details as program_detail', 'program_detail.id', '=', 'program_ppa.ppa_details_id')
+        ->leftJoin('ppa_details as project_detail', function ($join) {
+            $join->on('project_detail.parent_id', '=', 'program_detail.id')
+                ->where('project_detail.column_order', '=', 2);
+        })
+        ->leftJoin('ppa as project_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('project_ppa.ppa_details_id', '=', 'project_detail.id')
+                ->where('project_ppa.record_type_id', '=', $recordTypeIds['PROJECT']);
+        })
+        ->leftJoin('ppa_details as main_activity_detail', function ($join) {
+            $join->on('main_activity_detail.parent_id', '=', 'project_detail.id')
+                ->where('main_activity_detail.column_order', '=', 3);
+        })
+        ->leftJoin('ppa as main_activity_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('main_activity_ppa.ppa_details_id', '=', 'main_activity_detail.id')
+                ->where('main_activity_ppa.record_type_id', '=', $recordTypeIds['MAIN ACTIVITY']);
+        })
+        ->leftJoin('ppa_details as sub_activity_detail', function ($join) {
+            $join->on('sub_activity_detail.parent_id', '=', 'main_activity_detail.id')
+                ->where('sub_activity_detail.column_order', '=', 4);
+        })
+        ->leftJoin('ppa as sub_activity_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('sub_activity_ppa.ppa_details_id', '=', 'sub_activity_detail.id')
+                ->where('sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-ACTIVITY']);
+        })
+        ->leftJoin('ppa_details as sub_sub_activity_detail', function ($join) {
+            $join->on('sub_sub_activity_detail.parent_id', '=', 'sub_activity_detail.id')
+                ->where('sub_sub_activity_detail.column_order', '=', 5);
+        })
+        ->leftJoin('ppa as sub_sub_activity_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('sub_sub_activity_ppa.ppa_details_id', '=', 'sub_sub_activity_detail.id')
+                ->where('sub_sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-SUB-ACTIVITY']);
+        })
+        ->where('program_ppa.types_id', $typeId)
+        ->where('program_ppa.record_type_id', $recordTypeIds['PROGRAM'])
+        ->select([
+            'program_ppa.id',
+            'program_ppa.ppa_details_id',
+            'program_ppa.created_at',
+            'program_ppa.updated_at',
+            'program_ppa.name as title',
+            'project_ppa.name as program',
+            'main_activity_ppa.name as project',
+            'sub_activity_ppa.name as activities',
+            'sub_sub_activity_ppa.name as subactivities',
+        ])
+        ->orderBy('program_ppa.created_at')
+        ->orderBy('program_ppa.id');
+
+    if ($programId !== null) {
+        $query->where('program_ppa.id', $programId);
+    }
+
+    $programs = $query->get()->map(function ($row) {
+        $row->id = (int) $row->id;
+        $row->ppa_details_id = (int) $row->ppa_details_id;
+        return $row;
+    });
+
+    if ($search === '') {
+        return $programs->values();
+    }
+
+    $needle = mb_strtolower($search);
+    $programIds = $programs->pluck('id')->all();
+    $matchingOfficeIds = Office::query()
+        ->where('name', 'like', "%{$search}%")
+        ->pluck('id')
+        ->map(fn ($id) => (int) $id)
+        ->all();
+
+    $indicators = $this->getIndicatorsGroupedByProgram($programIds);
+
+    return $programs->filter(function ($program) use ($needle, $matchingOfficeIds, $indicators) {
+        $fields = [
+            $program->title,
+            $program->program,
+            $program->project,
+            $program->activities,
+            $program->subactivities,
+        ];
+
+        foreach ($fields as $field) {
+            if ($field !== null && str_contains(mb_strtolower((string) $field), $needle)) {
+                return true;
+            }
+        }
+
+        foreach (($indicators[$program->id] ?? collect()) as $indicator) {
+            if (str_contains(mb_strtolower((string) $indicator->name), $needle)) {
+                return true;
+            }
+
+            $indicatorOfficeIds = collect($indicator->office_id ?? [])->map(fn ($id) => (int) $id)->all();
+            if (!empty(array_intersect($matchingOfficeIds, $indicatorOfficeIds))) {
+                return true;
+            }
+        }
+
+        return false;
+    })->values();
+}
+
+private function findGassProgram(int $programId): ?object
+{
+    return $this->getGassPrograms($programId)->first();
+}
+
+private function collectPpaDetailTreeIds(int $rootDetailId): array
+{
+    $detailIds = [];
+    $queue = [$rootDetailId];
+
+    while (!empty($queue)) {
+        $currentId = array_shift($queue);
+        if (in_array($currentId, $detailIds, true)) {
+            continue;
+        }
+
+        $detailIds[] = $currentId;
+
+        $childIds = DB::table('ppa_details')
+            ->where('parent_id', $currentId)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        foreach ($childIds as $childId) {
+            $queue[] = $childId;
+        }
+    }
+
+    return $detailIds;
+}
+
+private function getGassTypeId(): int
+{
+    $typeId = DB::table('types')
+        ->where('code', 'GASS')
+        ->value('id');
+
+    if (!$typeId) {
+        throw new \RuntimeException('GASS type is not configured.');
+    }
+
+    return (int) $typeId;
+}
+
+private function getGassRecordTypeIds(): array
+{
+    $recordTypeIds = DB::table('record_types')
+        ->whereIn('name', [
+            'PROGRAM',
+            'PROJECT',
+            'MAIN ACTIVITY',
+            'SUB-ACTIVITY',
+            'SUB-SUB-ACTIVITY',
+        ])
+        ->pluck('id', 'name')
+        ->map(fn ($id) => (int) $id)
+        ->all();
+
+    $requiredNames = [
+        'PROGRAM',
+        'PROJECT',
+        'MAIN ACTIVITY',
+        'SUB-ACTIVITY',
+        'SUB-SUB-ACTIVITY',
+    ];
+
+    foreach ($requiredNames as $name) {
+        if (!isset($recordTypeIds[$name])) {
+            throw new \RuntimeException("Record type {$name} is not configured.");
+        }
+    }
+
+    return $recordTypeIds;
 }
 }

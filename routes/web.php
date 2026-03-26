@@ -11,6 +11,9 @@ use App\Http\Controllers\EngpController;
 use App\Http\Controllers\LandsController;
 use App\Http\Controllers\SoilconController;
 use App\Http\Controllers\NraController;
+use App\Http\Controllers\PariaController;
+use App\Http\Controllers\CobbController;
+use App\Http\Controllers\ContinuingController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\HistoryController;
 use Illuminate\Support\Facades\Route;
@@ -38,9 +41,9 @@ Route::get('/engp', [EngpController::class, 'index'])->middleware('auth')->name(
 Route::get('/lands', [LandsController::class, 'index'])->middleware('auth')->name('lands');
 Route::get('/soilcon', [SoilconController::class, 'index'])->middleware('auth')->name('soilcon');
 Route::get('/nra', [NraController::class, 'index'])->middleware('auth')->name('nra');
-Route::get('/paria', function () { return view('admin.paria'); })->middleware('auth')->name('paria');
-Route::get('/cobb', function () { return view('admin.cobb'); })->middleware('auth')->name('cobb');
-Route::get('/continuing', function () { return view('admin.continuing'); })->middleware('auth')->name('continuing');
+Route::get('/paria', [PariaController::class, 'index'])->middleware('auth')->name('paria');
+Route::get('/cobb', [CobbController::class, 'index'])->middleware('auth')->name('cobb');
+Route::get('/continuing', [ContinuingController::class, 'index'])->middleware('auth')->name('continuing');
 Route::get('/user',     [UserController::class, 'index']) ->name('user');
 Route::get('/history', [HistoryController::class, 'index'])->middleware('auth')->name('history');
 Route::post('/users', [UserController::class, 'store'])->name('users.store');
@@ -134,6 +137,39 @@ Route::prefix('admin/nra')->name('admin.nra.')->middleware(['auth', 'field.histo
     Route::post('/indicators', [NraController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [NraController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [NraController::class, 'destroyIndicator'])->name('indicators.destroy');
+});
+
+Route::prefix('admin/paria')->name('admin.paria.')->middleware(['auth', 'field.history'])->group(function () {
+    Route::get('/physical/{program?}', [PariaController::class, 'index'])->name('physical');
+    Route::post('/pap', [PariaController::class, 'storePap'])->name('pap.store');
+    Route::delete('/pap/{program}', [PariaController::class, 'destroyPap'])->name('pap.destroy');
+    Route::post('/targets/store', [PariaController::class, 'storeTargets'])->name('targets.store');
+    Route::post('/accomplishments/store', [PariaController::class, 'storeAccomplishments'])->name('accomplishments.store');
+    Route::post('/indicators', [PariaController::class, 'storeIndicator'])->name('indicators.store');
+    Route::patch('/indicators/{indicator}', [PariaController::class, 'update'])->name('indicators.update');
+    Route::delete('/indicators/{indicator}', [PariaController::class, 'destroyIndicator'])->name('indicators.destroy');
+});
+
+Route::prefix('admin/cobb')->name('admin.cobb.')->middleware(['auth', 'field.history'])->group(function () {
+    Route::get('/physical/{program?}', [CobbController::class, 'index'])->name('physical');
+    Route::post('/pap', [CobbController::class, 'storePap'])->name('pap.store');
+    Route::delete('/pap/{program}', [CobbController::class, 'destroyPap'])->name('pap.destroy');
+    Route::post('/targets/store', [CobbController::class, 'storeTargets'])->name('targets.store');
+    Route::post('/accomplishments/store', [CobbController::class, 'storeAccomplishments'])->name('accomplishments.store');
+    Route::post('/indicators', [CobbController::class, 'storeIndicator'])->name('indicators.store');
+    Route::patch('/indicators/{indicator}', [CobbController::class, 'update'])->name('indicators.update');
+    Route::delete('/indicators/{indicator}', [CobbController::class, 'destroyIndicator'])->name('indicators.destroy');
+});
+
+Route::prefix('admin/continuing')->name('admin.continuing.')->middleware(['auth', 'field.history'])->group(function () {
+    Route::get('/physical/{program?}', [ContinuingController::class, 'index'])->name('physical');
+    Route::post('/pap', [ContinuingController::class, 'storePap'])->name('pap.store');
+    Route::delete('/pap/{program}', [ContinuingController::class, 'destroyPap'])->name('pap.destroy');
+    Route::post('/targets/store', [ContinuingController::class, 'storeTargets'])->name('targets.store');
+    Route::post('/accomplishments/store', [ContinuingController::class, 'storeAccomplishments'])->name('accomplishments.store');
+    Route::post('/indicators', [ContinuingController::class, 'storeIndicator'])->name('indicators.store');
+    Route::patch('/indicators/{indicator}', [ContinuingController::class, 'update'])->name('indicators.update');
+    Route::delete('/indicators/{indicator}', [ContinuingController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
 

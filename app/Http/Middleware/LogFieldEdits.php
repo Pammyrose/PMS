@@ -265,12 +265,7 @@ class LogFieldEdits
                 continue;
             }
 
-            $row = DB::table($tableName)
-                ->where('program_id', $programId)
-                ->where('indicator_id', $indicatorId)
-                ->where('year', $year)
-                ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
-                ->first();
+            $row = $this->findExistingEntryRow($tableName, $programId, $indicatorId, $officeId, $year);
 
             if (!$row) {
                 $baseline[$lookupKey] = [];
@@ -322,10 +317,68 @@ class LogFieldEdits
         }
 
         if ($editedPart === 'accomplishments') {
+            $pluralTable = $normalizedModule . '_accomplishments';
+            if (Schema::hasTable($pluralTable)) {
+                return $pluralTable;
+            }
+
             return $normalizedModule . '_accomplishment';
         }
 
         return null;
+    }
+
+    private function findExistingEntryRow(string $tableName, mixed $programId, mixed $indicatorId, mixed $officeId, mixed $year): ?object
+    {
+        $hasDirectProgramColumn = Schema::hasColumn($tableName, 'program_id');
+        $hasDirectIndicatorColumn = Schema::hasColumn($tableName, 'indicator_id');
+        $yearColumn = Schema::hasColumn($tableName, 'year') ? 'year' : (Schema::hasColumn($tableName, 'years') ? 'years' : null);
+        $officeColumn = Schema::hasColumn($tableName, 'office_id') ? 'office_id' : (Schema::hasColumn($tableName, 'office_ids') ? 'office_ids' : null);
+
+        if ($hasDirectProgramColumn && $hasDirectIndicatorColumn && $yearColumn) {
+            return DB::table($tableName)
+                ->where('program_id', $programId)
+                ->where('indicator_id', $indicatorId)
+                ->where($yearColumn, $year)
+                ->when($officeId && $officeColumn, fn ($query) => $query->where($officeColumn, $officeId))
+                ->first();
+        }
+
+        $query = DB::table($tableName);
+
+        if ($yearColumn) {
+            $query->where($yearColumn, (string) $year);
+        }
+
+        if ($officeId && $officeColumn) {
+            $query->where($officeColumn, $officeId);
+        }
+
+        return $query->get()->first(function ($row) use ($programId, $indicatorId) {
+            $meta = $this->decodeJsonObject($row->values ?? null);
+
+            return (string) ($meta['program_id'] ?? '') === (string) $programId
+                && (string) ($meta['indicator_id'] ?? '') === (string) $indicatorId;
+        });
+    }
+
+    private function decodeJsonObject(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_object($value)) {
+            return (array) $value;
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     private function valuesDiffer(mixed $submittedValue, mixed $existingValue): bool

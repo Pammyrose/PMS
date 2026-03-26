@@ -17,7 +17,7 @@ class DashboardController extends Controller
         }
 
         $fieldConfigs = [
-            ['key' => 'gass', 'label' => 'GASS', 'targets' => 'gass_targets', 'accomp' => 'gass_accomplishment'],
+            ['key' => 'gass', 'label' => 'GASS', 'targets' => 'gass_targets', 'accomp' => 'gass_accomplishments'],
             ['key' => 'sto', 'label' => 'STO', 'targets' => 'sto_targets', 'accomp' => 'sto_accomplishment'],
             ['key' => 'enf', 'label' => 'ENF', 'targets' => 'enf_targets', 'accomp' => 'enf_accomplishment'],
             ['key' => 'pa', 'label' => 'PA', 'targets' => 'pa_targets', 'accomp' => 'pa_accomplishment'],
@@ -25,6 +25,9 @@ class DashboardController extends Controller
             ['key' => 'lands', 'label' => 'LANDS', 'targets' => 'lands_targets', 'accomp' => 'lands_accomplishment'],
             ['key' => 'soilcon', 'label' => 'SOILCON', 'targets' => 'soilcon_targets', 'accomp' => 'soilcon_accomplishment'],
             ['key' => 'nra', 'label' => 'NRA', 'targets' => 'nra_targets', 'accomp' => 'nra_accomplishment'],
+            ['key' => 'paria', 'label' => 'PARIA', 'targets' => 'paria_targets', 'accomp' => 'paria_accomplishment'],
+            ['key' => 'cobb', 'label' => 'COBB', 'targets' => 'cobb_targets', 'accomp' => 'cobb_accomplishment'],
+            ['key' => 'continuing', 'label' => 'CONTINUING', 'targets' => 'continuing_targets', 'accomp' => 'continuing_accomplishment'],
         ];
 
         $fieldStats = collect($fieldConfigs)->map(function (array $config) use ($year) {
@@ -32,29 +35,11 @@ class DashboardController extends Controller
             $accompTotal = 0.0;
 
             if (Schema::hasTable($config['targets'])) {
-                $targetTable = $config['targets'];
-                $targetTotal = (float) (DB::table("{$targetTable} as t")
-                    ->where('t.year', $year)
-                    ->selectRaw('COALESCE(SUM(t.jan + t.feb + t.mar + t.apr + t.may + t.jun + t.jul + t.aug + t.sep + t.oct + t.nov + t.dec), 0) as total')
-                    ->value('total') ?? 0);
+                $targetTotal = $this->sumAnnualTotalForYear($config['targets'], $year);
             }
 
-            if (Schema::hasTable($config['targets']) && Schema::hasTable($config['accomp'])) {
-                $accompTable = $config['accomp'];
-                $targetTable = $config['targets'];
-
-                $accompTotal = (float) (DB::table("{$accompTable} as a")
-                    ->where('a.year', $year)
-                    ->whereExists(function ($query) use ($targetTable, $year) {
-                        $query->select(DB::raw(1))
-                            ->from("{$targetTable} as t")
-                            ->where('t.year', $year)
-                            ->whereColumn('t.program_id', 'a.program_id')
-                            ->whereColumn('t.indicator_id', 'a.indicator_id')
-                            ->whereColumn('t.office_id', 'a.office_id');
-                    })
-                            ->selectRaw('COALESCE(SUM(a.jan + a.feb + a.mar + a.apr + a.may + a.jun + a.jul + a.aug + a.sep + a.oct + a.nov + a.dec), 0) as total')
-                            ->value('total') ?? 0);
+            if (Schema::hasTable($config['accomp'])) {
+                $accompTotal = $this->sumAnnualTotalForYear($config['accomp'], $year);
             }
 
             $progress = $targetTotal > 0
@@ -110,5 +95,38 @@ class DashboardController extends Controller
         }
 
         return 'Delayed';
+    }
+
+    private function sumAnnualTotalForYear(string $table, int $year): float
+    {
+        $yearColumn = $this->resolveYearColumn($table);
+
+        if ($yearColumn === null) {
+            return 0.0;
+        }
+
+        if (Schema::hasColumn($table, 'annual_total')) {
+            return (float) (DB::table($table)
+                ->where($yearColumn, $year)
+                ->sum('annual_total') ?? 0);
+        }
+
+        return (float) (DB::table("{$table} as t")
+            ->where("t.{$yearColumn}", $year)
+            ->selectRaw('COALESCE(SUM(t.jan + t.feb + t.mar + t.apr + t.may + t.jun + t.jul + t.aug + t.sep + t.oct + t.nov + t.dec), 0) as total')
+            ->value('total') ?? 0);
+    }
+
+    private function resolveYearColumn(string $table): ?string
+    {
+        if (Schema::hasColumn($table, 'years')) {
+            return 'years';
+        }
+
+        if (Schema::hasColumn($table, 'year')) {
+            return 'year';
+        }
+
+        return null;
     }
 }

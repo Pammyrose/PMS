@@ -31,6 +31,16 @@ class Enf_Accomplishment extends Model
         'dec',
         'q4',
         'annual_total',
+        'car_totals',
+        'group_totals',
+        'remarks',
+    ];
+
+
+    protected $casts = [
+        'car_totals' => 'array',
+        'group_totals' => 'array',
+        'remarks' => 'string',
     ];
 }
 

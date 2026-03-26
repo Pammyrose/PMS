@@ -11,11 +11,9 @@ class OfficeController extends Controller
 {
     public function create()
     {
-        $regional = Office::whereNull('parent_id')->first();
-
-        // Option 1: Include Regional + all PENROs
-        $penros = Office::whereNull('parent_id')          // Regional
-            ->union(Office::where('parent_id', $regional?->id ?? 0))
+        $penros = Office::query()
+            ->whereIn('office_types_id', [1, 2])
+            ->orderBy('name')
             ->get();
 
 
@@ -88,8 +86,10 @@ class OfficeController extends Controller
 
     public function getCenros(Office $penro)
     {
-
-        $cenros = $penro->children()->get(['id', 'name']);
+        $cenros = Office::query()
+            ->where('office_types_id', 3)
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         return response()->json($cenros);
     }

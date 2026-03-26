@@ -10,7 +10,7 @@ class UsersSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('users')->insert([
+        DB::table('users')->upsert([
             [
                 'name'   => 'Super Administrator',
                 'email'  => 'superadmin@denr.gov.ph',
@@ -29,6 +29,6 @@ class UsersSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role'              => 'user',
             ],
-        ]);
+        ], ['email'], ['name', 'password', 'role']);
     }
 }

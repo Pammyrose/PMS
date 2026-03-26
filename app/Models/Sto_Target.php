@@ -31,5 +31,13 @@ class Sto_Target extends Model
         'dec',
         'q4',
         'annual_total',
+        'car_totals',
+        'group_totals',
+    ];
+
+
+    protected $casts = [
+        'car_totals' => 'array',
+        'group_totals' => 'array',
     ];
 }
