@@ -114,7 +114,6 @@
 
         .office-line {
             min-height: 28px;
-            height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -125,16 +124,9 @@
 
         .input-line {
             min-height: 28px;
-            height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-
-        td:has(.office-lines) {
-            vertical-align: top;
-            padding-top: 6px !important;
-            padding-bottom: 6px !important;
         }
 
         .target-box {
@@ -283,7 +275,7 @@
             background: #fef3c7;
             color: #92400e;
             font-weight: 700;
-            min-width: 280px;
+            min-width: 200px;
         }
 
         .remarks-box {
@@ -312,13 +304,18 @@
             justify-content: flex-start;
         }
 
-        /* Ensure summary columns match remarks alignment */
+        td[data-dynamic-section="summary"] .office-lines {
+            width: 100%;
+            align-items: stretch;
+        }
+
         td[data-dynamic-section="summary"] .input-line {
             width: 100%;
             justify-content: flex-start;
         }
 
         td[data-dynamic-section="summary"] .month-box {
+            width: 100%;
             min-width: 200px;
             box-sizing: border-box;
             font-size: 12px;
@@ -326,7 +323,7 @@
             height: 28px;
             min-height: 28px;
             max-height: 28px;
-            text-align: left;
+            text-align: center;
             line-height: 1.1;
         }
     </style>
@@ -709,19 +706,38 @@
                     $parentSubtotalLabel = trim(preg_replace('/\s+/', ' ', (string) $parentSubtotalLabel));
                     $officeTypeId = (int) ($group['office_types_id'] ?? 0);
                     $isPenroParent = $officeTypeId === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
-                    $penroDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
+                    $groupDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
+                    $selectedChildIds = collect($group['children'] ?? [])
+                        ->pluck('id')
+                        ->map(fn($id) => (int) $id)
+                        ->all();
+                    $groupInputOffices = $inputOffices
+                        ->filter(function ($office) use ($group, $selectedChildIds) {
+                            if ((bool) ($office['is_parent'] ?? false)) {
+                                return (int) ($office['id'] ?? 0) === (int) ($group['id'] ?? 0);
+                            }
+
+                            return in_array((int) ($office['id'] ?? 0), $selectedChildIds, true);
+                        })
+                        ->values();
                 @endphp
+                @if($groupInputOffices->isEmpty())
+                    @continue
+                @endif
                 @if($isPenroParent)
                     <div class="office-line group-total-office-line">
-                        PENRO {{ $penroDisplayLabel }}
+                        PENRO {{ $groupDisplayLabel }}
                     </div>
-                    <div class="office-line fw-bold">
-                        {{ $penroDisplayLabel }}
-                    </div>
-                    @foreach($group['children'] ?? [] as $child)
-                        <div class="office-line">{{ $child['name'] }}</div>
-                    @endforeach
                 @endif
+                @foreach($groupInputOffices as $office)
+                    @if($office['is_parent'] ?? false)
+                        <div class="office-line fw-bold">
+                            {{ $groupDisplayLabel }}
+                        </div>
+                    @else
+                        <div class="office-line">{{ $office['name'] ?? '' }}</div>
+                    @endif
+                @endforeach
             @endforeach
         </div>
     @else
@@ -1050,6 +1066,70 @@
             if (summaryTargetTotal) summaryTargetTotal.textContent = formatSummaryNumber(targetTotal);
             if (summaryAccompTotal) summaryAccompTotal.textContent = formatSummaryNumber(accompTotal);
             if (summaryNotYetDone) summaryNotYetDone.textContent = formatSummaryNumber(pendingTotal);
+
+            refreshSummaryInputs();
+        }
+
+        function refreshSummaryInputs() {
+            if (!summaryVisible) return;
+
+            document.querySelectorAll('tbody tr[data-row-id]').forEach(row => {
+                updateSummaryInputsForRow(row);
+            });
+        }
+
+        function updateSummaryInputsForRow(row) {
+            if (!row) return;
+
+            const summaryInputs = row.querySelectorAll('.month-box.summary-box');
+            if (summaryInputs.length === 0) return;
+
+            const indicatorId = Number(row.dataset.indicatorId || 0);
+            const allInputs = row.querySelectorAll('.month-box');
+
+            summaryInputs.forEach(input => {
+                const sectionType = String(input.dataset.summarySection || '').trim();
+                const periodIndex = Number(input.dataset.summaryPeriodIndex);
+                const periodKey = String(input.dataset.summaryPeriodKey || '').trim();
+                const officeId = String(input.dataset.officeId || '').trim();
+                if (!sectionType || !periodKey) return;
+
+                let value = Number.NaN;
+
+                if (Number.isInteger(periodIndex)) {
+                    const sourceInput = getSectionColInput(allInputs, sectionType, periodIndex, officeId || null);
+                    if (sourceInput) {
+                        const parsed = Number(sourceInput.value);
+                        if (Number.isFinite(parsed)) {
+                            value = parsed;
+                        }
+                    }
+                }
+
+                if (!Number.isFinite(value)) {
+                    value = getStoredValueForSummary(sectionType, indicatorId, officeId, periodKey);
+                }
+
+                input.value = Number.isFinite(value) ? value : 0;
+            });
+        }
+
+        function getStoredValueForSummary(sectionType, indicatorId, officeId, periodKey) {
+            if (!indicatorId || !periodKey) return 0;
+
+            const source = sectionType === 'target'
+                ? existingTargetsByIndicator
+                : existingAccompByIndicator;
+
+            const indicatorEntry = source[String(indicatorId)] || {};
+            const officeKey = String(officeId || '').trim();
+            const officeEntry = officeKey ? (indicatorEntry[officeKey] || null) : null;
+            const rawValue = officeEntry && Object.prototype.hasOwnProperty.call(officeEntry, periodKey)
+                ? officeEntry[periodKey]
+                : 0;
+            const value = Number(rawValue);
+
+            return Number.isFinite(value) ? value : 0;
         }
 
         function applyMonthInputVisibility() {
@@ -1092,13 +1172,6 @@
         function refreshMonthButtonState() {
             const monthBtn = document.getElementById('monthBtn');
             if (!monthBtn) return;
-
-            // Hide Show Months button if summary is visible
-            if (summaryVisible) {
-                monthBtn.style.display = 'none';
-                applyMonthInputVisibility();
-                return;
-            }
 
             const canToggleMonths = targetsVisible || accompVisible;
             if (!canToggleMonths) {
@@ -1343,6 +1416,97 @@
             mainHeader.appendChild(th);
         }
 
+        function createSpacerElement(tagName, baseClass) {
+            const spacer = document.createElement(tagName);
+            spacer.className = `${baseClass} remarks-spacer`.trim();
+            spacer.tabIndex = -1;
+            spacer.readOnly = true;
+            spacer.setAttribute('aria-hidden', 'true');
+
+            if (tagName === 'textarea') {
+                spacer.rows = 1;
+            } else if (tagName === 'input') {
+                spacer.type = 'text';
+            }
+
+            return spacer;
+        }
+
+        function buildAlignedOfficeLines({
+            officeEntries,
+            groupBreakIndices = [],
+            groupPenroFlags = [],
+            spacerFactory,
+            renderOfficeInput
+        }) {
+            const normalizedEntries = officeEntries.length > 0
+                ? officeEntries
+                : [{ id: currentOfficeId || null, name: 'Office' }];
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'office-lines';
+
+            const addSpacerLine = () => {
+                if (typeof spacerFactory !== 'function') return;
+                const spacerElement = spacerFactory();
+                if (!spacerElement) return;
+
+                const spacerLine = document.createElement('div');
+                spacerLine.className = 'input-line';
+                spacerLine.appendChild(spacerElement);
+                wrapper.appendChild(spacerLine);
+            };
+
+            addSpacerLine();
+
+            const groupRanges = [];
+            let rangeStart = 0;
+            const sortedBreaks = [...groupBreakIndices]
+                .map(index => Number(index))
+                .filter(index => Number.isInteger(index) && index >= 0)
+                .sort((left, right) => left - right);
+
+            sortedBreaks.forEach(breakIndex => {
+                if (breakIndex >= rangeStart && breakIndex < normalizedEntries.length) {
+                    groupRanges.push({ start: rangeStart, end: breakIndex });
+                    rangeStart = breakIndex + 1;
+                }
+            });
+
+            if (rangeStart < normalizedEntries.length) {
+                groupRanges.push({ start: rangeStart, end: normalizedEntries.length - 1 });
+            }
+
+            const groupStartToIndex = new Map();
+            groupRanges.forEach((range, idx) => {
+                groupStartToIndex.set(range.start, idx);
+            });
+
+            normalizedEntries.forEach((office, officeIndex) => {
+                const currentGroupIndex = groupStartToIndex.get(officeIndex);
+                if (currentGroupIndex !== undefined && Boolean(groupPenroFlags[currentGroupIndex])) {
+                    addSpacerLine();
+                }
+
+                const inputElement = renderOfficeInput(office, officeIndex, {
+                    groupIndex: currentGroupIndex,
+                    groupRange: currentGroupIndex !== undefined ? groupRanges[currentGroupIndex] : null,
+                    entries: normalizedEntries
+                });
+
+                if (!inputElement) {
+                    return;
+                }
+
+                const inputLine = document.createElement('div');
+                inputLine.className = 'input-line';
+                inputLine.appendChild(inputElement);
+                wrapper.appendChild(inputLine);
+            });
+
+            return wrapper;
+        }
+
         function addRemarksCells() {
             document.querySelectorAll('tbody tr[data-row-id]').forEach(row => {
                 const existingRemarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
@@ -1360,79 +1524,29 @@
                 td.classList.add('p-1');
                 td.dataset.dynamicSection = 'remarks';
 
-                const wrapper = document.createElement('div');
-                wrapper.className = 'office-lines';
-
                 const officeEntries = assignedOffices.length > 0
                     ? assignedOffices
                     : [{ id: currentOfficeId || null, name: 'Office' }];
 
-                const groupRanges = [];
-                let rangeStart = 0;
-                const sortedBreaks = [...groupBreakIndices]
-                    .map(index => Number(index))
-                    .filter(index => Number.isInteger(index) && index >= 0)
-                    .sort((left, right) => left - right);
+                const wrapper = buildAlignedOfficeLines({
+                    officeEntries,
+                    groupBreakIndices,
+                    groupPenroFlags,
+                    spacerFactory: () => createSpacerElement('textarea', 'remarks-box'),
+                    renderOfficeInput: (office) => {
+                        const officeId = Number(office?.id || 0) || null;
+                        const officeData = officeId ? existingRowDataByOffice[String(officeId)] : null;
 
-                sortedBreaks.forEach(breakIndex => {
-                    if (breakIndex >= rangeStart && breakIndex < officeEntries.length) {
-                        groupRanges.push({ start: rangeStart, end: breakIndex });
-                        rangeStart = breakIndex + 1;
+                        const input = document.createElement('textarea');
+                        input.className = 'remarks-box';
+                        input.placeholder = 'Add comment';
+                        input.rows = 1;
+                        input.value = String(officeData?.remarks || '');
+                        input.dataset.section = 'remarks';
+                        input.dataset.officeId = officeId ? String(officeId) : '';
+
+                        return input;
                     }
-                });
-
-                if (rangeStart < officeEntries.length) {
-                    groupRanges.push({ start: rangeStart, end: officeEntries.length - 1 });
-                }
-
-                const groupStartToIndex = new Map();
-                groupRanges.forEach((range, rangeIndex) => {
-                    groupStartToIndex.set(range.start, rangeIndex);
-                });
-
-                const carSpacerLine = document.createElement('div');
-                carSpacerLine.className = 'input-line';
-                const carSpacer = document.createElement('textarea');
-                carSpacer.className = 'remarks-box remarks-spacer';
-                carSpacer.rows = 1;
-                carSpacer.tabIndex = -1;
-                carSpacer.readOnly = true;
-                carSpacerLine.appendChild(carSpacer);
-                wrapper.appendChild(carSpacerLine);
-
-                officeEntries.forEach((office, officeIndex) => {
-                    const currentGroupIndex = groupStartToIndex.get(officeIndex);
-                    if (currentGroupIndex !== undefined) {
-                        if (Boolean(groupPenroFlags[currentGroupIndex])) {
-                            const groupSpacerLine = document.createElement('div');
-                            groupSpacerLine.className = 'input-line';
-
-                            const groupSpacer = document.createElement('textarea');
-                            groupSpacer.className = 'remarks-box remarks-spacer';
-                            groupSpacer.rows = 1;
-                            groupSpacer.tabIndex = -1;
-                            groupSpacer.readOnly = true;
-
-                            groupSpacerLine.appendChild(groupSpacer);
-                            wrapper.appendChild(groupSpacerLine);
-                        }
-                    }
-
-                    const officeId = Number(office?.id || 0) || null;
-                    const officeData = officeId ? existingRowDataByOffice[String(officeId)] : null;
-
-                    const input = document.createElement('textarea');
-                    input.className = 'remarks-box';
-                    input.placeholder = 'Add comment';
-                    input.rows = 1;
-                    input.value = String(officeData?.remarks || '');
-                    input.dataset.section = 'remarks';
-                    input.dataset.officeId = officeId ? String(officeId) : '';
-
-                    const inputLine = document.createElement('div');
-                    inputLine.className = 'input-line';
-                    inputLine.appendChild(input);
-                    wrapper.appendChild(inputLine);
                 });
 
                 td.appendChild(wrapper);
@@ -1478,30 +1592,49 @@
                 const officeEntries = assignedOffices.length > 0
                     ? assignedOffices
                     : [{ id: currentOfficeId || null, name: 'Office' }];
+                const summarySpacerFactory = () => createSpacerElement('input', 'month-box');
+                const targetDataByIndicator = indicatorId ? (existingTargetsByIndicator[String(indicatorId)] || {}) : {};
+                const accompDataByIndicator = indicatorId ? (existingAccompByIndicator[String(indicatorId)] || {}) : {};
+
+                const buildSummaryInput = ({ office, officeDataSource, periodKey, periodIndex, sectionLabel }) => {
+                    const officeId = Number(office?.id || 0) || null;
+                    const officeData = officeId ? officeDataSource[String(officeId)] : null;
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'month-box summary-box';
+                    input.style.width = '100%';
+                    input.value = officeData && periodKey ? (officeData[periodKey] ?? 0) : 0;
+                    input.readOnly = true;
+                    input.dataset.summarySection = sectionLabel;
+                    input.dataset.summaryPeriodKey = periodKey || '';
+                    input.dataset.summaryPeriodIndex = Number.isInteger(periodIndex) ? String(periodIndex) : '';
+                    input.dataset.officeId = officeId ? String(officeId) : '';
+                    return input;
+                };
                 // Target columns first
                 summaryOrder.forEach(periodType => {
                     const idx = periodIndexes.find(i => PERIODS[i].type === periodType);
                     if (idx !== undefined && idx !== -1) {
                         const period = PERIODS[idx];
+                        const periodKey = PERIOD_KEYS[idx] || null;
                         const tdTarget = document.createElement("td");
                         tdTarget.classList.add("p-1", "text-center", `dynamic-cell-${sectionType}`);
                         tdTarget.dataset.dynamicSection = sectionType;
                         tdTarget.dataset.periodType = period.type;
-                        const wrapperTarget = document.createElement("div");
-                        wrapperTarget.className = "office-lines";
-                        officeEntries.forEach((office) => {
-                            const officeId = Number(office?.id || 0) || null;
-                            const officeData = officeId ? (existingTargetsByIndicator[String(indicatorId)] || {})[String(officeId)] : null;
-                            const inputLine = document.createElement("div");
-                            inputLine.className = "input-line";
-                            const input = document.createElement("input");
-                            input.type = "number";
-                            input.className = `month-box ${sectionType}-box`;
-                            input.style.width = "100%";
-                            input.value = officeData && period ? (officeData[PERIOD_KEYS[idx]] ?? 0) : 0;
-                            input.readOnly = true;
-                            inputLine.appendChild(input);
-                            wrapperTarget.appendChild(inputLine);
+                        const wrapperTarget = buildAlignedOfficeLines({
+                            officeEntries,
+                            groupBreakIndices,
+                            groupPenroFlags,
+                            spacerFactory: summarySpacerFactory,
+                            renderOfficeInput: (office) => {
+                                return buildSummaryInput({
+                                    office,
+                                    officeDataSource: targetDataByIndicator,
+                                    periodKey,
+                                    periodIndex: idx,
+                                    sectionLabel: 'target',
+                                });
+                            }
                         });
                         tdTarget.appendChild(wrapperTarget);
                         const remarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
@@ -1517,25 +1650,25 @@
                     const idx = periodIndexes.find(i => PERIODS[i].type === periodType);
                     if (idx !== undefined && idx !== -1) {
                         const period = PERIODS[idx];
+                        const periodKey = PERIOD_KEYS[idx] || null;
                         const tdAccomp = document.createElement("td");
                         tdAccomp.classList.add("p-1", "text-center", `dynamic-cell-${sectionType}`);
                         tdAccomp.dataset.dynamicSection = sectionType;
                         tdAccomp.dataset.periodType = period.type;
-                        const wrapperAccomp = document.createElement("div");
-                        wrapperAccomp.className = "office-lines";
-                        officeEntries.forEach((office) => {
-                            const officeId = Number(office?.id || 0) || null;
-                            const officeData = officeId ? (existingAccompByIndicator[String(indicatorId)] || {})[String(officeId)] : null;
-                            const inputLine = document.createElement("div");
-                            inputLine.className = "input-line";
-                            const input = document.createElement("input");
-                            input.type = "number";
-                            input.className = `month-box ${sectionType}-box`;
-                            input.style.width = "100%";
-                            input.value = officeData && period ? (officeData[PERIOD_KEYS[idx]] ?? 0) : 0;
-                            input.readOnly = true;
-                            inputLine.appendChild(input);
-                            wrapperAccomp.appendChild(inputLine);
+                        const wrapperAccomp = buildAlignedOfficeLines({
+                            officeEntries,
+                            groupBreakIndices,
+                            groupPenroFlags,
+                            spacerFactory: summarySpacerFactory,
+                            renderOfficeInput: (office) => {
+                                return buildSummaryInput({
+                                    office,
+                                    officeDataSource: accompDataByIndicator,
+                                    periodKey,
+                                    periodIndex: idx,
+                                    sectionLabel: 'accomp',
+                                });
+                            }
                         });
                         tdAccomp.appendChild(wrapperAccomp);
                         const remarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
