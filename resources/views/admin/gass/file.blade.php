@@ -497,6 +497,7 @@
                                     @php
                                         $programCoreKey = strtolower(trim((string) ($program->title ?? ''))) . '|' . strtolower(trim((string) ($program->program ?? ''))) . '|' . strtolower(trim((string) ($program->project ?? '')));
                                         $groupKey = $programCoreKey . '|' . strtolower(trim((string) ($program->activities ?? '')));
+                                        $hasIndicatorData = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
                                     @endphp
                                     @if($groupKey !== $lastGroupKey)
                                         <tr class="program-header group" data-program-id="{{ $program->id }}"
@@ -522,12 +523,12 @@
                                                             $typeShort = '';
                                                             $typeTitle = '';
                                                             // Use the first indicator's type for the icon
-                                                            $firstIndicatorForType = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0 ? $indicators[$program->id][0] : null;
+                                                            $firstIndicator = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0 ? $indicators[$program->id][0] : null;
                                                             $typeLower = '';
-                                                            if ($firstIndicatorForType) {
-                                                                $typeLower = strtolower(trim((string)($firstIndicatorForType->indicator_type ?? '')));
-                                                                if ($typeLower === '' && isset($indicatorTypeNameById) && isset($firstIndicatorForType->indicator_type_id)) {
-                                                                    $typeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($firstIndicatorForType->indicator_type_id)] ?? '')));
+                                                            if ($firstIndicator) {
+                                                                $typeLower = strtolower(trim((string)($firstIndicator->indicator_type ?? '')));
+                                                                if ($typeLower === '' && isset($indicatorTypeNameById) && isset($firstIndicator->indicator_type_id)) {
+                                                                    $typeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($firstIndicator->indicator_type_id)] ?? '')));
                                                                 }
                                                             }
                                                             if ($typeLower === 'cumulative') {
@@ -548,10 +549,7 @@
                                                                 </span>
                                                             </span>
                                                         @endif
-                                                        @php
-                                                            $hasIndicatorDataForIcon = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
-                                                        @endphp
-                                                        @if($hasIndicatorDataForIcon)
+                                                        @if($hasIndicatorData)
                                                             <i class="fa-solid fa-circle-check text-success me-2 ml-2" title="Indicator data available"></i>
                                                         @else
                                                             <i class="fa-solid fa-circle-xmark text-danger me-2" title="No indicator data yet"></i>
@@ -559,7 +557,8 @@
                                                         <form method="POST"
                                                             action="{{ route('admin.gass_physical.pap.destroy', ['program' => $program->id]) }}"
                                                             class="me-2 delete-program-form"
-                                                            id="deleteProgramForm-{{ $program->id }}">
+                                                            id="deleteProgramForm-{{ $program->id }}"
+                                                            onsubmit="event.stopPropagation();">
                                                             @csrf
                                                             @method('DELETE')
                                                             <button type="button"
@@ -578,35 +577,43 @@
                                             </td>
                                         </tr>
                                         @php $lastGroupKey = $groupKey; @endphp
+                                    @endif
+                                    @if($hasIndicatorData)
                                         @php
-                                            // Find all sub-sub-activities for this group
-                                            $groupPrograms = collect($programsRaw)->filter(function($row) use ($program) {
-                                                return strtolower(trim((string)($row->title ?? ''))) === strtolower(trim((string)($program->title ?? '')))
-                                                    && strtolower(trim((string)($row->program ?? ''))) === strtolower(trim((string)($program->program ?? '')))
-                                                    && strtolower(trim((string)($row->project ?? ''))) === strtolower(trim((string)($program->project ?? '')))
-                                                    && strtolower(trim((string)($row->activities ?? ''))) === strtolower(trim((string)($program->activities ?? '')));
-                                            });
+                                            $indicatorCount = $indicators[$program->id]->count();
                                         @endphp
-                                        @php
-                                            // Find the first indicator and office/unit for fallback
-                                            $firstIndicator = null;
-                                            $firstIndicatorOffices = null;
-                                            foreach ($groupPrograms as $gp) {
-                                                if (isset($indicators[$gp->id]) && $indicators[$gp->id]->count() > 0) {
-                                                    $firstIndicator = $indicators[$gp->id]->first();
-                                                    // Prepare office/unit for fallback
-                                                    $officeIds = collect($firstIndicator->office_id ?? [])->map(fn($id) => (int) $id)->filter()->values()->all();
-                                                    $firstIndicatorOffices = collect($offices ?? [])->map(function ($parent) use ($officeIds) {
+                                        @foreach($indicators[$program->id] as $indicator)
+                                            @php
+                                                $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
+                                                if ($resolvedIndicatorType === '') {
+                                                    $resolvedIndicatorType = (string) ($indicatorTypeNameById[(int) ($indicator->indicator_type_id ?? 0)] ?? '');
+                                                }
+
+                                                $indicatorSyncKey = $programCoreKey
+                                                    . '|' . strtolower(trim((string) ($indicator->name ?? '')))
+                                                    . '|' . strtolower(trim($resolvedIndicatorType));
+                                                $officeIds = collect($indicator->office_id ?? [])
+                                                    ->map(fn($id) => (int) $id)
+                                                    ->filter()
+                                                    ->values()
+                                                    ->all();
+
+                                                $selectedParentGroups = collect($offices ?? [])
+                                                    ->map(function ($parent) use ($officeIds) {
                                                         $parentId = (int) ($parent->id ?? 0);
                                                         $parentSelected = in_array($parentId, $officeIds, true);
+
                                                         $children = collect($parent->children ?? []);
                                                         $selectedChildren = $children->filter(
                                                             fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true)
                                                         )->values();
+
                                                         if (!$parentSelected && $selectedChildren->isEmpty()) {
                                                             return null;
                                                         }
+
                                                         $childrenForDisplay = $selectedChildren;
+
                                                         return [
                                                             'id' => $parentId,
                                                             'name' => (string) ($parent->name ?? ''),
@@ -618,215 +625,156 @@
                                                                 'office_types_id' => (int) ($child->office_types_id ?? 0),
                                                             ])->filter(fn($child) => $child['id'] > 0)->values(),
                                                         ];
-                                                    })->filter()->values();
-                                                    break;
+                                                    })
+                                                    ->filter()
+                                                    ->values();
+
+                                                $inputOffices = $selectedParentGroups
+                                                    ->flatMap(function ($group) {
+                                                        $selectedParent = (bool) ($group['selected_parent'] ?? false);
+
+                                                        $children = collect($group['children'] ?? [])->map(fn($child) => [
+                                                            'id' => (int) ($child['id'] ?? 0),
+                                                            'name' => (string) ($child['name'] ?? ''),
+                                                            'is_parent' => false,
+                                                        ]);
+
+                                                        $parentCollection = $selectedParent ? collect([
+                                                            [
+                                                                'id' => (int) ($group['id'] ?? 0),
+                                                                'name' => (string) ($group['name'] ?? ''),
+                                                                'is_parent' => true,
+                                                            ]
+                                                        ]) : collect();
+
+                                                        return $parentCollection->merge($children);
+                                                    })
+                                                    ->filter(fn($office) => !empty($office['id']))
+                                                    ->unique('id')
+                                                    ->values();
+
+                                                $groupSizes = $selectedParentGroups
+                                                    ->map(function ($group) {
+                                                        $selectedParent = (bool) ($group['selected_parent'] ?? false);
+                                                        $childrenCount = collect($group['children'] ?? [])->count();
+                                                        return ($selectedParent ? 1 : 0) + $childrenCount;
+                                                    })
+                                                    ->values();
+
+                                                $groupPenroFlags = $selectedParentGroups
+                                                    ->map(function ($group) {
+                                                        $officeTypeId = (int) ($group['office_types_id'] ?? 0);
+                                                        if ($officeTypeId === 2) {
+                                                            return 1;
+                                                        }
+
+                                                        $groupName = (string) ($group['name'] ?? '');
+                                                        return preg_match('/\bPENRO\b/i', $groupName) === 1 ? 1 : 0;
+                                                    })
+                                                    ->values();
+
+                                                $groupBreakIndices = [];
+                                                $runningTotal = 0;
+                                                foreach ($groupSizes as $index => $size) {
+                                                    $runningTotal += (int) $size;
+                                                    if ($index < ($groupSizes->count() - 1)) {
+                                                        $groupBreakIndices[] = $runningTotal - 1;
+                                                    }
                                                 }
-                                            }
-                                        @endphp
-                                        @foreach($groupPrograms as $subProgram)
-                                            @php
-                                                $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
                                             @endphp
-                                            @if($hasIndicatorData)
-                                                @php
-                                                    $indicatorCount = $indicators[$subProgram->id]->count();
-                                                @endphp
-                                                @foreach($indicators[$subProgram->id] as $indicator)
-                                                  
-                                                      @php
-                                                          $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
-                                                          if ($resolvedIndicatorType === '') {
-                                                              $resolvedIndicatorType = (string) ($indicatorTypeNameById[(int) ($indicator->indicator_type_id ?? 0)] ?? '');
-                                                          }
-                                                          $indicatorSyncKey = $programCoreKey
-                                                              . '|' . strtolower(trim((string) ($indicator->name ?? '')))
-                                                              . '|' . strtolower(trim($resolvedIndicatorType));
-                                                          $officeIds = collect($indicator->office_id ?? [])
-                                                              ->map(fn($id) => (int) $id)
-                                                              ->filter()
-                                                              ->values()
-                                                              ->all();
-                                                          $selectedParentGroups = collect($offices ?? [])
-                                                              ->map(function ($parent) use ($officeIds) {
-                                                                  $parentId = (int) ($parent->id ?? 0);
-                                                                  $parentSelected = in_array($parentId, $officeIds, true);
-                                                                  $children = collect($parent->children ?? []);
-                                                                  $selectedChildren = $children->filter(
-                                                                      fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true)
-                                                                  )->values();
-                                                                  if (!$parentSelected && $selectedChildren->isEmpty()) {
-                                                                      return null;
-                                                                  }
-                                                                  $childrenForDisplay = $selectedChildren;
-                                                                  return [
-                                                                      'id' => $parentId,
-                                                                      'name' => (string) ($parent->name ?? ''),
-                                                                      'office_types_id' => (int) ($parent->office_types_id ?? 0),
-                                                                      'selected_parent' => $parentSelected,
-                                                                      'children' => $childrenForDisplay->map(fn($child) => [
-                                                                          'id' => (int) ($child->id ?? 0),
-                                                                          'name' => (string) ($child->name ?? ''),
-                                                                          'office_types_id' => (int) ($child->office_types_id ?? 0),
-                                                                      ])->filter(fn($child) => $child['id'] > 0)->values(),
-                                                                  ];
-                                                              })
-                                                              ->filter()
-                                                              ->values();
-                                                          $inputOffices = $selectedParentGroups
-                                                              ->flatMap(function ($group) {
-                                                                  $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                                  $children = collect($group['children'] ?? [])->map(fn($child) => [
-                                                                      'id' => (int) ($child['id'] ?? 0),
-                                                                      'name' => (string) ($child['name'] ?? ''),
-                                                                      'is_parent' => false,
-                                                                  ]);
-                                                                  $parentCollection = $selectedParent ? collect([
-                                                                      [
-                                                                          'id' => (int) ($group['id'] ?? 0),
-                                                                          'name' => (string) ($group['name'] ?? ''),
-                                                                          'is_parent' => true,
-                                                                      ]
-                                                                  ]) : collect();
-                                                                  return $parentCollection->merge($children);
-                                                              })
-                                                              ->filter(fn($office) => !empty($office['id']))
-                                                              ->unique('id')
-                                                              ->values();
-                                                          $groupSizes = $selectedParentGroups
-                                                              ->map(function ($group) {
-                                                                  $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                                  $childrenCount = collect($group['children'] ?? [])->count();
-                                                                  return ($selectedParent ? 1 : 0) + $childrenCount;
-                                                              })
-                                                              ->values();
-                                                          $groupPenroFlags = $selectedParentGroups
-                                                              ->map(function ($group) {
-                                                                  $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                                  if ($officeTypeId === 2) {
-                                                                      return 1;
-                                                                  }
-                                                                  $groupName = (string) ($group['name'] ?? '');
-                                                                  return preg_match('/\bPENRO\b/i', $groupName) === 1 ? 1 : 0;
-                                                              })
-                                                              ->values();
-                                                          $groupBreakIndices = [];
-                                                          $runningTotal = 0;
-                                                          foreach ($groupSizes as $index => $size) {
-                                                              $runningTotal += (int) $size;
-                                                              if ($index < ($groupSizes->count() - 1)) {
-                                                                  $groupBreakIndices[] = $runningTotal - 1;
-                                                              }
-                                                          }
-                                                      @endphp
-                                                      <tr class="data-row @if($loop->first) first-indicator-row @endif"
-                                                          data-row-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
-                                                          data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
-                                                          data-indicator-type="{{ $resolvedIndicatorType }}"
-                                                          data-office-ids="{{ implode(',', $officeIds) }}"
-                                                          data-office-names="{{ $selectedParentGroups->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
-                                                          data-input-office-ids="{{ $inputOffices->pluck('id')->implode(',') }}"
-                                                          data-input-office-names="{{ $inputOffices->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
-                                                          data-input-break-indices="{{ implode(',', $groupBreakIndices) }}"
-                                                          data-input-group-penro-flags="{{ $groupPenroFlags->implode(',') }}"
-                                                          id="content-{{ $subProgram->id }}-{{ $loop->index }}" style="display:none;">
-                                                          @if($loop->first)
-                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $indicatorCount }}">
-                                                                  {{ $subProgram->activities }}<br>
-                                                                  <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
-                                                              </td>
-                                                              <td class="px-4 py-3" rowspan="{{ $indicatorCount }}">
-                                                                  {{ $indicator->name ?? 'N/A' }}
-                                                              </td>
-                                                              <td class="px-4 py-3 small text-center" rowspan="{{ $indicatorCount }}">
-                                                                  @if($inputOffices->isNotEmpty())
-                                                                      <div class="office-lines">
-                                                                          <div class="office-line car-office-line">CAR</div>
-                                                                          @foreach($selectedParentGroups as $group)
-                                                                              @php
-                                                                                  $parentNameRaw = (string) ($group['name'] ?? '');
-                                                                                  $parentSubtotalLabel = preg_replace('/\b(PENRO|CENRO|TOTAL)\b/i', '', $parentNameRaw);
-                                                                                  $parentSubtotalLabel = trim(preg_replace('/\s+/', ' ', (string) $parentSubtotalLabel));
-                                                                                  $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                                                  $isPenroParent = $officeTypeId === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
-                                                                                  $groupDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
-                                                                                  $selectedChildIds = collect($group['children'] ?? [])
-                                                                                      ->pluck('id')
-                                                                                      ->map(fn($id) => (int) $id)
-                                                                                      ->all();
-                                                                                  $groupInputOffices = $inputOffices
-                                                                                      ->filter(function ($office) use ($group, $selectedChildIds) {
-                                                                                          if ((bool) ($office['is_parent'] ?? false)) {
-                                                                                              return (int) ($office['id'] ?? 0) === (int) ($group['id'] ?? 0);
-                                                                                          }
-                                                                                          return in_array((int) ($office['id'] ?? 0), $selectedChildIds, true);
-                                                                                      })
-                                                                                      ->values();
-                                                                              @endphp
-                                                                              @if($groupInputOffices->isEmpty())
-                                                                                  @continue
-                                                                              @endif
-                                                                              @if($isPenroParent)
-                                                                                  <div class="office-line group-total-office-line">
-                                                                                      PENRO {{ $groupDisplayLabel }}
-                                                                                  </div>
-                                                                              @endif
-                                                                              @foreach($groupInputOffices as $office)
-                                                                                  @if($office['is_parent'] ?? false)
-                                                                                      <div class="office-line fw-bold">
-                                                                                          {{ $groupDisplayLabel }}
-                                                                                      </div>
-                                                                                  @else
-                                                                                      <div class="office-line">{{ $office['name'] ?? '' }}</div>
-                                                                                  @endif
-                                                                              @endforeach
-                                                                          @endforeach
-                                                                      </div>
-                                                                  @else
-                                                                      <div class="office-lines">
-                                                                          <div class="office-line car-office-line">CAR</div>
-                                                                          <div class="office-line">N/A</div>
-                                                                      </div>
-                                                                  @endif
-                                                              </td>
-                                                          @else
-                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium">
-                                                                  <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
-                                                              </td>
-                                                              <td></td>
-                                                              <td></td>
-                                                          @endif
-                                                      </tr>
-                                                @endforeach
-                                            @else
-                                                <tr class="data-row first-indicator-row"
-                                                    data-row-id="{{ $subProgram->id }}"
-                                                    data-indicator-id=""
-                                                    data-core-key="{{ $programCoreKey }}"
-                                                    data-sync-key="{{ $programCoreKey }}|no-indicator|"
-                                                    data-indicator-type=""
-                                                    data-office-ids=""
-                                                    data-office-names=""
-                                                    data-input-office-ids=""
-                                                    data-input-office-names=""
-                                                    data-input-break-indices=""
-                                                    data-input-group-penro-flags=""
-                                                    id="content-{{ $subProgram->id }}-0"
-                                                    style="display:none;">
-                                                    <td class="px-4 py-3 pl-5 text-primary fw-medium">
-                                                        <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
+                                            <tr class="data-row @if($loop->first) first-indicator-row @endif"
+                                                data-row-id="{{ $program->id }}" data-indicator-id="{{ $indicator->id }}"
+                                                data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
+                                                data-indicator-type="{{ $resolvedIndicatorType }}"
+                                                data-office-ids="{{ implode(',', $officeIds) }}"
+                                                data-office-names="{{ $selectedParentGroups->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
+                                                data-input-office-ids="{{ $inputOffices->pluck('id')->implode(',') }}"
+                                                data-input-office-names="{{ $inputOffices->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
+                                                data-input-break-indices="{{ implode(',', $groupBreakIndices) }}"
+                                                data-input-group-penro-flags="{{ $groupPenroFlags->implode(',') }}"
+                                                id="content-{{ $program->id }}-{{ $loop->index }}" style="display:none;">
+                                                @if($loop->first)
+                                                    <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $indicatorCount }}">
+                                                        {{ $program->activities }}<br>
+                                                        <span class="ms-4 small">{{ $program->subactivities }}</span>
                                                     </td>
-                                                    <td class="px-4 py-3">
-                                                        No performance indicator set
-                                                    </td>
-                                                    <td class="px-4 py-3 small text-center">
-                                                        <div class="office-lines">
-                                                            <div class="office-line car-office-line">CAR</div>
-                                                            <div class="office-line">N/A</div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            @endif
+                                                @endif
+                                                <td class="px-4 py-3">
+                                                    {{ $indicator->name ?? 'N/A' }}
+                                                </td>
+                                                <td class="px-4 py-3 small text-center">
+    @if($inputOffices->isNotEmpty())
+        <div class="office-lines">
+            <div class="office-line car-office-line">CAR</div>
+            @foreach($selectedParentGroups as $group)
+                @php
+                    $parentNameRaw = (string) ($group['name'] ?? '');
+                    $parentSubtotalLabel = preg_replace('/\b(PENRO|CENRO|TOTAL)\b/i', '', $parentNameRaw);
+                    $parentSubtotalLabel = trim(preg_replace('/\s+/', ' ', (string) $parentSubtotalLabel));
+                    $officeTypeId = (int) ($group['office_types_id'] ?? 0);
+                    $isPenroParent = $officeTypeId === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
+                    $groupDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
+                    $selectedChildIds = collect($group['children'] ?? [])
+                        ->pluck('id')
+                        ->map(fn($id) => (int) $id)
+                        ->all();
+                    $groupInputOffices = $inputOffices
+                        ->filter(function ($office) use ($group, $selectedChildIds) {
+                            if ((bool) ($office['is_parent'] ?? false)) {
+                                return (int) ($office['id'] ?? 0) === (int) ($group['id'] ?? 0);
+                            }
+
+                            return in_array((int) ($office['id'] ?? 0), $selectedChildIds, true);
+                        })
+                        ->values();
+                @endphp
+                @if($groupInputOffices->isEmpty())
+                    @continue
+                @endif
+                @if($isPenroParent)
+                    <div class="office-line group-total-office-line">
+                        PENRO {{ $groupDisplayLabel }}
+                    </div>
+                @endif
+                @foreach($groupInputOffices as $office)
+                    @if($office['is_parent'] ?? false)
+                        <div class="office-line fw-bold">
+                            {{ $groupDisplayLabel }}
+                        </div>
+                    @else
+                        <div class="office-line">{{ $office['name'] ?? '' }}</div>
+                    @endif
+                @endforeach
+            @endforeach
+        </div>
+    @else
+        <div class="office-lines">
+            <div class="office-line car-office-line">CAR</div>
+            <div class="office-line">N/A</div>
+        </div>
+    @endif
+</td>
+                                            </tr>
                                         @endforeach
+                                    @else
+                                        <tr class="data-row first-indicator-row" data-row-id="{{ $program->id }}"
+                                            data-core-key="{{ $programCoreKey }}"
+                                            data-sync-key="{{ $programCoreKey }}|no-indicator|" data-indicator-type=""
+                                            data-office-ids="" data-office-names="" data-input-office-ids=""
+                                            data-input-office-names="" data-input-break-indices=""
+                                            data-input-group-penro-flags="" id="content-{{ $program->id }}-0"
+                                            style="display:none;">
+                                            <td class="px-4 py-3 pl-5 text-primary fw-medium">
+                                                {{ $program->activities }}<br>
+                                                <span class="ms-4 small">{{ $program->subactivities }}</span>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                No performance indicator set
+                                            </td>
+                                            <td class="px-4 py-3 small">
+                                                N/A
+                                            </td>
+                                        </tr>
                                     @endif
                                 @endforeach
 
@@ -3297,11 +3245,7 @@
                     const form = document.getElementById(selectedDeleteFormId);
                     if (!form) return;
 
-                    if (typeof form.requestSubmit === 'function') {
-                        form.requestSubmit();
-                    } else {
-                        form.submit();
-                    }
+                    form.submit();
                 });
             });
 

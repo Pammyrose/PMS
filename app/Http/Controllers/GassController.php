@@ -29,7 +29,19 @@ class GassController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $programId = $program !== null ? (int) $program : null;
-        $programs = $this->getGassPrograms($programId, $search);
+        $programsRaw = $this->getGassPrograms($programId, $search);
+        // Group by normalized group key (program, project, activities, subactivities)
+        $programs = $programsRaw->sortBy(function($row) {
+            return strtolower(trim((string)($row->title ?? '')))
+                . '|' . strtolower(trim((string)($row->program ?? '')))
+                . '|' . strtolower(trim((string)($row->project ?? '')))
+                . '|' . strtolower(trim((string)($row->activities ?? '')));
+        })->values()->unique(function($row) {
+            return strtolower(trim((string)($row->title ?? '')))
+                . '|' . strtolower(trim((string)($row->program ?? '')))
+                . '|' . strtolower(trim((string)($row->project ?? '')))
+                . '|' . strtolower(trim((string)($row->activities ?? '')));
+        })->values();
         $programIds = $programs->pluck('id')->all();
         $indicatorTypeOptions = DB::table('indicator_types')
             ->select('id', 'name')
@@ -174,6 +186,7 @@ class GassController extends Controller
         return view('admin.gass.gass_physical', compact(
             'entries',
             'programs',
+            'programsRaw',
             'existing',
             'indicators',
             'indicatorsForJs',
@@ -1031,6 +1044,7 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         ->get()
         ->keyBy(fn ($row) => (int) $row->id);
 
+
     foreach ($programIndicatorRows as $programIndicatorRow) {
         $programId = (int) ($programIndicatorRow->id ?? 0);
         $indicatorId = (int) ($programIndicatorRow->indicator_id ?? 0);
@@ -1043,10 +1057,16 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
             continue;
         }
 
-        // Make row-compatible office ids available from ppa.office_id JSON.
-        $indicator->office_id = $this->parseJsonIdArray($programIndicatorRow->office_id ?? null);
+        // Clone the indicator to avoid mutating the original object in the collection
+        $indicatorClone = clone $indicator;
+        $indicatorClone->office_id = $this->parseJsonIdArray($programIndicatorRow->office_id ?? null);
 
-        $grouped->put($programId, collect([$indicator]));
+        // Append indicator to the program's collection
+        if (!$grouped->has($programId)) {
+            $grouped->put($programId, collect([$indicatorClone]));
+        } else {
+            $grouped[$programId]->push($indicatorClone);
+        }
     }
 
     return $grouped;
