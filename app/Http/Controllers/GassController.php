@@ -42,7 +42,7 @@ class GassController extends Controller
                 . '|' . strtolower(trim((string)($row->project ?? '')))
                 . '|' . strtolower(trim((string)($row->activities ?? '')));
         })->values();
-        $programIds = $programs->pluck('id')->all();
+        $programIds = $programsRaw->pluck('id')->all();
         $indicatorTypeOptions = DB::table('indicator_types')
             ->select('id', 'name')
             ->orderBy('id')
@@ -61,21 +61,45 @@ class GassController extends Controller
         // Fetch indicators grouped by program from section metadata.
         $indicators = $this->getIndicatorsGroupedByProgram($programIds);
 
+        $allIndicatorOfficeIds = $indicators
+            ->flatten(1)
+            ->flatMap(function ($indicator) {
+                return collect($indicator->office_id ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn ($id) => $id > 0);
+            })
+            ->unique()
+            ->values();
+
+        $officeNameById = $allIndicatorOfficeIds->isEmpty()
+            ? collect()
+            : Office::query()
+                ->whereIn('id', $allIndicatorOfficeIds->all())
+                ->get(['id', 'name'])
+                ->mapWithKeys(fn ($office) => [(int) $office->id => (string) $office->name]);
+
         // Prepare indicators data for JavaScript (flat structure by program_id)
         $indicatorsForJs = [];
         foreach ($indicators as $programId => $programIndicators) {
-            $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) use ($programId) {
+            $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) use ($programId, $officeNameById, $indicatorTypeMap) {
                 $officeIds = collect($indicator->office_id ?? [])
                     ->map(fn ($id) => (int) $id)
                     ->filter()
                     ->values();
 
-                $officeList = Office::whereIn('id', $officeIds->all())
-                    ->get(['id', 'name'])
-                    ->map(fn ($office) => [
-                        'id' => $office->id,
-                        'name' => $office->name,
-                    ])
+                $officeList = $officeIds
+                    ->map(function ($officeId) use ($officeNameById) {
+                        $name = (string) ($officeNameById->get((int) $officeId) ?? '');
+                        if ($name === '') {
+                            return null;
+                        }
+
+                        return [
+                            'id' => (int) $officeId,
+                            'name' => $name,
+                        ];
+                    })
+                    ->filter()
                     ->values()
                     ->all();
 
@@ -483,19 +507,31 @@ class GassController extends Controller
     {
         DB::beginTransaction();
         try {
-            $programRow = $this->findGassProgram((int) $program);
+               $groupIds = collect(request()->input('group_ids', []))
+                   ->map(fn ($id) => (int) $id)
+                   ->filter(fn ($id) => $id > 0)
+                   ->unique()
+                   ->values()
+                   ->all();
 
-            if (!$programRow) {
-                abort(404);
-            }
+               if (empty($groupIds)) {
+                   $groupIds = [(int) $program];
+               }
 
-            $detailIds = $this->collectPpaDetailTreeIds((int) $programRow->ppa_details_id);
+               foreach ($groupIds as $programId) {
+                   $programRow = $this->findGassProgram($programId);
+                   if (!$programRow) {
+                       continue;
+                   }
 
-            $this->deleteProgramSectionRows($programRow->id, Gass_Target::query()->get());
-            $this->deleteProgramSectionRows($programRow->id, Gass_Accomplishment::query()->get());
+                   $detailIds = $this->collectPpaDetailTreeIds((int) $programRow->ppa_details_id);
 
-            DB::table('ppa')->whereIn('ppa_details_id', $detailIds)->delete();
-            DB::table('ppa_details')->whereIn('id', array_reverse($detailIds))->delete();
+                   $this->deleteProgramSectionRows($programRow->id, Gass_Target::query()->get());
+                   $this->deleteProgramSectionRows($programRow->id, Gass_Accomplishment::query()->get());
+
+                   DB::table('ppa')->whereIn('ppa_details_id', $detailIds)->delete();
+                   DB::table('ppa_details')->whereIn('id', array_reverse($detailIds))->delete();
+               }
 
             DB::commit();
             return redirect()->back()->with('success', 'PAP deleted successfully.');
@@ -726,25 +762,78 @@ public function storeTargets(Request $request)
         'entries.*.group_totals' => 'nullable|array',
     ]);
 
+    $entries = $validated['entries'] ?? [];
+
+    $years = collect($entries)
+        ->map(fn ($entry) => (int) ($entry['years'] ?? $entry['year']))
+        ->unique()
+        ->values();
+
+    $officeIds = collect($entries)
+        ->map(function ($entry) {
+            if (!array_key_exists('office_id', $entry) || $entry['office_id'] === null || $entry['office_id'] === '') {
+                return null;
+            }
+
+            return (int) $entry['office_id'];
+        })
+        ->values();
+
+    $hasNullOffice = $officeIds->contains(fn ($officeId) => $officeId === null);
+    $nonNullOfficeIds = $officeIds
+        ->filter(fn ($officeId) => $officeId !== null)
+        ->unique()
+        ->values();
+
+    // Preload possible existing rows once, then match in-memory by year+office+program+indicator.
+    $existingRows = Gass_Target::query()
+        ->whereIn('years', $years->all())
+        ->where(function ($query) use ($nonNullOfficeIds, $hasNullOffice) {
+            if ($nonNullOfficeIds->isNotEmpty()) {
+                $query->whereIn('office_ids', $nonNullOfficeIds->all());
+            }
+
+            if ($hasNullOffice) {
+                if ($nonNullOfficeIds->isNotEmpty()) {
+                    $query->orWhereNull('office_ids');
+                } else {
+                    $query->whereNull('office_ids');
+                }
+            }
+        })
+        ->get();
+
+    $existingByKey = [];
+    foreach ($existingRows as $candidate) {
+        $meta = $this->parseSectionValues($candidate->values ?? null);
+        $programId = (int) ($meta['program_id'] ?? 0);
+        $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+        if ($programId <= 0 || $indicatorId <= 0) {
+            continue;
+        }
+
+        $officeKey = $candidate->office_ids === null ? 'null' : (string) ((int) $candidate->office_ids);
+        $lookupKey = ((int) $candidate->years) . '|' . $officeKey . '|' . $programId . '|' . $indicatorId;
+        $existingByKey[$lookupKey] = $candidate;
+    }
+
     $userId = Auth::id();
     $createdCount = 0;
     $updatedCount = 0;
 
-    foreach ($validated['entries'] as $entry) {
+    foreach ($entries as $entry) {
         $entryYear = (int) ($entry['years'] ?? $entry['year']);
-        $officeId = isset($entry['office_id']) ? (int) $entry['office_id'] : null;
+        $officeId = (array_key_exists('office_id', $entry) && $entry['office_id'] !== null && $entry['office_id'] !== '')
+            ? (int) $entry['office_id']
+            : null;
         $programId = (int) $entry['program_id'];
         $indicatorId = (int) $entry['indicator_id'];
 
-        $record = Gass_Target::query()
-            ->where('years', $entryYear)
-            ->where('office_ids', $officeId)
-            ->get()
-            ->first(function ($candidate) use ($programId, $indicatorId) {
-                $meta = $this->parseSectionValues($candidate->values ?? null);
-                return (int) ($meta['program_id'] ?? 0) === $programId
-                    && (int) ($meta['indicator_id'] ?? 0) === $indicatorId;
-            }) ?? new Gass_Target();
+        $officeKey = $officeId === null ? 'null' : (string) $officeId;
+        $lookupKey = $entryYear . '|' . $officeKey . '|' . $programId . '|' . $indicatorId;
+
+        $record = $existingByKey[$lookupKey] ?? new Gass_Target();
 
         $wasExisting = $record->exists;
 
@@ -776,6 +865,10 @@ public function storeTargets(Request $request)
         ]);
 
         $record->save();
+
+        if (!$wasExisting) {
+            $existingByKey[$lookupKey] = $record;
+        }
 
         if ($wasExisting) {
             $updatedCount++;
@@ -827,25 +920,78 @@ public function storeAccomplishments(Request $request)
         'entries.*.remarks' => 'nullable|string',
     ]);
 
+    $entries = $validated['entries'] ?? [];
+
+    $years = collect($entries)
+        ->map(fn ($entry) => (int) ($entry['years'] ?? $entry['year']))
+        ->unique()
+        ->values();
+
+    $officeIds = collect($entries)
+        ->map(function ($entry) {
+            if (!array_key_exists('office_id', $entry) || $entry['office_id'] === null || $entry['office_id'] === '') {
+                return null;
+            }
+
+            return (int) $entry['office_id'];
+        })
+        ->values();
+
+    $hasNullOffice = $officeIds->contains(fn ($officeId) => $officeId === null);
+    $nonNullOfficeIds = $officeIds
+        ->filter(fn ($officeId) => $officeId !== null)
+        ->unique()
+        ->values();
+
+    // Preload possible existing rows once, then match in-memory by year+office+program+indicator.
+    $existingRows = Gass_Accomplishment::query()
+        ->whereIn('years', $years->all())
+        ->where(function ($query) use ($nonNullOfficeIds, $hasNullOffice) {
+            if ($nonNullOfficeIds->isNotEmpty()) {
+                $query->whereIn('office_ids', $nonNullOfficeIds->all());
+            }
+
+            if ($hasNullOffice) {
+                if ($nonNullOfficeIds->isNotEmpty()) {
+                    $query->orWhereNull('office_ids');
+                } else {
+                    $query->whereNull('office_ids');
+                }
+            }
+        })
+        ->get();
+
+    $existingByKey = [];
+    foreach ($existingRows as $candidate) {
+        $meta = $this->parseSectionValues($candidate->values ?? null);
+        $programId = (int) ($meta['program_id'] ?? 0);
+        $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+        if ($programId <= 0 || $indicatorId <= 0) {
+            continue;
+        }
+
+        $officeKey = $candidate->office_ids === null ? 'null' : (string) ((int) $candidate->office_ids);
+        $lookupKey = ((int) $candidate->years) . '|' . $officeKey . '|' . $programId . '|' . $indicatorId;
+        $existingByKey[$lookupKey] = $candidate;
+    }
+
     $userId = Auth::id();
     $createdCount = 0;
     $updatedCount = 0;
 
-    foreach ($validated['entries'] as $entry) {
+    foreach ($entries as $entry) {
         $entryYear = (int) ($entry['years'] ?? $entry['year']);
-        $officeId = isset($entry['office_id']) ? (int) $entry['office_id'] : null;
+        $officeId = (array_key_exists('office_id', $entry) && $entry['office_id'] !== null && $entry['office_id'] !== '')
+            ? (int) $entry['office_id']
+            : null;
         $programId = (int) $entry['program_id'];
         $indicatorId = (int) $entry['indicator_id'];
 
-        $record = Gass_Accomplishment::query()
-            ->where('years', $entryYear)
-            ->where('office_ids', $officeId)
-            ->get()
-            ->first(function ($candidate) use ($programId, $indicatorId) {
-                $meta = $this->parseSectionValues($candidate->values ?? null);
-                return (int) ($meta['program_id'] ?? 0) === $programId
-                    && (int) ($meta['indicator_id'] ?? 0) === $indicatorId;
-            }) ?? new Gass_Accomplishment();
+        $officeKey = $officeId === null ? 'null' : (string) $officeId;
+        $lookupKey = $entryYear . '|' . $officeKey . '|' . $programId . '|' . $indicatorId;
+
+        $record = $existingByKey[$lookupKey] ?? new Gass_Accomplishment();
 
         $wasExisting = $record->exists;
 
@@ -881,6 +1027,10 @@ public function storeAccomplishments(Request $request)
         ]);
 
         $record->save();
+
+        if (!$wasExisting) {
+            $existingByKey[$lookupKey] = $record;
+        }
 
         if ($wasExisting) {
             $updatedCount++;

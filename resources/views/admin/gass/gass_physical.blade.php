@@ -491,14 +491,140 @@
                                         ->all();
                                 @endphp
                                 @php
-                                    $lastGroupKey = null;
+                                    $normalizeGroupValue = function ($value) {
+                                        $normalized = strtolower(trim((string) ($value ?? '')));
+                                        return preg_replace('/\s+/', ' ', $normalized);
+                                    };
+
+                                    $groupedPrograms = collect($programsRaw ?? $programs)
+                                        ->groupBy(function ($row) use ($normalizeGroupValue) {
+                                            return $normalizeGroupValue($row->title ?? '') . '|'
+                                                . $normalizeGroupValue($row->program ?? '') . '|'
+                                                . $normalizeGroupValue($row->project ?? '');
+                                        })
+                                        ->values();
+
+                                    $buildOfficeMeta = function (array $officeIds) use ($offices) {
+                                        $selectedParentGroups = collect($offices ?? [])
+                                            ->map(function ($parent) use ($officeIds) {
+                                                $parentId = (int) ($parent->id ?? 0);
+                                                $parentSelected = in_array($parentId, $officeIds, true);
+                                                $children = collect($parent->children ?? []);
+                                                $selectedChildren = $children
+                                                    ->filter(fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true))
+                                                    ->values();
+
+                                                if (!$parentSelected && $selectedChildren->isEmpty()) {
+                                                    return null;
+                                                }
+
+                                                return [
+                                                    'id' => $parentId,
+                                                    'name' => (string) ($parent->name ?? ''),
+                                                    'office_types_id' => (int) ($parent->office_types_id ?? 0),
+                                                    'selected_parent' => $parentSelected,
+                                                    'children' => $selectedChildren
+                                                        ->map(fn($child) => [
+                                                            'id' => (int) ($child->id ?? 0),
+                                                            'name' => (string) ($child->name ?? ''),
+                                                            'office_types_id' => (int) ($child->office_types_id ?? 0),
+                                                        ])
+                                                        ->filter(fn($child) => $child['id'] > 0)
+                                                        ->values()
+                                                        ->all(),
+                                                ];
+                                            })
+                                            ->filter()
+                                            ->values()
+                                            ->all();
+
+                                        $inputOffices = collect($selectedParentGroups)
+                                            ->flatMap(function ($group) {
+                                                $selectedParent = (bool) ($group['selected_parent'] ?? false);
+                                                $children = collect($group['children'] ?? [])->map(fn($child) => [
+                                                    'id' => (int) ($child['id'] ?? 0),
+                                                    'name' => (string) ($child['name'] ?? ''),
+                                                    'is_parent' => false,
+                                                ]);
+                                                $parentCollection = $selectedParent ? collect([[
+                                                    'id' => (int) ($group['id'] ?? 0),
+                                                    'name' => (string) ($group['name'] ?? ''),
+                                                    'is_parent' => true,
+                                                ]]) : collect();
+
+                                                return $parentCollection->merge($children);
+                                            })
+                                            ->filter(fn($office) => !empty($office['id']))
+                                            ->unique('id')
+                                            ->values()
+                                            ->all();
+
+                                        $groupSizes = collect($selectedParentGroups)
+                                            ->map(function ($group) {
+                                                $selectedParent = (bool) ($group['selected_parent'] ?? false);
+                                                $childrenCount = collect($group['children'] ?? [])->count();
+                                                return ($selectedParent ? 1 : 0) + $childrenCount;
+                                            })
+                                            ->values();
+
+                                        $groupPenroFlags = collect($selectedParentGroups)
+                                            ->map(function ($group) {
+                                                $officeTypeId = (int) ($group['office_types_id'] ?? 0);
+                                                if ($officeTypeId === 2) {
+                                                    return 1;
+                                                }
+
+                                                $groupName = (string) ($group['name'] ?? '');
+                                                return preg_match('/\bPENRO\b/i', $groupName) === 1 ? 1 : 0;
+                                            })
+                                            ->values()
+                                            ->all();
+
+                                        $groupBreakIndices = [];
+                                        $runningTotal = 0;
+                                        foreach ($groupSizes as $index => $size) {
+                                            $runningTotal += (int) $size;
+                                            if ($index < ($groupSizes->count() - 1)) {
+                                                $groupBreakIndices[] = $runningTotal - 1;
+                                            }
+                                        }
+
+                                        return [
+                                            'selected_parent_groups' => $selectedParentGroups,
+                                            'input_offices' => $inputOffices,
+                                            'office_names_csv' => collect($selectedParentGroups)
+                                                ->pluck('name')
+                                                ->map(fn($name) => str_replace('|', '/', (string) $name))
+                                                ->implode('|'),
+                                            'input_office_ids_csv' => collect($inputOffices)->pluck('id')->implode(','),
+                                            'input_office_names_csv' => collect($inputOffices)
+                                                ->pluck('name')
+                                                ->map(fn($name) => str_replace('|', '/', (string) $name))
+                                                ->implode('|'),
+                                            'group_break_indices_csv' => implode(',', $groupBreakIndices),
+                                            'group_penro_flags_csv' => implode(',', $groupPenroFlags),
+                                        ];
+                                    };
+
+                                    $indicatorOfficeMeta = [];
+                                    collect($indicators ?? [])->flatten(1)->each(function ($indicator) use (&$indicatorOfficeMeta, $buildOfficeMeta) {
+                                        $officeIds = collect($indicator->office_id ?? [])
+                                            ->map(fn($id) => (int) $id)
+                                            ->filter(fn($id) => $id > 0)
+                                            ->values()
+                                            ->all();
+
+                                        $signature = implode(',', $officeIds);
+                                        if (!array_key_exists($signature, $indicatorOfficeMeta)) {
+                                            $indicatorOfficeMeta[$signature] = $buildOfficeMeta($officeIds);
+                                        }
+                                    });
                                 @endphp
-                                @foreach($programs as $program)
+                                @foreach($groupedPrograms as $groupPrograms)
                                     @php
-                                        $programCoreKey = strtolower(trim((string) ($program->title ?? ''))) . '|' . strtolower(trim((string) ($program->program ?? ''))) . '|' . strtolower(trim((string) ($program->project ?? '')));
-                                        $groupKey = $programCoreKey . '|' . strtolower(trim((string) ($program->activities ?? '')));
+                                        $program = $groupPrograms->first();
+                                        $programCoreKey = $normalizeGroupValue($program->title ?? '') . '|' . $normalizeGroupValue($program->program ?? '') . '|' . $normalizeGroupValue($program->project ?? '');
                                     @endphp
-                                    @if($groupKey !== $lastGroupKey)
                                         <tr class="program-header group" data-program-id="{{ $program->id }}"
                                             data-core-key="{{ $programCoreKey }}"
                                             onclick='toggleRowsByCoreKey(@json($programCoreKey))'>
@@ -519,36 +645,6 @@
                                                     </span>
                                                     <span class="flex items-center">
                                                         @php
-                                                            $typeShort = '';
-                                                            $typeTitle = '';
-                                                            // Use the first indicator's type for the icon
-                                                            $firstIndicatorForType = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0 ? $indicators[$program->id][0] : null;
-                                                            $typeLower = '';
-                                                            if ($firstIndicatorForType) {
-                                                                $typeLower = strtolower(trim((string)($firstIndicatorForType->indicator_type ?? '')));
-                                                                if ($typeLower === '' && isset($indicatorTypeNameById) && isset($firstIndicatorForType->indicator_type_id)) {
-                                                                    $typeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($firstIndicatorForType->indicator_type_id)] ?? '')));
-                                                                }
-                                                            }
-                                                            if ($typeLower === 'cumulative') {
-                                                                $typeShort = 'C';
-                                                                $typeTitle = 'Cumulative';
-                                                            } elseif ($typeLower === 'non-cumulative') {
-                                                                $typeShort = 'NC';
-                                                                $typeTitle = 'Non-cumulative';
-                                                            } elseif ($typeLower === 'semi-cumulative') {
-                                                                $typeShort = 'SC';
-                                                                $typeTitle = 'Semi-cumulative';
-                                                            }
-                                                        @endphp
-                                                        @if($typeShort)
-                                                            <span class="me-1" title="{{ $typeTitle }}">
-                                                                <span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#6c757d;color:#fff;text-align:center;line-height:22px;font-size:13px;font-weight:bold;vertical-align:middle;">
-                                                                    {{ $typeShort }}
-                                                                </span>
-                                                            </span>
-                                                        @endif
-                                                        @php
                                                             $hasIndicatorDataForIcon = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
                                                         @endphp
                                                         @if($hasIndicatorDataForIcon)
@@ -562,6 +658,9 @@
                                                             id="deleteProgramForm-{{ $program->id }}">
                                                             @csrf
                                                             @method('DELETE')
+                                                               @foreach($groupPrograms as $gp)
+                                                                   <input type="hidden" name="group_ids[]" value="{{ $gp->id }}">
+                                                               @endforeach
                                                             <button type="button"
                                                                 class="btn btn-sm text-danger py-0 px-1 border-0 bg-transparent"
                                                                 title="Delete PAP" data-bs-toggle="modal"
@@ -577,60 +676,44 @@
                                                 </div>
                                             </td>
                                         </tr>
-                                        @php $lastGroupKey = $groupKey; @endphp
                                         @php
-                                            // Find all sub-sub-activities for this group
-                                            $groupPrograms = collect($programsRaw)->filter(function($row) use ($program) {
-                                                return strtolower(trim((string)($row->title ?? ''))) === strtolower(trim((string)($program->title ?? '')))
-                                                    && strtolower(trim((string)($row->program ?? ''))) === strtolower(trim((string)($program->program ?? '')))
-                                                    && strtolower(trim((string)($row->project ?? ''))) === strtolower(trim((string)($program->project ?? '')))
-                                                    && strtolower(trim((string)($row->activities ?? ''))) === strtolower(trim((string)($program->activities ?? '')));
-                                            });
+                                            $subActivityGroups = $groupPrograms->groupBy(function($row) {
+                                                return strtolower(trim((string)($row->activities ?? '')));
+                                            })->values();
                                         @endphp
-                                        @php
-                                            // Find the first indicator and office/unit for fallback
-                                            $firstIndicator = null;
-                                            $firstIndicatorOffices = null;
-                                            foreach ($groupPrograms as $gp) {
-                                                if (isset($indicators[$gp->id]) && $indicators[$gp->id]->count() > 0) {
-                                                    $firstIndicator = $indicators[$gp->id]->first();
-                                                    // Prepare office/unit for fallback
-                                                    $officeIds = collect($firstIndicator->office_id ?? [])->map(fn($id) => (int) $id)->filter()->values()->all();
-                                                    $firstIndicatorOffices = collect($offices ?? [])->map(function ($parent) use ($officeIds) {
-                                                        $parentId = (int) ($parent->id ?? 0);
-                                                        $parentSelected = in_array($parentId, $officeIds, true);
-                                                        $children = collect($parent->children ?? []);
-                                                        $selectedChildren = $children->filter(
-                                                            fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true)
-                                                        )->values();
-                                                        if (!$parentSelected && $selectedChildren->isEmpty()) {
-                                                            return null;
-                                                        }
-                                                        $childrenForDisplay = $selectedChildren;
-                                                        return [
-                                                            'id' => $parentId,
-                                                            'name' => (string) ($parent->name ?? ''),
-                                                            'office_types_id' => (int) ($parent->office_types_id ?? 0),
-                                                            'selected_parent' => $parentSelected,
-                                                            'children' => $childrenForDisplay->map(fn($child) => [
-                                                                'id' => (int) ($child->id ?? 0),
-                                                                'name' => (string) ($child->name ?? ''),
-                                                                'office_types_id' => (int) ($child->office_types_id ?? 0),
-                                                            ])->filter(fn($child) => $child['id'] > 0)->values(),
-                                                        ];
-                                                    })->filter()->values();
-                                                    break;
-                                                }
-                                            }
-                                        @endphp
-                                        @foreach($groupPrograms as $subProgram)
+                                        @foreach($subActivityGroups as $subActivityGroup)
                                             @php
-                                                $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
+                                                $subActivityName = (string)($subActivityGroup->first()->activities ?? '');
+                                                $hasSubSubActivities = $subActivityGroup->contains(fn($r) => filled($r->subactivities));
+                                                $showAsGroup = $subActivityName && ($subActivityGroup->count() > 1 || $hasSubSubActivities);
                                             @endphp
-                                            @if($hasIndicatorData)
+                                            @if($showAsGroup)
+                                                <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
+                                                    <td colspan="3" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
+                                                        <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $subActivityName }}
+                                                    </td>
+                                                </tr>
+                                            @endif
+                                            @php
+                                                $subSubActivityGroups = $subActivityGroup->groupBy(function($row) {
+                                                    return strtolower(trim((string)($row->subactivities ?? '')));
+                                                })->values();
+                                            @endphp
+                                            @foreach($subSubActivityGroups as $subSubActivityGroup)
                                                 @php
-                                                    $indicatorCount = $indicators[$subProgram->id]->count();
+                                                    $totalIndicatorCount = $subSubActivityGroup->sum(function($sp) use ($indicators) {
+                                                        return isset($indicators[$sp->id]) && $indicators[$sp->id]->count() > 0
+                                                            ? $indicators[$sp->id]->count() : 1;
+                                                    });
+                                                    $firstSubProgram = $subSubActivityGroup->first();
+                                                    $showActivityInCell = !$showAsGroup;
+                                                    $isPapCellRendered = false;
                                                 @endphp
+                                            @foreach($subSubActivityGroup as $subProgram)
+                                                @php
+                                                    $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
+                                                @endphp
+                                                @if($hasIndicatorData)
                                                 @foreach($indicators[$subProgram->id] as $indicator)
                                                   
                                                       @php
@@ -646,98 +729,62 @@
                                                               ->filter()
                                                               ->values()
                                                               ->all();
-                                                          $selectedParentGroups = collect($offices ?? [])
-                                                              ->map(function ($parent) use ($officeIds) {
-                                                                  $parentId = (int) ($parent->id ?? 0);
-                                                                  $parentSelected = in_array($parentId, $officeIds, true);
-                                                                  $children = collect($parent->children ?? []);
-                                                                  $selectedChildren = $children->filter(
-                                                                      fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true)
-                                                                  )->values();
-                                                                  if (!$parentSelected && $selectedChildren->isEmpty()) {
-                                                                      return null;
-                                                                  }
-                                                                  $childrenForDisplay = $selectedChildren;
-                                                                  return [
-                                                                      'id' => $parentId,
-                                                                      'name' => (string) ($parent->name ?? ''),
-                                                                      'office_types_id' => (int) ($parent->office_types_id ?? 0),
-                                                                      'selected_parent' => $parentSelected,
-                                                                      'children' => $childrenForDisplay->map(fn($child) => [
-                                                                          'id' => (int) ($child->id ?? 0),
-                                                                          'name' => (string) ($child->name ?? ''),
-                                                                          'office_types_id' => (int) ($child->office_types_id ?? 0),
-                                                                      ])->filter(fn($child) => $child['id'] > 0)->values(),
-                                                                  ];
-                                                              })
-                                                              ->filter()
-                                                              ->values();
-                                                          $inputOffices = $selectedParentGroups
-                                                              ->flatMap(function ($group) {
-                                                                  $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                                  $children = collect($group['children'] ?? [])->map(fn($child) => [
-                                                                      'id' => (int) ($child['id'] ?? 0),
-                                                                      'name' => (string) ($child['name'] ?? ''),
-                                                                      'is_parent' => false,
-                                                                  ]);
-                                                                  $parentCollection = $selectedParent ? collect([
-                                                                      [
-                                                                          'id' => (int) ($group['id'] ?? 0),
-                                                                          'name' => (string) ($group['name'] ?? ''),
-                                                                          'is_parent' => true,
-                                                                      ]
-                                                                  ]) : collect();
-                                                                  return $parentCollection->merge($children);
-                                                              })
-                                                              ->filter(fn($office) => !empty($office['id']))
-                                                              ->unique('id')
-                                                              ->values();
-                                                          $groupSizes = $selectedParentGroups
-                                                              ->map(function ($group) {
-                                                                  $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                                  $childrenCount = collect($group['children'] ?? [])->count();
-                                                                  return ($selectedParent ? 1 : 0) + $childrenCount;
-                                                              })
-                                                              ->values();
-                                                          $groupPenroFlags = $selectedParentGroups
-                                                              ->map(function ($group) {
-                                                                  $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                                  if ($officeTypeId === 2) {
-                                                                      return 1;
-                                                                  }
-                                                                  $groupName = (string) ($group['name'] ?? '');
-                                                                  return preg_match('/\bPENRO\b/i', $groupName) === 1 ? 1 : 0;
-                                                              })
-                                                              ->values();
-                                                          $groupBreakIndices = [];
-                                                          $runningTotal = 0;
-                                                          foreach ($groupSizes as $index => $size) {
-                                                              $runningTotal += (int) $size;
-                                                              if ($index < ($groupSizes->count() - 1)) {
-                                                                  $groupBreakIndices[] = $runningTotal - 1;
-                                                              }
-                                                          }
+                                                          $officeSignature = implode(',', $officeIds);
+                                                          $officeMeta = $indicatorOfficeMeta[$officeSignature] ?? [
+                                                              'selected_parent_groups' => [],
+                                                              'input_offices' => [],
+                                                              'office_names_csv' => '',
+                                                              'input_office_ids_csv' => '',
+                                                              'input_office_names_csv' => '',
+                                                              'group_break_indices_csv' => '',
+                                                              'group_penro_flags_csv' => '',
+                                                          ];
+                                                          $selectedParentGroups = collect($officeMeta['selected_parent_groups'] ?? []);
+                                                          $inputOffices = collect($officeMeta['input_offices'] ?? []);
                                                       @endphp
-                                                      <tr class="data-row @if($loop->first) first-indicator-row @endif"
+                                                      <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
                                                           data-row-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
                                                           data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
                                                           data-indicator-type="{{ $resolvedIndicatorType }}"
                                                           data-office-ids="{{ implode(',', $officeIds) }}"
-                                                          data-office-names="{{ $selectedParentGroups->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
-                                                          data-input-office-ids="{{ $inputOffices->pluck('id')->implode(',') }}"
-                                                          data-input-office-names="{{ $inputOffices->pluck('name')->map(fn($name) => str_replace('|', '/', $name))->implode('|') }}"
-                                                          data-input-break-indices="{{ implode(',', $groupBreakIndices) }}"
-                                                          data-input-group-penro-flags="{{ $groupPenroFlags->implode(',') }}"
+                                                          data-office-names="{{ $officeMeta['office_names_csv'] ?? '' }}"
+                                                          data-input-office-ids="{{ $officeMeta['input_office_ids_csv'] ?? '' }}"
+                                                          data-input-office-names="{{ $officeMeta['input_office_names_csv'] ?? '' }}"
+                                                          data-input-break-indices="{{ $officeMeta['group_break_indices_csv'] ?? '' }}"
+                                                          data-input-group-penro-flags="{{ $officeMeta['group_penro_flags_csv'] ?? '' }}"
                                                           id="content-{{ $subProgram->id }}-{{ $loop->index }}" style="display:none;">
-                                                          @if($loop->first)
-                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $indicatorCount }}">
-                                                                  {{ $subProgram->activities }}<br>
-                                                                  <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
+                                                          @if(!$isPapCellRendered)
+                                                              @php $isPapCellRendered = true; @endphp
+                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
+                                                                  @if($showActivityInCell)
+                                                                      <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
+                                                                  @endif
+                                                                  @if(filled($firstSubProgram->subactivities))
+                                                                      <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
+                                                                  @endif
                                                               </td>
-                                                              <td class="px-4 py-3" rowspan="{{ $indicatorCount }}">
-                                                                  {{ $indicator->name ?? 'N/A' }}
+                                                          @endif
+                                                              <td class="px-4 py-3">
+                                                                  @php
+                                                                      $indTypeLower = strtolower(trim((string)($indicator->indicator_type ?? '')));
+                                                                      if ($indTypeLower === '' && isset($indicatorTypeNameById)) {
+                                                                          $indTypeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($indicator->indicator_type_id ?? 0)] ?? '')));
+                                                                      }
+                                                                      $indTypeShort = '';
+                                                                      $indTypeTitle = '';
+                                                                      $indTypeBg = '#6c757d';
+                                                                      if ($indTypeLower === 'cumulative') { $indTypeShort = 'C'; $indTypeTitle = 'Cumulative'; $indTypeBg = '#2563eb'; }
+                                                                      elseif ($indTypeLower === 'non-cumulative') { $indTypeShort = 'NC'; $indTypeTitle = 'Non-cumulative'; $indTypeBg = '#dc2626'; }
+                                                                      elseif ($indTypeLower === 'semi-cumulative') { $indTypeShort = 'SC'; $indTypeTitle = 'Semi-cumulative'; $indTypeBg = '#d97706'; }
+                                                                  @endphp
+                                                                  <div class="d-flex flex-column gap-1">
+                                                                      <span>{{ $indicator->name ?? 'N/A' }}</span>
+                                                                      @if($indTypeShort)
+                                                                          <span title="{{ $indTypeTitle }}" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:{{ $indTypeBg }};color:#fff;font-size:10px;font-weight:700;">{{ $indTypeShort }}</span>
+                                                                      @endif
+                                                                  </div>
                                                               </td>
-                                                              <td class="px-4 py-3 small text-center" rowspan="{{ $indicatorCount }}">
+                                                              <td class="px-4 py-3 small text-center">
                                                                   @if($inputOffices->isNotEmpty())
                                                                       <div class="office-lines">
                                                                           <div class="office-line car-office-line">CAR</div>
@@ -788,13 +835,6 @@
                                                                       </div>
                                                                   @endif
                                                               </td>
-                                                          @else
-                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium">
-                                                                  <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
-                                                              </td>
-                                                              <td></td>
-                                                              <td></td>
-                                                          @endif
                                                       </tr>
                                                 @endforeach
                                             @else
@@ -812,9 +852,17 @@
                                                     data-input-group-penro-flags=""
                                                     id="content-{{ $subProgram->id }}-0"
                                                     style="display:none;">
-                                                    <td class="px-4 py-3 pl-5 text-primary fw-medium">
-                                                        <span class="ms-4 small">{{ $subProgram->subactivities }}</span>
-                                                    </td>
+                                                    @if(!$isPapCellRendered)
+                                                        @php $isPapCellRendered = true; @endphp
+                                                        <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
+                                                            @if($showActivityInCell)
+                                                                <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
+                                                            @endif
+                                                            @if(filled($firstSubProgram->subactivities))
+                                                                <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
+                                                            @endif
+                                                        </td>
+                                                    @endif
                                                     <td class="px-4 py-3">
                                                         No performance indicator set
                                                     </td>
@@ -825,9 +873,10 @@
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            @endif
+                                                @endif
+                                            @endforeach
+                                            @endforeach
                                         @endforeach
-                                    @endif
                                 @endforeach
 
                                 <!-- Add more rows here as needed -->
@@ -1989,6 +2038,100 @@
                 .filter(Boolean);
         }
 
+        function getStoredEntryByOffice(sourceByIndicator, indicatorId, officeId) {
+            const indicatorKey = String(indicatorId || '').trim();
+            const officeKey = String(officeId || '').trim();
+            if (!indicatorKey || !officeKey) return null;
+
+            return sourceByIndicator?.[indicatorKey]?.[officeKey] || null;
+        }
+
+        function hasAnyNonZeroPeriod(entry) {
+            return PERIOD_KEYS.some(key => {
+                const value = Number(entry?.[key] ?? 0);
+                return Number.isFinite(value) && value !== 0;
+            });
+        }
+
+        function hasPeriodDifferences(entry, storedEntry) {
+            if (!storedEntry) {
+                return hasAnyNonZeroPeriod(entry);
+            }
+
+            return PERIOD_KEYS.some(key => {
+                const left = Number(entry?.[key] ?? 0);
+                const right = Number(storedEntry?.[key] ?? 0);
+                const safeLeft = Number.isFinite(left) ? left : 0;
+                const safeRight = Number.isFinite(right) ? right : 0;
+                return safeLeft !== safeRight;
+            });
+        }
+
+        function hasEntryChanged(sectionType, entry) {
+            const indicatorId = String(entry?.indicator_id || '').trim();
+            const officeId = String(entry?.office_id || '').trim();
+            if (!indicatorId || !officeId) return false;
+
+            const sourceByIndicator = sectionType === 'target'
+                ? existingTargetsByIndicator
+                : existingAccompByIndicator;
+            const storedEntry = getStoredEntryByOffice(sourceByIndicator, indicatorId, officeId);
+
+            const periodChanged = hasPeriodDifferences(entry, storedEntry);
+            if (sectionType === 'target') {
+                return periodChanged;
+            }
+
+            const incomingRemarks = String(entry?.remarks || '').trim();
+            const storedRemarks = String(storedEntry?.remarks || '').trim();
+            const remarksChanged = storedEntry
+                ? incomingRemarks !== storedRemarks
+                : incomingRemarks !== '';
+
+            return periodChanged || remarksChanged;
+        }
+
+        function applySavedEntriesToExisting(sectionType, savedEntries = []) {
+            if (!Array.isArray(savedEntries) || savedEntries.length === 0) return;
+
+            const sourceByIndicator = sectionType === 'target'
+                ? existingTargetsByIndicator
+                : existingAccompByIndicator;
+
+            savedEntries.forEach(entry => {
+                const indicatorKey = String(entry?.indicator_id || '').trim();
+                const officeKey = String(entry?.office_id || '').trim();
+                if (!indicatorKey || !officeKey) return;
+
+                if (!sourceByIndicator[indicatorKey]) {
+                    sourceByIndicator[indicatorKey] = {};
+                }
+
+                const normalized = {};
+                PERIOD_KEYS.forEach(key => {
+                    const value = Number(entry?.[key] ?? 0);
+                    normalized[key] = Number.isFinite(value) ? value : 0;
+                });
+
+                if (sectionType === 'accomp') {
+                    normalized.remarks = String(entry?.remarks || '').trim();
+                }
+
+                sourceByIndicator[indicatorKey][officeKey] = {
+                    ...(sourceByIndicator[indicatorKey][officeKey] || {}),
+                    ...normalized,
+                };
+            });
+        }
+
+        function collectChangedTargetEntries() {
+            return collectSectionEntries('target').filter(entry => hasEntryChanged('target', entry));
+        }
+
+        function collectChangedAccomplishmentEntries() {
+            return collectAccomplishmentEntries().filter(entry => hasEntryChanged('accomp', entry));
+        }
+
         function getRemarksByOfficeForRow(row) {
             const remarksInputs = Array.from(row.querySelectorAll('.remarks-box'));
             return remarksInputs.reduce((acc, input) => {
@@ -2136,8 +2279,8 @@
             const entries = Array.isArray(precomputedEntries)
                 ? precomputedEntries
                 : (isTarget
-                    ? collectSectionEntries('target')
-                    : collectAccomplishmentEntries());
+                    ? collectChangedTargetEntries()
+                    : collectChangedAccomplishmentEntries());
             if (entries.length === 0) {
                 return { success: true, skipped: true, message: 'No rows to save.' };
             }
@@ -2167,6 +2310,8 @@
                     showTopRightSuccessAlert('Data saved successfully.');
                 }
 
+                applySavedEntriesToExisting(isTarget ? 'target' : 'accomp', entries);
+
                 return {
                     success: true,
                     message: 'Data saved successfully.',
@@ -2185,40 +2330,55 @@
         }
 
         async function saveAllSectionEntries() {
-            const targetEntries = collectSectionEntries('target');
-            const accompEntries = collectAccomplishmentEntries();
+            const saveAllBtn = document.getElementById('saveAllBtn');
+            const originalSaveBtnHtml = saveAllBtn ? saveAllBtn.innerHTML : '';
+
+            const targetEntries = collectChangedTargetEntries();
+            const accompEntries = collectChangedAccomplishmentEntries();
 
             if (targetEntries.length === 0 && accompEntries.length === 0) {
                 showTopRightErrorAlert('No input rows available to save.');
                 return;
             }
 
-            const results = [];
-
-            results.push(await saveSectionEntries('target', {
-                requireVisible: false,
-                showAlerts: false,
-                precomputedEntries: targetEntries,
-            }));
-
-            results.push(await saveSectionEntries('accomp', {
-                requireVisible: false,
-                showAlerts: false,
-                precomputedEntries: accompEntries,
-            }));
-
-            const failed = results.filter(result => !result.success);
-            if (failed.length > 0) {
-                showTopRightErrorAlert('Some entries failed to save. Please try again.');
-                return;
+            if (saveAllBtn) {
+                saveAllBtn.disabled = true;
+                saveAllBtn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Saving...';
             }
 
-            if (results.every(result => result.skipped)) {
-                showTopRightErrorAlert('No input rows available to save.');
-                return;
-            }
+            try {
+                const [targetResult, accompResult] = await Promise.all([
+                    saveSectionEntries('target', {
+                        requireVisible: false,
+                        showAlerts: false,
+                        precomputedEntries: targetEntries,
+                    }),
+                    saveSectionEntries('accomp', {
+                        requireVisible: false,
+                        showAlerts: false,
+                        precomputedEntries: accompEntries,
+                    }),
+                ]);
 
-            showTopRightSuccessAlert('Data saved successfully.');
+                const results = [targetResult, accompResult];
+                const failed = results.filter(result => !result.success);
+                if (failed.length > 0) {
+                    showTopRightErrorAlert('Some entries failed to save. Please try again.');
+                    return;
+                }
+
+                if (results.every(result => result.skipped)) {
+                    showTopRightErrorAlert('No input rows available to save.');
+                    return;
+                }
+
+                showTopRightSuccessAlert('Data saved successfully.');
+            } finally {
+                if (saveAllBtn) {
+                    saveAllBtn.disabled = false;
+                    saveAllBtn.innerHTML = originalSaveBtnHtml;
+                }
+            }
         }
 
         function removeSectionColumns(groupRow, mainHeader, sectionType) {
@@ -3278,33 +3438,6 @@
 
             applyProgramSearch();
 
-
-            document.addEventListener('DOMContentLoaded', function () {
-                const deleteModalElement = document.getElementById('deleteProgramConfirmModal');
-                const confirmDeleteBtn = document.getElementById('confirmDeleteProgramBtn');
-                if (!deleteModalElement || !confirmDeleteBtn) return;
-
-                let selectedDeleteFormId = '';
-
-                deleteModalElement.addEventListener('show.bs.modal', function (event) {
-                    const trigger = event.relatedTarget;
-                    selectedDeleteFormId = trigger?.getAttribute('data-delete-form-id') || '';
-                });
-
-                confirmDeleteBtn.addEventListener('click', function () {
-                    if (!selectedDeleteFormId) return;
-
-                    const form = document.getElementById(selectedDeleteFormId);
-                    if (!form) return;
-
-                    if (typeof form.requestSubmit === 'function') {
-                        form.requestSubmit();
-                    } else {
-                        form.submit();
-                    }
-                });
-            });
-
             document.addEventListener('DOMContentLoaded', function () {
                 const applyStickyHeaderOffsets = () => {
                     const appHeader = document.getElementById('appHeader');
@@ -3323,6 +3456,33 @@
 
             refreshSummaryCards();
         }
+
+        // Delete confirmation – runs immediately, outside any conditional block
+        (function () {
+            const deleteModalElement = document.getElementById('deleteProgramConfirmModal');
+            const confirmDeleteBtn = document.getElementById('confirmDeleteProgramBtn');
+            if (!deleteModalElement || !confirmDeleteBtn) return;
+
+            let selectedDeleteFormId = '';
+
+            deleteModalElement.addEventListener('show.bs.modal', function (event) {
+                const trigger = event.relatedTarget;
+                selectedDeleteFormId = trigger?.getAttribute('data-delete-form-id') || '';
+            });
+
+            confirmDeleteBtn.addEventListener('click', function () {
+                if (!selectedDeleteFormId) return;
+
+                const form = document.getElementById(selectedDeleteFormId);
+                if (!form) return;
+
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.submit();
+                }
+            });
+        })();
     </script>
 
 </body>
