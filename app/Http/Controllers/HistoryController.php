@@ -14,6 +14,7 @@ class HistoryController extends Controller
         $filters = $request->validate([
             'module' => ['nullable', 'string', 'max:40'],
             'user_name' => ['nullable', 'string', 'max:255'],
+            'role' => ['nullable', 'string', 'max:50'],
             'edited_part' => ['nullable', 'string', 'max:40'],
             'action' => ['nullable', 'string', 'max:30'],
             'date_from' => ['nullable', 'date'],
@@ -34,10 +35,11 @@ class HistoryController extends Controller
 
             $modules = collect();
             $users = collect();
+            $roles = collect();
             $editedParts = collect();
             $actions = collect();
 
-            return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'editedParts', 'actions'));
+            return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'roles', 'editedParts', 'actions'));
         }
 
         $historyQuery = EditHistory::query()
@@ -46,6 +48,9 @@ class HistoryController extends Controller
             })
             ->when(!empty($filters['user_name']), function ($query) use ($filters) {
                 $query->where('user_name', $filters['user_name']);
+            })
+            ->when(!empty($filters['role']), function ($query) use ($filters) {
+                $query->where('user_role', $filters['role']);
             })
             ->when(!empty($filters['edited_part']), function ($query) use ($filters) {
                 $query->where('edited_part', $filters['edited_part']);
@@ -65,11 +70,12 @@ class HistoryController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        $modules = EditHistory::query()->select('module')->distinct()->orderBy('module')->pluck('module');
+        $modules = EditHistory::query()->whereNotNull('module')->select('module')->distinct()->orderBy('module')->pluck('module');
         $users = EditHistory::query()->whereNotNull('user_name')->select('user_name')->distinct()->orderBy('user_name')->pluck('user_name');
-        $editedParts = EditHistory::query()->select('edited_part')->distinct()->orderBy('edited_part')->pluck('edited_part');
-        $actions = EditHistory::query()->select('action')->distinct()->orderBy('action')->pluck('action');
+        $roles = EditHistory::query()->whereNotNull('user_role')->select('user_role')->distinct()->orderBy('user_role')->pluck('user_role');
+        $editedParts = EditHistory::query()->whereNotNull('edited_part')->select('edited_part')->distinct()->orderBy('edited_part')->pluck('edited_part');
+        $actions = EditHistory::query()->whereNotNull('action')->select('action')->distinct()->orderBy('action')->pluck('action');
 
-        return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'editedParts', 'actions'));
+        return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'roles', 'editedParts', 'actions'));
     }
 }

@@ -44,11 +44,12 @@ Route::get('/nra', [NraController::class, 'index'])->middleware('auth')->name('n
 Route::get('/paria', [PariaController::class, 'index'])->middleware('auth')->name('paria');
 Route::get('/cobb', [CobbController::class, 'index'])->middleware('auth')->name('cobb');
 Route::get('/continuing', [ContinuingController::class, 'index'])->middleware('auth')->name('continuing');
-Route::get('/user',     [UserController::class, 'index']) ->name('user');
+Route::get('/user', [UserController::class, 'index'])->middleware('auth')->name('user');
 Route::get('/history', [HistoryController::class, 'index'])->middleware('auth')->name('history');
-Route::post('/users', [UserController::class, 'store'])->name('users.store');
-Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
-Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+Route::post('/users', [UserController::class, 'store'])->middleware(['auth', 'field.history'])->name('users.store');
+Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware('auth')->name('users.edit');
+Route::put('/users/{user}', [UserController::class, 'update'])->middleware(['auth', 'field.history'])->name('users.update');
+Route::delete('/users/{user}', [UserController::class, 'destroy'])->middleware(['auth', 'field.history'])->name('users.destroy');
 
 Route::get('/gass', [GassController::class, 'overview'])->name('gass');
 Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware(['auth', 'field.history'])->group(function () {

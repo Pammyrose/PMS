@@ -1,9 +1,9 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 
@@ -86,5 +86,19 @@ class UserController extends Controller
 
         return redirect()->route('user')
             ->with('success', "User '{$user->name}' updated successfully!");
+    }
+
+    public function destroy(User $user)
+    {
+        if (auth()->id() === $user->id) {
+            return redirect()->route('user')
+                ->with('error', 'You cannot delete the currently logged-in user.');
+        }
+
+        $userName = $user->name;
+        $user->delete();
+
+        return redirect()->route('user')
+            ->with('success', "User '{$userName}' deleted successfully!");
     }
 }

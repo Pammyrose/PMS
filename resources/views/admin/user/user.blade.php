@@ -41,7 +41,7 @@
                 class="px-4 py-2.5 bg-accent text-white font-semibold rounded-xl shadow-md hover:bg-blue-700 transition flex items-center gap-3 text-sm mb-2"
                 id="openCreateUserModalBtn"
                 data-bs-toggle="modal" data-bs-target="#createUserModal">
-                Create User
+                Create
             </button>
 
             <div class="relative overflow-x-auto bg-neutral-primary-soft shadow-xs rounded-lg border border-default">
@@ -62,13 +62,31 @@
                                 <th scope="row" class="px-6 py-4 font-medium">{{ $user->name ?? '—' }}</th>
                                 <td class="px-6 py-4">{{ $user->email ?? '—' }}</td>
                                 <td class="px-6 py-4">{{ $user->role ?? 'N/A' }}</td>
-                                <td class="px-6 py-4 flex gap-3">
-                                    <button type="button" class="text-blue-600 hover:underline edit-user-btn"
-                                        data-bs-toggle="modal" data-bs-target="#createUserModal"
-                                        data-user-id="{{ $user->id }}">
-                                        Edit
-                                    </button>
-                                    <!-- Add delete with confirmation if needed -->
+                                <td class="px-6 py-4">
+                                    <div class="d-flex gap-2 align-items-center">
+                                        <button type="button" class="btn btn-sm text-primary edit-user-btn"
+                                            data-user-id="{{ $user->id }}"
+                                            data-bs-toggle="tooltip" data-bs-placement="top" title="Edit user">
+                                            <i class="fa-solid fa-pen-to-square me-1"></i>
+                                        </button>
+
+                                        @if(auth()->id() !== $user->id)
+                                            <form method="POST" action="{{ route('users.destroy', $user) }}" class="d-inline"
+                                                onsubmit="return confirm('Are you sure you want to delete this user?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn btn-sm text-danger"
+                                                    data-bs-toggle="tooltip" data-bs-placement="top" title="Delete user">
+                                                    <i class="fa-solid fa-trash me-1"></i>
+                                                </button>
+                                            </form>
+                                        @else
+                                            <button type="button" class="btn btn-sm text-secondary border-0 shadow-none bg-transparent p-2" disabled
+                                                data-bs-toggle="tooltip" data-bs-placement="top" title="You cannot delete your current account">
+                                                <i class="fa-solid fa-trash me-1"></i>
+                                            </button>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -157,7 +175,7 @@
                             <button type="submit"
                                 class="px-6 py-2.5 bg-accent text-white font-semibold rounded-xl shadow-md hover:bg-blue-700 transition flex items-center gap-2"
                                 id="userFormSubmitBtn">
-                                <i class="fa-solid fa-floppy-disk"></i> <span id="userFormSubmitText">Create User</span>
+                                <i class="fa-solid fa-floppy-disk"></i> <span id="userFormSubmitText">Save</span>
                             </button>
                         </div>
                     </form>
@@ -258,6 +276,10 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(element => {
+                new bootstrap.Tooltip(element);
+            });
+
             const createButton = document.getElementById('openCreateUserModalBtn');
             const modalElement = document.getElementById('createUserModal');
             const userModal = modalElement ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
@@ -287,7 +309,7 @@
                 }
 
                 if (modalTitleText) modalTitleText.textContent = 'Create New User';
-                if (submitText) submitText.textContent = 'Create User';
+                if (submitText) submitText.textContent = 'Create';
 
                 if (passwordInput) passwordInput.required = true;
                 if (passwordConfirmationInput) passwordConfirmationInput.required = true;
@@ -327,11 +349,15 @@
                 }
 
                 if (modalTitleText) modalTitleText.textContent = 'Edit User';
-                if (submitText) submitText.textContent = 'Update User';
+                if (submitText) submitText.textContent = 'Update';
                 if (passwordEditHint) passwordEditHint.classList.remove('d-none');
             };
 
             createButton?.addEventListener('click', function () {
+                setCreateMode(true);
+            });
+
+            modalElement?.addEventListener('hidden.bs.modal', function () {
                 setCreateMode(true);
             });
 
@@ -354,6 +380,7 @@
 
                         const user = await response.json();
                         setEditMode(user);
+                        userModal?.show();
                     } catch (error) {
                         console.error(error);
                         showTopRightErrorAlert('Unable to load user details for editing. Please try again.');

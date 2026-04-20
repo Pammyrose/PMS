@@ -19,6 +19,17 @@
       }
     }
   </script>
+  <script>
+    (() => {
+      try {
+        if (localStorage.getItem('pms-sidebar-state') === 'hidden') {
+          document.documentElement.classList.add('sidebar-pref-hidden');
+        }
+      } catch (error) {
+        console.warn('Sidebar state could not be restored early.', error);
+      }
+    })();
+  </script>
   <!-- For icons (optional) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
@@ -44,7 +55,8 @@
   }
 
   /* JS controlled hidden state for large screens */
-  #sidebar.js-hidden {
+  #sidebar.js-hidden,
+  html.sidebar-pref-hidden #sidebar {
     transform: translateX(-100%) !important;
   }
 
@@ -207,30 +219,57 @@
   <div id="backdrop" class="fixed inset-0 bg-black/50 z-20 lg:hidden hidden transition-opacity duration-300"></div>
 
   <script>
+    const SIDEBAR_STATE_KEY = 'pms-sidebar-state';
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('toggleSidebar');
     const backdrop = document.getElementById('backdrop');
     const mainContent = document.getElementById('mainContent');
 
-    const handleToggle = () => {
-      // Toggle both the Tailwind utility and a JS-specific class so it works across breakpoints
-      sidebar.classList.toggle('-translate-x-full');
-      sidebar.classList.toggle('js-hidden');
-
-      // Toggle backdrop for small screens
-      if (backdrop) backdrop.classList.toggle('hidden');
-
-      // For large screens, collapse or expand the main content margin
-      if (window.innerWidth >= 1024 && mainContent) {
-        mainContent.classList.toggle('sidebar-collapsed');
+    const saveSidebarState = (isHidden) => {
+      try {
+        localStorage.setItem(SIDEBAR_STATE_KEY, isHidden ? 'hidden' : 'open');
+        document.documentElement.classList.toggle('sidebar-pref-hidden', isHidden);
+      } catch (error) {
+        console.warn('Sidebar state could not be saved.', error);
       }
-      // Update toggle button position after changing sidebar state
+    };
+
+    const getSavedSidebarState = () => {
+      try {
+        return localStorage.getItem(SIDEBAR_STATE_KEY) === 'hidden';
+      } catch (error) {
+        console.warn('Sidebar state could not be read.', error);
+        return false;
+      }
+    };
+
+    const applySidebarState = (isHidden) => {
+      if (!sidebar) return;
+
+      sidebar.classList.toggle('-translate-x-full', isHidden);
+      sidebar.classList.toggle('js-hidden', isHidden);
+      document.documentElement.classList.toggle('sidebar-pref-hidden', isHidden);
+
+      if (backdrop) {
+        backdrop.classList.toggle('hidden', isHidden);
+      }
+
+      if (mainContent) {
+        mainContent.classList.toggle('sidebar-collapsed', isHidden);
+      }
+
       updateTogglePosition();
     };
 
+    const handleToggle = () => {
+      const isHidden = !sidebar.classList.contains('js-hidden');
+      applySidebarState(isHidden);
+      saveSidebarState(isHidden);
+    };
+
     const updateTogglePosition = () => {
-      if (!toggleBtn) return;
-      // On desktop, shift the toggle to the right when sidebar is visible
+      if (!toggleBtn || !sidebar) return;
+
       if (window.innerWidth >= 1024) {
         if (!sidebar.classList.contains('js-hidden')) {
           toggleBtn.classList.add('shift-right');
@@ -238,10 +277,9 @@
           toggleBtn.classList.remove('shift-right');
         }
       } else {
-        // remove desktop shift classes on smaller screens
         toggleBtn.classList.remove('shift-right');
       }
-      // ensure md padding active when width >= 768
+
       if (window.innerWidth >= 768) {
         toggleBtn.classList.add('md-px-2');
       } else {
@@ -249,28 +287,24 @@
       }
     };
 
-    if (toggleBtn) toggleBtn.addEventListener('click', handleToggle);
+    if (toggleBtn && sidebar) {
+      toggleBtn.addEventListener('click', handleToggle);
+    }
 
-    // Update position on load and resize
-    updateTogglePosition();
-    window.addEventListener('resize', updateTogglePosition);
+    applySidebarState(getSavedSidebarState());
+    window.addEventListener('resize', () => applySidebarState(getSavedSidebarState()));
 
     if (backdrop) {
       backdrop.addEventListener('click', () => {
-        sidebar.classList.add('-translate-x-full');
-        sidebar.classList.add('js-hidden');
-        backdrop.classList.add('hidden');
-        if (mainContent) mainContent.classList.add('sidebar-collapsed');
+        applySidebarState(true);
+        saveSidebarState(true);
       });
     }
 
-    // Optional: close sidebar on escape key
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        sidebar.classList.add('-translate-x-full');
-        sidebar.classList.add('js-hidden');
-        if (backdrop) backdrop.classList.add('hidden');
-        if (mainContent) mainContent.classList.add('sidebar-collapsed');
+      if (e.key === 'Escape' && sidebar && !sidebar.classList.contains('js-hidden')) {
+        applySidebarState(true);
+        saveSidebarState(true);
       }
     });
   </script>

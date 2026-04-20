@@ -50,9 +50,10 @@ public function isSuperAdmin(): bool
     {
         return match ($this->role) {
             'super-admin' => 'Super Administrator',
-            'admin'       => 'Administrator',
-            'user'        => 'User',
-            default       => 'Unknown',
+            'admin' => 'Administrator',
+            'staff' => 'Staff',
+            'user' => 'User',
+            default => 'Unknown',
         };
     }
 }

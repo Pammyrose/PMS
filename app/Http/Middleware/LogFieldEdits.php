@@ -14,15 +14,21 @@ class LogFieldEdits
     public function handle(Request $request, Closure $next): Response
     {
         $routeName = (string) optional($request->route())->getName();
-        $segments = explode('.', $routeName);
+        [$module, $editedPart, $action] = $this->parseRouteContext($routeName, $request);
 
-        $module = $segments[1] ?? 'unknown';
         $normalizedModule = $this->normalizeModuleName($module);
-        $editedPart = $segments[2] ?? 'unknown';
-        $action = $segments[3] ?? strtolower($request->method());
-
-        $payload = $request->except(['_token', '_method']);
+        $payload = $request->except([
+            '_token',
+            '_method',
+            'password',
+            'password_confirmation',
+            'current_password',
+        ]);
         $entryBaseline = $this->buildEntryBaseline($payload, $normalizedModule, $editedPart);
+        $payloadBaseline = $this->buildPayloadBaseline($request, $payload);
+        $changedFields = $this->extractChangedFields($payload, $normalizedModule, $editedPart, $entryBaseline, $payloadBaseline);
+        $previousDataPreview = $this->buildPreviousDataPreview($request, $payload, $editedPart, $entryBaseline, $payloadBaseline);
+        $changedDataPreview = $this->buildChangedDataPreview($payload, $changedFields);
 
         $response = $next($request);
 
@@ -46,14 +52,15 @@ class LogFieldEdits
         EditHistory::create([
             'user_id' => optional($request->user())->id,
             'user_name' => optional($request->user())->name,
+            'user_role' => optional($request->user())->role,
             'module' => $normalizedModule,
             'edited_part' => $editedPart,
             'action' => $action,
             'route_name' => $routeName,
             'http_method' => $request->method(),
             'record_identifier' => $recordId ? (string) $recordId : null,
-            'changed_fields' => $this->extractChangedFields($payload, $normalizedModule, $editedPart, $entryBaseline),
-            'request_snapshot' => $this->buildSnapshot($payload),
+            'changed_fields' => $changedFields,
+            'request_snapshot' => $this->buildSnapshot($payload, $previousDataPreview, $changedDataPreview),
         ]);
 
         return $response;
@@ -67,12 +74,11 @@ class LogFieldEdits
         }
 
         $routeName = (string) $route->getName();
+        $isFieldRoute = str_starts_with($routeName, 'admin.')
+            && preg_match('/\.(targets|accomplishments|indicators|pap)\./', $routeName);
+        $isUserRoleRoute = in_array($routeName, ['users.store', 'users.update', 'users.destroy'], true);
 
-        if (!str_starts_with($routeName, 'admin.')) {
-            return false;
-        }
-
-        if (!preg_match('/\.(targets|accomplishments|indicators|pap)\./', $routeName)) {
+        if (!$isFieldRoute && !$isUserRoleRoute) {
             return false;
         }
 
@@ -83,7 +89,30 @@ class LogFieldEdits
         return $response->getStatusCode() < 400;
     }
 
-    private function buildSnapshot(array $payload): array
+    private function parseRouteContext(string $routeName, Request $request): array
+    {
+        $segments = array_values(array_filter(explode('.', $routeName)));
+
+        if (($segments[0] ?? null) === 'admin') {
+            return [
+                $segments[1] ?? 'unknown',
+                $segments[2] ?? 'unknown',
+                $segments[3] ?? strtolower($request->method()),
+            ];
+        }
+
+        if (($segments[0] ?? null) === 'users') {
+            return ['users', 'roles', $segments[1] ?? strtolower($request->method())];
+        }
+
+        return [
+            $segments[0] ?? 'unknown',
+            $segments[1] ?? 'unknown',
+            strtolower($request->method()),
+        ];
+    }
+
+    private function buildSnapshot(array $payload, array $previousDataPreview = [], array $changedDataPreview = []): array
     {
         if (isset($payload['entries']) && is_array($payload['entries'])) {
             $entryItems = array_values($payload['entries']);
@@ -95,18 +124,243 @@ class LogFieldEdits
                 'entries_sample' => $this->normalizeValue($sampleItems),
                 'has_more_entries' => $entryCount > 3,
                 'sample_entry_keys' => array_keys((array) ($payload['entries'][0] ?? [])),
+                'previous_data' => array_values($previousDataPreview),
+                'changed_data' => array_values($changedDataPreview),
             ];
         }
 
-        return $this->normalizeValue($payload);
+        $snapshot = $this->normalizeValue($payload);
+        if (!is_array($snapshot)) {
+            $snapshot = ['value' => $snapshot];
+        }
+
+        if (!empty($previousDataPreview)) {
+            $snapshot['previous_data'] = array_values($previousDataPreview);
+        }
+
+        if (!empty($changedDataPreview)) {
+            $snapshot['changed_data'] = array_values($changedDataPreview);
+        }
+
+        return $snapshot;
     }
 
-    private function extractChangedFields(array $payload, string $module, string $editedPart, array $entryBaseline = []): array
+    private function buildChangedDataPreview(array $payload, array $changedFields): array
+    {
+        $periodLabels = [
+            'jan' => 'Jan', 'feb' => 'Feb', 'mar' => 'Mar',
+            'apr' => 'Apr', 'may' => 'May', 'jun' => 'Jun',
+            'jul' => 'Jul', 'aug' => 'Aug', 'sep' => 'Sep',
+            'oct' => 'Oct', 'nov' => 'Nov', 'dec' => 'Dec',
+        ];
+
+        $preview = [];
+
+        if (isset($payload['entries']) && is_array($payload['entries'])) {
+            foreach ($changedFields as $field) {
+                if (!str_starts_with($field, 'entries.')) {
+                    continue;
+                }
+
+                $periodKey = substr($field, strlen('entries.'));
+                $label = $periodLabels[$periodKey] ?? ucwords(str_replace('_', ' ', $periodKey));
+
+                foreach ($payload['entries'] as $entry) {
+                    if (!is_array($entry) || !array_key_exists($periodKey, $entry)) {
+                        continue;
+                    }
+
+                    $value = $entry[$periodKey];
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    $preview[] = $label . ': ' . $value;
+                }
+            }
+
+            return array_values(array_unique($preview));
+        }
+
+        foreach ($changedFields as $field) {
+            if (!array_key_exists($field, $payload)) {
+                continue;
+            }
+
+            $value = $payload[$field];
+            if (is_array($value)) {
+                $value = implode(', ', array_map('strval', $value));
+            }
+
+            if ($value === null || $value === '') {
+                $value = '—';
+            }
+
+            if ($field === 'role') {
+                $value = ucfirst(str_replace('-', ' ', (string) $value));
+            }
+
+            $label = ucwords(str_replace('_', ' ', (string) $field));
+            $preview[] = $label . ': ' . $value;
+        }
+
+        return array_values(array_unique($preview));
+    }
+
+    private function buildPreviousDataPreview(Request $request, array $payload, string $editedPart, array $entryBaseline = [], array $payloadBaseline = []): array
+    {
+        if (isset($payload['entries']) && is_array($payload['entries'])) {
+            return $this->buildEntryPreviousPreview($payload['entries'], $entryBaseline);
+        }
+
+        if (!empty($payloadBaseline)) {
+            $preview = [];
+
+            foreach ($payloadBaseline as $field => $oldValue) {
+                if (!array_key_exists($field, $payload)) {
+                    continue;
+                }
+
+                if (!$this->valuesDiffer($payload[$field], $oldValue)) {
+                    continue;
+                }
+
+                $label = ucwords(str_replace('_', ' ', (string) $field));
+                $displayValue = $oldValue;
+
+                if ($displayValue === null || $displayValue === '') {
+                    $displayValue = '—';
+                } elseif ($field === 'role') {
+                    $displayValue = ucfirst(str_replace('-', ' ', (string) $displayValue));
+                }
+
+                $preview[] = $label . ': ' . $displayValue;
+            }
+
+            return array_values(array_unique($preview));
+        }
+
+        return [];
+    }
+
+    private function buildPayloadBaseline(Request $request, array $payload): array
+    {
+        if (isset($payload['entries']) && is_array($payload['entries'])) {
+            return [];
+        }
+
+        $routeModel = $this->resolveRouteModel($request);
+        if (!is_object($routeModel)) {
+            return [];
+        }
+
+        $baseline = [];
+        foreach (array_keys($payload) as $field) {
+            if ($field === 'user_id') {
+                continue;
+            }
+
+            $baseline[$field] = $routeModel->{$field} ?? null;
+        }
+
+        return $baseline;
+    }
+
+    private function resolveRouteModel(Request $request): mixed
+    {
+        foreach (['user', 'indicator', 'program', 'target', 'accomplishment'] as $routeKey) {
+            $routeValue = $request->route($routeKey);
+
+            if ($routeKey === 'user' && is_numeric($routeValue)) {
+                $routeValue = \App\Models\User::find((int) $routeValue);
+            }
+
+            if (is_object($routeValue)) {
+                return $routeValue;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildEntryPreviousPreview(array $entries, array $entryBaseline = []): array
+    {
+        $periodLabels = [
+            'jan' => 'Jan', 'feb' => 'Feb', 'mar' => 'Mar',
+            'apr' => 'Apr', 'may' => 'May', 'jun' => 'Jun',
+            'jul' => 'Jul', 'aug' => 'Aug', 'sep' => 'Sep',
+            'oct' => 'Oct', 'nov' => 'Nov', 'dec' => 'Dec',
+        ];
+
+        $previousPreview = [];
+
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $programId = $entry['program_id'] ?? null;
+            $indicatorId = $entry['indicator_id'] ?? null;
+            $officeId = $entry['office_id'] ?? null;
+            $year = $entry['year'] ?? null;
+
+            if (!$programId || !$indicatorId || !$year) {
+                continue;
+            }
+
+            $entryKey = $this->buildEntryLookupKey($programId, $indicatorId, $officeId, $year);
+            $existingRow = $entryBaseline[$entryKey] ?? [];
+
+            foreach ($periodLabels as $periodKey => $label) {
+                if (!array_key_exists($periodKey, $entry)) {
+                    continue;
+                }
+
+                $existingValue = is_array($existingRow) ? ($existingRow[$periodKey] ?? null) : null;
+                if (!$this->valuesDiffer($entry[$periodKey], $existingValue)) {
+                    continue;
+                }
+
+                $displayValue = $existingValue;
+                if ($displayValue === null || $displayValue === '') {
+                    $displayValue = '—';
+                }
+
+                $previousPreview[] = $label . ': ' . $displayValue;
+            }
+        }
+
+        return array_values(array_unique($previousPreview));
+    }
+
+    private function extractChangedFields(array $payload, string $module, string $editedPart, array $entryBaseline = [], array $payloadBaseline = []): array
     {
         $fields = array_keys($payload);
 
         if (!isset($payload['entries']) || !is_array($payload['entries'])) {
-            return array_values(array_unique($fields));
+            if (empty($payloadBaseline)) {
+                return array_values(array_unique($fields));
+            }
+
+            $changedFields = [];
+            foreach ($payload as $field => $value) {
+                if ($field === 'user_id') {
+                    continue;
+                }
+
+                if (!array_key_exists($field, $payloadBaseline)) {
+                    if ($this->hasMeaningfulValue($value)) {
+                        $changedFields[] = $field;
+                    }
+                    continue;
+                }
+
+                if ($this->valuesDiffer($value, $payloadBaseline[$field])) {
+                    $changedFields[] = $field;
+                }
+            }
+
+            return array_values(array_unique($changedFields));
         }
 
         $fieldsWithoutGenericEntries = array_values(array_filter(
@@ -300,6 +554,10 @@ class LogFieldEdits
             'lands' => 'LANDS',
             'soilcon' => 'SOILCON',
             'nra' => 'NRA',
+            'paria' => 'PARIA',
+            'cobb' => 'COBB',
+            'continuing' => 'CONTINUING',
+            'user', 'users' => 'USERS',
             default => strtoupper($module),
         };
     }
@@ -308,7 +566,7 @@ class LogFieldEdits
     {
         $normalizedModule = strtolower($module);
 
-        if (!in_array($normalizedModule, ['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra'], true)) {
+        if (!in_array($normalizedModule, ['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'], true)) {
             return null;
         }
 

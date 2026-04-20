@@ -346,12 +346,11 @@
                 <!-- TABS -->
                 <div class="flex items-center mt-4">
                     <div class="flex gap-6">
-                        <a href="{{ route('gass_physical') }}">
-                            <button class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2">
-                                Physical
-                            </button>
+                        <a href="{{ route('gass_physical') }}"
+                            class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2 text-decoration-none d-inline-block">
+                            Physical
                         </a>
-                        <button class="text-gray-400 pb-2">
+                        <button type="button" class="text-gray-400 pb-2">
                             Financial
                         </button>
                     </div>
@@ -496,7 +495,34 @@
                                         return preg_replace('/\s+/', ' ', $normalized);
                                     };
 
+                                    $hierarchySortValue = function ($value) use ($normalizeGroupValue) {
+                                        $normalized = $normalizeGroupValue($value);
+
+                                        if ($normalized === '') {
+                                            return '2|999999.999999.999999.999999.999999|';
+                                        }
+
+                                        if (preg_match('/^(\d+(?:\.\d+)*)\s*(?:[.)-]|\s|$)/', $normalized, $matches)) {
+                                            $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
+                                            $segments = array_pad($segments, 5, 0);
+                                            $numericKey = collect(array_slice($segments, 0, 5))
+                                                ->map(fn($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                                                ->implode('.');
+
+                                            return '0|' . $numericKey . '|' . $normalized;
+                                        }
+
+                                        return '1|' . $normalized;
+                                    };
+
                                     $groupedPrograms = collect($programsRaw ?? $programs)
+                                        ->sortBy(function ($row) use ($hierarchySortValue) {
+                                            return $hierarchySortValue($row->title ?? '') . '|'
+                                                . $hierarchySortValue($row->program ?? '') . '|'
+                                                . $hierarchySortValue($row->project ?? '') . '|'
+                                                . $hierarchySortValue($row->activities ?? '') . '|'
+                                                . $hierarchySortValue($row->subactivities ?? '');
+                                        }, SORT_NATURAL | SORT_FLAG_CASE)
                                         ->groupBy(function ($row) use ($normalizeGroupValue) {
                                             return $normalizeGroupValue($row->title ?? '') . '|'
                                                 . $normalizeGroupValue($row->program ?? '') . '|'
@@ -645,7 +671,12 @@
                                                     </span>
                                                     <span class="flex items-center">
                                                         @php
-                                                            $hasIndicatorDataForIcon = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
+                                                            $hasIndicatorDataForIcon = $groupPrograms->contains(function ($groupProgram) use ($indicators) {
+                                                                $rowKey = (int) ($groupProgram->row_id ?? $groupProgram->id);
+                                                                $programKey = (int) ($groupProgram->id ?? 0);
+                                                                return (isset($indicators[$rowKey]) && $indicators[$rowKey]->count() > 0)
+                                                                    || (isset($indicators[$programKey]) && $indicators[$programKey]->count() > 0);
+                                                            });
                                                         @endphp
                                                         @if($hasIndicatorDataForIcon)
                                                             <i class="fa-solid fa-circle-check text-success me-2 ml-2" title="Indicator data available"></i>
@@ -677,15 +708,17 @@
                                             </td>
                                         </tr>
                                         @php
-                                            $subActivityGroups = $groupPrograms->groupBy(function($row) {
-                                                return strtolower(trim((string)($row->activities ?? '')));
-                                            })->values();
+                                            $subActivityGroups = $groupPrograms
+                                                ->sortBy(fn($row) => $hierarchySortValue($row->activities ?? ''), SORT_NATURAL | SORT_FLAG_CASE)
+                                                ->groupBy(function($row) {
+                                                    return strtolower(trim((string)($row->activities ?? '')));
+                                                })->values();
                                         @endphp
                                         @foreach($subActivityGroups as $subActivityGroup)
                                             @php
                                                 $subActivityName = (string)($subActivityGroup->first()->activities ?? '');
                                                 $hasSubSubActivities = $subActivityGroup->contains(fn($r) => filled($r->subactivities));
-                                                $showAsGroup = $subActivityName && ($subActivityGroup->count() > 1 || $hasSubSubActivities);
+                                                $showAsGroup = filled($subActivityName);
                                             @endphp
                                             @if($showAsGroup)
                                                 <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
@@ -695,26 +728,47 @@
                                                 </tr>
                                             @endif
                                             @php
-                                                $subSubActivityGroups = $subActivityGroup->groupBy(function($row) {
-                                                    return strtolower(trim((string)($row->subactivities ?? '')));
-                                                })->values();
+                                                $subSubActivityGroups = $subActivityGroup
+                                                    ->sortBy(function($row) use ($hierarchySortValue) {
+                                                        $priority = $row->_sort_priority ?? 1;
+                                                        return $priority . '|' . $hierarchySortValue($row->subactivities ?? '');
+                                                    }, SORT_NATURAL | SORT_FLAG_CASE)
+                                                    ->groupBy(function($row) {
+                                                        return strtolower(trim((string)($row->subactivities ?? '')));
+                                                    })->values();
                                             @endphp
                                             @foreach($subSubActivityGroups as $subSubActivityGroup)
                                                 @php
+                                                    $groupHasIndicatorData = $subSubActivityGroup->contains(function($sp) use ($indicators) {
+                                                        $rowKey = (int) ($sp->row_id ?? $sp->id);
+                                                        $programKey = (int) ($sp->id ?? 0);
+                                                        $indicatorCollection = $indicators[$rowKey] ?? $indicators[$programKey] ?? collect();
+                                                        return $indicatorCollection->count() > 0;
+                                                    });
                                                     $totalIndicatorCount = $subSubActivityGroup->sum(function($sp) use ($indicators) {
-                                                        return isset($indicators[$sp->id]) && $indicators[$sp->id]->count() > 0
-                                                            ? $indicators[$sp->id]->count() : 1;
+                                                        $rowKey = (int) ($sp->row_id ?? $sp->id);
+                                                        $programKey = (int) ($sp->id ?? 0);
+                                                        $indicatorCollection = $indicators[$rowKey] ?? $indicators[$programKey] ?? collect();
+                                                        return max($indicatorCollection->count(), 1);
                                                     });
                                                     $firstSubProgram = $subSubActivityGroup->first();
-                                                    $showActivityInCell = !$showAsGroup;
+                                                    $showActivityInCell = !filled($firstSubProgram->subactivities) && filled($firstSubProgram->activities);
+                                                    $papLeafLabel = filled($firstSubProgram->subactivities)
+                                                        ? $firstSubProgram->subactivities
+                                                        : '';
                                                     $isPapCellRendered = false;
+                                                    $renderedEmptyIndicatorPlaceholder = false;
                                                 @endphp
                                             @foreach($subSubActivityGroup as $subProgram)
                                                 @php
-                                                    $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
+                                                    $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
+                                                    $subProgramIndicatorCollection = $indicators[$subProgramRowKey] ?? $indicators[(int) $subProgram->id] ?? collect();
+                                                    $hasIndicatorData = $subProgramIndicatorCollection->count() > 0;
+                                                    $renderCount = 0;
                                                 @endphp
                                                 @if($hasIndicatorData)
-                                                @foreach($indicators[$subProgram->id] as $indicator)
+                                                @foreach($subProgramIndicatorCollection as $indicator)
+                                                  @php $renderCount++; @endphp
                                                   
                                                       @php
                                                           $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
@@ -723,7 +777,8 @@
                                                           }
                                                           $indicatorSyncKey = $programCoreKey
                                                               . '|' . strtolower(trim((string) ($indicator->name ?? '')))
-                                                              . '|' . strtolower(trim($resolvedIndicatorType));
+                                                              . '|' . strtolower(trim($resolvedIndicatorType))
+                                                              . '|row-' . (int) ($subProgram->row_id ?? $subProgram->id);
                                                           $officeIds = collect($indicator->office_id ?? [])
                                                               ->map(fn($id) => (int) $id)
                                                               ->filter()
@@ -743,7 +798,7 @@
                                                           $inputOffices = collect($officeMeta['input_offices'] ?? []);
                                                       @endphp
                                                       <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
-                                                          data-row-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
+                                                          data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}" data-program-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
                                                           data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
                                                           data-indicator-type="{{ $resolvedIndicatorType }}"
                                                           data-office-ids="{{ implode(',', $officeIds) }}"
@@ -759,8 +814,8 @@
                                                                   @if($showActivityInCell)
                                                                       <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
                                                                   @endif
-                                                                  @if(filled($firstSubProgram->subactivities))
-                                                                      <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
+                                                                  @if($papLeafLabel !== '')
+                                                                      <span class="{{ $showActivityInCell ? 'ms-4 small' : '' }}">{{ $papLeafLabel }}</span>
                                                                   @endif
                                                               </td>
                                                           @endif
@@ -838,41 +893,50 @@
                                                       </tr>
                                                 @endforeach
                                             @else
-                                                <tr class="data-row first-indicator-row"
-                                                    data-row-id="{{ $subProgram->id }}"
-                                                    data-indicator-id=""
-                                                    data-core-key="{{ $programCoreKey }}"
-                                                    data-sync-key="{{ $programCoreKey }}|no-indicator|"
-                                                    data-indicator-type=""
-                                                    data-office-ids=""
-                                                    data-office-names=""
-                                                    data-input-office-ids=""
-                                                    data-input-office-names=""
-                                                    data-input-break-indices=""
-                                                    data-input-group-penro-flags=""
-                                                    id="content-{{ $subProgram->id }}-0"
-                                                    style="display:none;">
-                                                    @if(!$isPapCellRendered)
-                                                        @php $isPapCellRendered = true; @endphp
-                                                        <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
-                                                            @if($showActivityInCell)
-                                                                <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
-                                                            @endif
-                                                            @if(filled($firstSubProgram->subactivities))
-                                                                <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
-                                                            @endif
+                                                @if($renderCount === 0)
+                                                    @php 
+                                                        $renderCount++; 
+                                                        if (!$isPapCellRendered) {
+                                                            $renderedEmptyIndicatorPlaceholder = true;
+                                                        }
+                                                    @endphp
+                                                    <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
+                                                        data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
+                                                        data-program-id="{{ $subProgram->id }}"
+                                                        data-indicator-id=""
+                                                        data-core-key="{{ $programCoreKey }}"
+                                                        data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
+                                                        data-indicator-type=""
+                                                        data-office-ids=""
+                                                        data-office-names=""
+                                                        data-input-office-ids=""
+                                                        data-input-office-names=""
+                                                        data-input-break-indices=""
+                                                        data-input-group-penro-flags=""
+                                                        id="content-{{ $subProgram->id }}-0"
+                                                        style="display:none;">
+                                                        @if(!$isPapCellRendered)
+                                                            @php $isPapCellRendered = true; @endphp
+                                                            <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ max($totalIndicatorCount, 1) }}">
+                                                                @if($showActivityInCell)
+                                                                    <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
+                                                                @endif
+                                                                @if($papLeafLabel !== '')
+                                                                    <span class="{{ $showActivityInCell ? 'ms-4 small' : '' }}">{{ $papLeafLabel }}</span>
+                                                                @endif
+                                                            </td>
+                                                        @endif
+                                                        <td class="px-4 py-3">
+                                                            No performance indicator set
                                                         </td>
-                                                    @endif
-                                                    <td class="px-4 py-3">
-                                                        No performance indicator set
-                                                    </td>
-                                                    <td class="px-4 py-3 small text-center">
-                                                        <div class="office-lines">
-                                                            <div class="office-line car-office-line">CAR</div>
-                                                            <div class="office-line">N/A</div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                        <td class="px-4 py-3 small text-center">
+                                                            <div class="office-lines">
+                                                                <div class="office-line car-office-line">CAR</div>
+                                                                <div class="office-line">N/A</div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                @endif
                                                 @endif
                                             @endforeach
                                             @endforeach
@@ -1099,17 +1163,19 @@
         function buildMonthlyMapFromStored(sourceData) {
             const result = new Map();
 
-            Object.entries(sourceData || {}).forEach(([indicatorId, offices]) => {
-                Object.entries(offices || {}).forEach(([officeId, officeData]) => {
-                    MONTH_COLS.forEach(colIndex => {
-                        const monthKey = PERIOD_KEYS[colIndex];
-                        if (!monthKey) return;
+            Object.entries(sourceData || {}).forEach(([programId, indicators]) => {
+                Object.entries(indicators || {}).forEach(([indicatorId, offices]) => {
+                    Object.entries(offices || {}).forEach(([officeId, officeData]) => {
+                        MONTH_COLS.forEach(colIndex => {
+                            const monthKey = PERIOD_KEYS[colIndex];
+                            if (!monthKey) return;
 
-                        const value = Number(officeData?.[monthKey] ?? 0);
-                        const safeValue = Number.isFinite(value) ? value : 0;
-                        const key = `${indicatorId}|${officeId}|${monthKey}`;
+                            const value = Number(officeData?.[monthKey] ?? 0);
+                            const safeValue = Number.isFinite(value) ? value : 0;
+                            const key = `${programId}|${indicatorId}|${officeId}|${monthKey}`;
 
-                        result.set(key, safeValue);
+                            result.set(key, safeValue);
+                        });
                     });
                 });
             });
@@ -1130,13 +1196,14 @@
                 const monthKey = PERIOD_KEYS[colIndex];
                 const officeId = String(input.dataset.officeId || '').trim();
                 const row = input.closest('tr[data-indicator-id]');
+                const programId = String(row?.dataset?.rowId || '').trim();
                 const indicatorId = String(row?.dataset?.indicatorId || '').trim();
 
-                if (!indicatorId || !officeId || !monthKey) return;
+                if (!programId || !indicatorId || !officeId || !monthKey) return;
 
                 const value = Number(input.value);
                 const safeValue = Number.isFinite(value) ? value : 0;
-                const key = `${indicatorId}|${officeId}|${monthKey}`;
+                const key = `${programId}|${indicatorId}|${officeId}|${monthKey}`;
 
                 targetMap.set(key, safeValue);
             });
@@ -1192,6 +1259,7 @@
             const summaryInputs = row.querySelectorAll('.month-box.summary-box');
             if (summaryInputs.length === 0) return;
 
+            const programId = Number(row.dataset.rowId || 0);
             const indicatorId = Number(row.dataset.indicatorId || 0);
             const allInputs = row.querySelectorAll('.month-box');
 
@@ -1215,21 +1283,22 @@
                 }
 
                 if (!Number.isFinite(value)) {
-                    value = getStoredValueForSummary(sectionType, indicatorId, officeId, periodKey);
+                    value = getStoredValueForSummary(sectionType, programId, indicatorId, officeId, periodKey);
                 }
 
                 input.value = Number.isFinite(value) ? value : 0;
             });
         }
 
-        function getStoredValueForSummary(sectionType, indicatorId, officeId, periodKey) {
-            if (!indicatorId || !periodKey) return 0;
+        function getStoredValueForSummary(sectionType, programId, indicatorId, officeId, periodKey) {
+            if (!programId || !indicatorId || !periodKey) return 0;
 
             const source = sectionType === 'target'
                 ? existingTargetsByIndicator
                 : existingAccompByIndicator;
 
-            const indicatorEntry = source[String(indicatorId)] || {};
+            const programEntry = source[String(programId)] || {};
+            const indicatorEntry = programEntry[String(indicatorId)] || {};
             const officeKey = String(officeId || '').trim();
             const officeEntry = officeKey ? (indicatorEntry[officeKey] || null) : null;
             const rawValue = officeEntry && Object.prototype.hasOwnProperty.call(officeEntry, periodKey)
@@ -1622,8 +1691,11 @@
                     existingRemarksCell.remove();
                 }
 
+                const programId = row.dataset.rowId;
                 const indicatorId = row.dataset.indicatorId;
-                const existingRowDataByOffice = indicatorId ? (existingAccompByIndicator[String(indicatorId)] || {}) : {};
+                const existingRowDataByOffice = (programId && indicatorId)
+                    ? (((existingAccompByIndicator[String(programId)] || {})[String(indicatorId)]) || {})
+                    : {};
                 const assignedOffices = getAssignedOfficesForRow(row);
                 const groupBreakIndices = getInputBreakIndicesForRow(row);
                 const groupPenroFlags = getInputGroupPenroFlagsForRow(row);
@@ -1682,13 +1754,15 @@
                 periodIndexes = [annualCol, quarterCol, monthCol];
             }
             document.querySelectorAll("tbody tr[data-row-id]").forEach(row => {
+                const programId = row.dataset.rowId;
                 const indicatorId = row.dataset.indicatorId;
                 const sourceData = sectionType === 'target'
                     ? existingTargetsByIndicator
                     : sectionType === 'accomp'
                         ? existingAccompByIndicator
                         : existingTargetsByIndicator; // For summary, use targets as base
-                const existingRowDataByOffice = indicatorId ? (sourceData[String(indicatorId)] || {}) : {};
+                const programSourceData = programId ? (sourceData[String(programId)] || {}) : {};
+                const existingRowDataByOffice = indicatorId ? (programSourceData[String(indicatorId)] || {}) : {};
                 const indicatorType = getIndicatorTypeForRow(row);
                 const assignedOffices = getAssignedOfficesForRow(row);
                 const groupBreakIndices = getInputBreakIndicesForRow(row);
@@ -1701,8 +1775,10 @@
                     ? assignedOffices
                     : [{ id: currentOfficeId || null, name: 'Office' }];
                 const summarySpacerFactory = () => createSpacerElement('input', 'month-box');
-                const targetDataByIndicator = indicatorId ? (existingTargetsByIndicator[String(indicatorId)] || {}) : {};
-                const accompDataByIndicator = indicatorId ? (existingAccompByIndicator[String(indicatorId)] || {}) : {};
+                const targetProgramData = programId ? (existingTargetsByIndicator[String(programId)] || {}) : {};
+                const accompProgramData = programId ? (existingAccompByIndicator[String(programId)] || {}) : {};
+                const targetDataByIndicator = indicatorId ? (targetProgramData[String(indicatorId)] || {}) : {};
+                const accompDataByIndicator = indicatorId ? (accompProgramData[String(indicatorId)] || {}) : {};
 
                 const buildSummaryInput = ({ office, officeDataSource, periodKey, periodIndex, sectionLabel }) => {
                     const officeId = Number(office?.id || 0) || null;
@@ -1991,8 +2067,9 @@
 
         function getSectionPayloadForRow(row, sectionType) {
             const indicatorId = Number(row.dataset.indicatorId || 0);
-            const programId = Number(row.dataset.rowId || 0);
-            if (!indicatorId || !programId) return [];
+            const rowId = Number(row.dataset.rowId || 0);
+            const programId = Number(row.dataset.programId || rowId || 0);
+            if (!indicatorId || !programId || !rowId) return [];
 
             const aggregatePayload = getAggregatePayloadForRow(row, sectionType);
 
@@ -2015,6 +2092,7 @@
 
                 const entry = {
                     program_id: programId,
+                    row_id: rowId,
                     indicator_id: indicatorId,
                     office_id: Number(officeId) || (currentOfficeId || null),
                     year: currentYear,
@@ -2038,12 +2116,13 @@
                 .filter(Boolean);
         }
 
-        function getStoredEntryByOffice(sourceByIndicator, indicatorId, officeId) {
+        function getStoredEntryByOffice(sourceByIndicator, programId, indicatorId, officeId) {
+            const programKey = String(programId || '').trim();
             const indicatorKey = String(indicatorId || '').trim();
             const officeKey = String(officeId || '').trim();
-            if (!indicatorKey || !officeKey) return null;
+            if (!programKey || !indicatorKey || !officeKey) return null;
 
-            return sourceByIndicator?.[indicatorKey]?.[officeKey] || null;
+            return sourceByIndicator?.[programKey]?.[indicatorKey]?.[officeKey] || null;
         }
 
         function hasAnyNonZeroPeriod(entry) {
@@ -2068,14 +2147,15 @@
         }
 
         function hasEntryChanged(sectionType, entry) {
+            const rowId = String(entry?.row_id || entry?.program_id || '').trim();
             const indicatorId = String(entry?.indicator_id || '').trim();
             const officeId = String(entry?.office_id || '').trim();
-            if (!indicatorId || !officeId) return false;
+            if (!rowId || !indicatorId || !officeId) return false;
 
             const sourceByIndicator = sectionType === 'target'
                 ? existingTargetsByIndicator
                 : existingAccompByIndicator;
-            const storedEntry = getStoredEntryByOffice(sourceByIndicator, indicatorId, officeId);
+            const storedEntry = getStoredEntryByOffice(sourceByIndicator, rowId, indicatorId, officeId);
 
             const periodChanged = hasPeriodDifferences(entry, storedEntry);
             if (sectionType === 'target') {
@@ -2099,12 +2179,17 @@
                 : existingAccompByIndicator;
 
             savedEntries.forEach(entry => {
+                const rowKey = String(entry?.row_id || entry?.program_id || '').trim();
                 const indicatorKey = String(entry?.indicator_id || '').trim();
                 const officeKey = String(entry?.office_id || '').trim();
-                if (!indicatorKey || !officeKey) return;
+                if (!rowKey || !indicatorKey || !officeKey) return;
 
-                if (!sourceByIndicator[indicatorKey]) {
-                    sourceByIndicator[indicatorKey] = {};
+                if (!sourceByIndicator[rowKey]) {
+                    sourceByIndicator[rowKey] = {};
+                }
+
+                if (!sourceByIndicator[rowKey][indicatorKey]) {
+                    sourceByIndicator[rowKey][indicatorKey] = {};
                 }
 
                 const normalized = {};
@@ -2117,8 +2202,8 @@
                     normalized.remarks = String(entry?.remarks || '').trim();
                 }
 
-                sourceByIndicator[indicatorKey][officeKey] = {
-                    ...(sourceByIndicator[indicatorKey][officeKey] || {}),
+                sourceByIndicator[rowKey][indicatorKey][officeKey] = {
+                    ...(sourceByIndicator[rowKey][indicatorKey][officeKey] || {}),
                     ...normalized,
                 };
             });
@@ -2146,8 +2231,9 @@
             return Array.from(document.querySelectorAll('tbody tr[data-row-id]'))
                 .flatMap(row => {
                     const indicatorId = Number(row.dataset.indicatorId || 0);
-                    const programId = Number(row.dataset.rowId || 0);
-                    if (!indicatorId || !programId) return [];
+                    const rowId = Number(row.dataset.rowId || 0);
+                    const programId = Number(row.dataset.programId || rowId || 0);
+                    if (!indicatorId || !programId || !rowId) return [];
 
                     const aggregatePayload = getAggregatePayloadForRow(row, 'accomp');
 
@@ -2169,11 +2255,12 @@
                         officeIds.add(String(currentOfficeId || '0'));
                     }
 
-                    const existingByOffice = existingAccompByIndicator[String(indicatorId)] || {};
+                    const existingByOffice = ((existingAccompByIndicator[String(rowId)] || {})[String(indicatorId)]) || {};
 
                     return Array.from(officeIds).map(officeId => {
                         const entry = {
                             program_id: programId,
+                            row_id: rowId,
                             indicator_id: indicatorId,
                             office_id: Number(officeId) || (currentOfficeId || null),
                             year: currentYear,
@@ -2514,10 +2601,10 @@
                 });
 
                 if (indicatorType === 'semi-cumulative') {
-                    totals[3] = aggregateValues(getValuesForCol(3, officeSet));
-                    totals[7] = aggregateValues(getValuesForCol(7, officeSet));
-                    totals[11] = aggregateValues(getValuesForCol(11, officeSet));
-                    totals[15] = aggregateValues(getValuesForCol(15, officeSet));
+                    totals[3] = (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
+                    totals[7] = (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
+                    totals[11] = (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
+                    totals[15] = (totals[12] || 0) + (totals[13] || 0) + (totals[14] || 0);
                     totals[16] = totals[3] + totals[7] + totals[11] + totals[15];
                     return totals;
                 }
@@ -2585,9 +2672,9 @@
         }
 
         function syncMonthValueAcrossCoreRows(sourceInput) {
-            const sourceRow = sourceInput.closest('tr[data-core-key]');
-            const coreKey = String(sourceRow?.dataset?.coreKey || '').trim();
-            if (!coreKey) return [];
+            const sourceRow = sourceInput.closest('tr[data-sync-key]');
+            const syncKey = String(sourceRow?.dataset?.syncKey || '').trim();
+            if (!syncKey) return [];
 
             const sectionType = String(sourceInput.dataset.section || '');
             const col = String(sourceInput.dataset.col || '');
@@ -2602,9 +2689,9 @@
                 if (String(candidate.dataset.col || '') !== col) return;
                 if (String(candidate.dataset.officeId || '') !== officeId) return;
 
-                const candidateRow = candidate.closest('tr[data-core-key]');
+                const candidateRow = candidate.closest('tr[data-sync-key]');
                 if (!candidateRow) return;
-                if (String(candidateRow.dataset.coreKey || '').trim() !== coreKey) return;
+                if (String(candidateRow.dataset.syncKey || '').trim() !== syncKey) return;
 
                 candidate.value = sourceInput.value;
                 touchedRows.add(candidateRow);
@@ -2655,10 +2742,10 @@
                 q4 = Math.max(values[9] || 0, values[10] || 0, values[11] || 0);
                 annual = Math.max(q1, q2, q3, q4);
             } else if (indicatorType === 'semi-cumulative') {
-                q1 = Number(getSectionColInput(allInputs, section, 3, officeId)?.value) || 0;
-                q2 = Number(getSectionColInput(allInputs, section, 7, officeId)?.value) || 0;
-                q3 = Number(getSectionColInput(allInputs, section, 11, officeId)?.value) || 0;
-                q4 = Number(getSectionColInput(allInputs, section, 15, officeId)?.value) || 0;
+                q1 = values[0] + values[1] + values[2];
+                q2 = values[3] + values[4] + values[5];
+                q3 = values[6] + values[7] + values[8];
+                q4 = values[9] + values[10] + values[11];
                 annual = q1 + q2 + q3 + q4;
             } else {
                 q1 = values[0] + values[1] + values[2];
@@ -2847,18 +2934,35 @@
             ) || null;
         }
 
+        function getSelectedIndicatorFromPapMatch(matchedPap) {
+            const indicatorNameInput = document.getElementById('modal_indicator_name');
+            const normalizedIndicatorName = normalizePapField(indicatorNameInput?.value);
+            const hasTypedIndicatorName = normalizedIndicatorName !== '';
+
+            if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
+                return null;
+            }
+
+            return hasTypedIndicatorName
+                ? (matchedPap.indicators.find(i => normalizePapField(i?.name) === normalizedIndicatorName) || null)
+                : (matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0] || null);
+        }
+
         function applyModalPrefillFromExistingPap() {
             const matchedPap = findMatchingPapFromModal();
             const indicatorIdInput = document.getElementById('indicator_id');
             const indicatorNameInput = document.getElementById('modal_indicator_name');
             const indicatorTypeInput = document.getElementById('modal_indicator_type');
             const indicatorTypeToggle = document.getElementById('use_indicator_type');
+            const normalizedIndicatorName = normalizePapField(indicatorNameInput?.value);
+            const hasTypedIndicatorName = normalizedIndicatorName !== '';
 
             if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
                 if (indicatorIdInput) {
                     indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
                 }
-                if (indicatorNameInput) {
+                if (!hasTypedIndicatorName && indicatorNameInput) {
                     indicatorNameInput.value = '';
                 }
                 if (indicatorTypeInput) {
@@ -2872,8 +2976,29 @@
                 return;
             }
 
-            const selectedIndicator = matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0];
-            if (!selectedIndicator) return;
+            const selectedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
+
+            if (!selectedIndicator) {
+                const hadLinkedIndicator = Boolean(String(indicatorIdInput?.value || '').trim());
+
+                if (indicatorIdInput) {
+                    indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
+                }
+
+                if (hadLinkedIndicator) {
+                    if (indicatorTypeInput) {
+                        indicatorTypeInput.value = '';
+                    }
+                    if (indicatorTypeToggle) {
+                        indicatorTypeToggle.checked = false;
+                    }
+                    toggleIndicatorTypeDropdown();
+                    setOfficeCheckboxes([]);
+                }
+
+                return;
+            }
 
             if (indicatorNameInput) {
                 indicatorNameInput.value = String(selectedIndicator.name || '').trim();
@@ -2891,6 +3016,7 @@
 
             if (indicatorIdInput) {
                 indicatorIdInput.value = String(selectedIndicator.id || '').trim();
+                indicatorIdInput.dataset.rowId = String(selectedIndicator.row_id || matchedPap?.row_id || '').trim();
             }
 
             setOfficeCheckboxes(selectedIndicator.office_ids || []);
@@ -2976,6 +3102,21 @@
                 });
             });
 
+            const indicatorNameField = document.getElementById('modal_indicator_name');
+            if (indicatorNameField) {
+                indicatorNameField.addEventListener('input', function () {
+                    clearTimeout(modalPrefillTimer);
+                    modalPrefillTimer = setTimeout(() => {
+                        applyModalPrefillFromExistingPap();
+                    }, 180);
+                });
+
+                indicatorNameField.addEventListener('change', function () {
+                    clearTimeout(modalPrefillTimer);
+                    applyModalPrefillFromExistingPap();
+                });
+            }
+
             const indicatorTypeToggle = document.getElementById('use_indicator_type');
             if (indicatorTypeToggle) {
                 indicatorTypeToggle.addEventListener('change', toggleIndicatorTypeDropdown);
@@ -3052,9 +3193,9 @@
                         </h4>
                         <div class="row g-3 mb-2">
                             <div class="col-12 col-md-6">
-                                <label for="pap_title" class="form-label fw-bold">Title</label>
-                                <input type="text" id="pap_title" class="form-control form-control-lg"
-                                    list="pap_title_options" required>
+                                <label for="pap_title" class="form-label fw-bold small">Title</label>
+                                <input type="text" id="pap_title" class="form-control form-control-sm py-2"
+                                    style="font-size: 0.875rem;" list="pap_title_options" required>
                                 <datalist id="pap_title_options">
                                     @foreach(($papTitles ?? []) as $existingTitle)
                                         <option value="{{ $existingTitle }}"></option>
@@ -3063,14 +3204,15 @@
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label for="pap_program" class="form-label fw-bold">Program</label>
-                                <input type="text" id="pap_program" class="form-control form-control-lg">
+                                <label for="pap_program" class="form-label fw-bold small">Program</label>
+                                <input type="text" id="pap_program" class="form-control form-control-sm py-2"
+                                    style="font-size: 0.875rem;">
                             </div>
 
                             <div class="col-12">
-                                <label for="pap_project" class="form-label fw-bold">Project</label>
-                                <input type="text" id="pap_project" class="form-control form-control-lg"
-                                    list="pap_project_options">
+                                <label for="pap_project" class="form-label fw-bold small">Project</label>
+                                <input type="text" id="pap_project" class="form-control form-control-sm py-2"
+                                    list="pap_project_options" style="font-size: 0.875rem;">
                                 <datalist id="pap_project_options">
                                     @foreach(($papProjects ?? []) as $existingProject)
                                         <option value="{{ $existingProject }}"></option>
@@ -3079,9 +3221,9 @@
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label for="pap_activities" class="form-label fw-bold">Activity</label>
-                                <input type="text" id="pap_activities" class="form-control form-control-lg"
-                                    list="pap_activity_options">
+                                <label for="pap_activities" class="form-label fw-bold small">Activity</label>
+                                <input type="text" id="pap_activities" class="form-control form-control-sm py-2"
+                                    style="font-size: 0.875rem;" list="pap_activity_options">
                                 <datalist id="pap_activity_options">
                                     @foreach(($papActivities ?? []) as $existingActivity)
                                         <option value="{{ $existingActivity }}"></option>
@@ -3090,9 +3232,9 @@
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label for="pap_subactivities" class="form-label fw-bold">Sub-activity</label>
-                                <input type="text" id="pap_subactivities" class="form-control form-control-lg"
-                                    list="pap_subactivity_options">
+                                <label for="pap_subactivities" class="form-label fw-bold small">Sub-activity</label>
+                                <input type="text" id="pap_subactivities" class="form-control form-control-sm py-2"
+                                    style="font-size: 0.875rem;" list="pap_subactivity_options">
                                 <datalist id="pap_subactivity_options">
                                     @foreach(($papSubactivities ?? []) as $existingSubactivity)
                                         <option value="{{ $existingSubactivity }}"></option>
@@ -3155,7 +3297,7 @@
 
                             <div>
                                 <div class="row row-cols-1 row-cols-md-3">
-                                    @forelse($offices ?? [] as $parent)
+                                    @forelse(($offices ?? []) as $parent)
                                         <div class="col">
                                             <div class="form-check">
                                                 <input class="form-check-input office-checkbox black-checkbox"
@@ -3180,7 +3322,7 @@
                                                 </label>
                                             </div>
 
-                                            @foreach($parent->children ?? [] as $child)
+                                            @foreach(($parent->children ?? []) as $child)
                                                 <div class="form-check">
                                                     <input class="form-check-input office-checkbox black-checkbox"
                                                         type="checkbox" value="{{ $child->id }}" id="office_{{ $child->id }}"
@@ -3269,7 +3411,11 @@
 
             try {
                 const matchedPap = findMatchingPapFromModal();
+                const matchedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
+                const indicatorIdInput = document.getElementById('indicator_id');
+                const selectedIndicatorRowId = String(matchedIndicator?.row_id || indicatorIdInput?.dataset?.rowId || '').trim();
                 let programId = matchedPap?.id ? String(matchedPap.id) : '';
+                let rowId = selectedIndicatorRowId || (matchedPap?.row_id ? String(matchedPap.row_id) : '');
 
                 if (!programId) {
                     const papFormData = new FormData();
@@ -3297,11 +3443,15 @@
                     }
 
                     programId = String(papData.pap.id);
+                    rowId = String(papData?.pap?.row_id || papData?.pap?.id || papData.pap.id);
                 }
 
                 const formData = new FormData();
                 formData.append('_token', token);
                 formData.append('program_id', programId);
+                if (rowId) {
+                    formData.append('row_id', rowId);
+                }
                 formData.append('indicator_name', indicatorName);
                 if (indicatorTypeId) {
                     formData.append('indicator_type_id', indicatorTypeId);
@@ -3309,7 +3459,13 @@
                 selectedOffices.forEach(officeId => formData.append('office_id[]', officeId));
 
                 const updateRouteTemplate = form.dataset.updateRouteTemplate || '';
-                const shouldUpdateExistingIndicator = Boolean(indicatorId && programId && matchedPap?.id && String(matchedPap.id) === String(programId));
+                const shouldUpdateExistingIndicator = Boolean(
+                    indicatorId
+                    && programId
+                    && rowId
+                    && matchedIndicator
+                    && String(matchedIndicator.id || '') === indicatorId
+                );
 
                 let indicatorResponse;
                 if (shouldUpdateExistingIndicator && updateRouteTemplate) {
@@ -3348,7 +3504,11 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addIndicatorModal'));
                 if (modal) modal.hide();
                 form.reset();
-                document.getElementById('indicator_id').value = '';
+                const indicatorIdField = document.getElementById('indicator_id');
+                if (indicatorIdField) {
+                    indicatorIdField.value = '';
+                    delete indicatorIdField.dataset.rowId;
+                }
                 document.querySelectorAll('.office-checkbox').forEach(cb => cb.checked = false);
                 currentProgramIndicators = [];
                 const successMessage = shouldUpdateExistingIndicator
