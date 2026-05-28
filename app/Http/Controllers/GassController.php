@@ -35,7 +35,11 @@ class GassController extends Controller
                 . '|' . strtolower(trim((string) ($row->program ?? '')))
                 . '|' . strtolower(trim((string) ($row->project ?? '')))
                 . '|' . strtolower(trim((string) ($row->activities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')));
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
         };
 
         $programsRaw = $this->getGassPrograms($programId, $search)
@@ -77,11 +81,100 @@ class GassController extends Controller
         // Fetch indicators grouped by program from section metadata.
         $indicators = $this->getIndicatorsGroupedByProgram($programIds);
 
+        // Filter programs to only include those with data (entries, targets, accomplishments, or indicators) in the selected year
+        $targets = Gass_Target::where('years', $year)->get();
+        $accomplishments = Gass_Accomplishment::where('years', $year)->get();
+        
+        $programIdsWithData = collect()
+            ->merge($entries->pluck('programs_id'))
+            ->merge($targets->pluck('programs_id'))
+            ->merge($accomplishments->pluck('programs_id'))
+            ->merge($indicators->keys())
+            ->unique()
+            ->filter(fn ($id) => $id > 0)
+            ->all();
+
+        // Filter programsRaw and programs to only include those with data in selected year
+        $programsRaw = $programsRaw->filter(function ($row) use ($programIdsWithData) {
+            $rowId = (int) ($row->row_id ?? $row->id ?? 0);
+            return in_array((int) $row->id, $programIdsWithData) || 
+                   in_array((int) ($row->program_row_id ?? 0), $programIdsWithData) ||
+                   in_array((int) ($row->project_row_id ?? 0), $programIdsWithData) ||
+                   in_array($rowId, $programIdsWithData);
+        })->values();
+
+        // Group by normalized group key (program, project, activities, subactivities) - already filtered above
+        $programs = $programsRaw
+            ->unique($sortProgramHierarchy)
+            ->values();
+
         // Expand programs to include separate activity rows when they have indicators
         $programs = $programs->flatMap(function ($row) use ($indicators) {
             $rows = [];
 
-            // If this row has both activity and subactivity, check if the activity level has its own indicators
+            // Check level 8 to level 9 (if we have both level_7 and level_8)
+            if (filled($row->level_7 ?? null) && filled($row->level_8 ?? null) && (int) ($row->level_8_row_id ?? 0) > 0) {
+                $level8RowId = (int) $row->level_8_row_id;
+                $hasLevel8Indicators = isset($indicators[$level8RowId]) && $indicators[$level8RowId]->count() > 0;
+                
+                if ($hasLevel8Indicators) {
+                    $level8Row = clone $row;
+                    $level8Row->row_id = $level8RowId;
+                    $level8Row->level_8 = null;
+                    $level8Row->_sort_priority = 0;
+                    $rows[] = $level8Row;
+                }
+            }
+
+            // Check level 7 to level 8 (if we have both level_6 and level_7)
+            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row->level_7_row_id ?? 0) > 0) {
+                $level7RowId = (int) $row->level_7_row_id;
+                $hasLevel7Indicators = isset($indicators[$level7RowId]) && $indicators[$level7RowId]->count() > 0;
+                
+                if ($hasLevel7Indicators) {
+                    $level7Row = clone $row;
+                    $level7Row->row_id = $level7RowId;
+                    $level7Row->level_7 = null;
+                    $level7Row->level_8 = null;
+                    $level7Row->_sort_priority = 1;
+                    $rows[] = $level7Row;
+                }
+            }
+
+            // Check sub-sub-sub-activity to level 7 (if we have both subsubactivities and level_6)
+            if (filled($row->subsubactivities ?? null) && filled($row->level_6 ?? null) && (int) ($row->sub_sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubSubActivityRowId = (int) $row->sub_sub_sub_activity_row_id;
+                $hasSubSubSubActivityIndicators = isset($indicators[$subSubSubActivityRowId]) && $indicators[$subSubSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubSubActivityIndicators) {
+                    $subSubSubActivityRow = clone $row;
+                    $subSubSubActivityRow->row_id = $subSubSubActivityRowId;
+                    $subSubSubActivityRow->level_6 = null;
+                    $subSubSubActivityRow->level_7 = null;
+                    $subSubSubActivityRow->level_8 = null;
+                    $subSubSubActivityRow->_sort_priority = 2;
+                    $rows[] = $subSubSubActivityRow;
+                }
+            }
+
+            // Check sub-sub-activity level (if we have both sub-sub-activity and sub-sub-sub-activity)
+            if (filled($row->subactivities ?? null) && filled($row->subsubactivities ?? null) && (int) ($row->sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubActivityRowId = (int) $row->sub_sub_activity_row_id;
+                $hasSubSubActivityIndicators = isset($indicators[$subSubActivityRowId]) && $indicators[$subSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubActivityIndicators) {
+                    $subSubActivityRow = clone $row;
+                    $subSubActivityRow->row_id = $subSubActivityRowId;
+                    $subSubActivityRow->subsubactivities = null;
+                    $subSubActivityRow->level_6 = null;
+                    $subSubActivityRow->level_7 = null;
+                    $subSubActivityRow->level_8 = null;
+                    $subSubActivityRow->_sort_priority = 3;
+                    $rows[] = $subSubActivityRow;
+                }
+            }
+
+            // Check sub-activity level (if we have both activity and subactivity)
             if (filled($row->activities ?? null) && filled($row->subactivities ?? null) && (int) ($row->sub_activity_row_id ?? 0) > 0) {
                 $subActivityRowId = (int) $row->sub_activity_row_id;
                 $hasActivityIndicators = isset($indicators[$subActivityRowId]) && $indicators[$subActivityRowId]->count() > 0;
@@ -90,33 +183,111 @@ class GassController extends Controller
                     $activityRow = clone $row;
                     $activityRow->row_id = $subActivityRowId;
                     $activityRow->subactivities = null;
-                    $activityRow->_sort_priority = 0;  // Parent activity sorts first
-                    $rows[] = $activityRow;  // Add parent activity first
+                    $activityRow->subsubactivities = null;
+                    $activityRow->level_6 = null;
+                    $activityRow->level_7 = null;
+                    $activityRow->level_8 = null;
+                    $activityRow->_sort_priority = 4;
+                    $rows[] = $activityRow;
                 }
             }
 
             if (!isset($row->_sort_priority)) {
-                $row->_sort_priority = 1;  // Child sub-activity sorts after parent
+                $row->_sort_priority = 5;
             }
-            $rows[] = $row;  // Add original row (sub-sub-activity or regular row)
+            $rows[] = $row;
             return $rows;
         })
         ->sortBy(function ($row) {
-            $priority = $row->_sort_priority ?? 1;
+            $priority = $row->_sort_priority ?? 5;
             return strtolower(trim((string) ($row->title ?? '')))
                 . '|' . strtolower(trim((string) ($row->program ?? '')))
                 . '|' . strtolower(trim((string) ($row->project ?? '')))
                 . '|' . strtolower(trim((string) ($row->activities ?? '')))
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')));
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
         }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
         ->values();
 
         // Also expand programsRaw for consistency
         $programsRaw = $programsRaw->flatMap(function ($row) use ($indicators) {
             $rows = [];
 
-            // If this row has both activity and subactivity, check if the activity level has its own indicators
+            // Check level 8 to level 9
+            if (filled($row->level_7 ?? null) && filled($row->level_8 ?? null) && (int) ($row->level_8_row_id ?? 0) > 0) {
+                $level8RowId = (int) $row->level_8_row_id;
+                $hasLevel8Indicators = isset($indicators[$level8RowId]) && $indicators[$level8RowId]->count() > 0;
+                
+                if ($hasLevel8Indicators) {
+                    $level8Row = clone $row;
+                    $level8Row->row_id = $level8RowId;
+                    $level8Row->level_8 = null;
+                    $level8Row->_sort_priority = 0;
+                    $rows[] = $level8Row;
+                }
+            }
+
+            // Check level 7 to level 8
+            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row-> level_7_row_id ?? 0) > 0) {
+                $level7RowId = (int) $row->level_7_row_id;
+                $hasLevel7Indicators = isset($indicators[$level7RowId]) && $indicators[$level7RowId]->count() > 0;
+                
+                if ($hasLevel7Indicators) {
+                    $level7Row = clone $row;
+                    $level7Row->row_id = $level7RowId;
+                    $level7Row->level_7 = null;
+                    $level7Row->level_8 = null;
+                    $level7Row->_sort_priority = 1;
+                    $rows[] = $level7Row;
+                }
+            }
+
+            // Check sub-sub-sub-activity to level 7
+            if (filled($row->subsubactivities ?? null) && filled($row->level_6 ?? null) && (int) ($row->sub_sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubSubActivityRowId = (int) $row->sub_sub_sub_activity_row_id;
+                $hasSubSubSubActivityIndicators = isset($indicators[$subSubSubActivityRowId]) && $indicators[$subSubSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubSubActivityIndicators) {
+                    $subSubSubActivityRow = clone $row;
+                    $subSubSubActivityRow->row_id = $subSubSubActivityRowId;
+                    $subSubSubActivityRow->level_6 = null;
+                    $subSubSubActivityRow->level_7 = null;
+                    $subSubSubActivityRow->level_8 = null;
+                    $subSubSubActivityRow->_sort_priority = 2;
+                    $rows[] = $subSubSubActivityRow;
+                }
+            }
+
+            // Check sub-sub-activity level
+            if (filled($row->subactivities ?? null) && filled($row->subsubactivities ?? null) && (int) ($row->sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubActivityRowId = (int) $row->sub_sub_activity_row_id;
+                $hasSubSubActivityIndicators = isset($indicators[$subSubActivityRowId]) && $indicators[$subSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubActivityIndicators) {
+                    $subSubActivityRow = clone $row;
+                    $subSubActivityRow->row_id = $subSubActivityRowId;
+                    $subSubActivityRow->subsubactivities = null;
+                    $subSubActivityRow->level_6 = null;
+                    $subSubActivityRow->level_7 = null;
+                    $subSubActivityRow->level_8 = null;
+                    $subSubActivityRow->_sort_priority = 3;
+                    $rows[] = $subSubActivityRow;
+                }
+            }
+
+            // Check sub-activity level
             if (filled($row->activities ?? null) && filled($row->subactivities ?? null) && (int) ($row->sub_activity_row_id ?? 0) > 0) {
                 $subActivityRowId = (int) $row->sub_activity_row_id;
                 $hasActivityIndicators = isset($indicators[$subActivityRowId]) && $indicators[$subActivityRowId]->count() > 0;
@@ -125,19 +296,23 @@ class GassController extends Controller
                     $activityRow = clone $row;
                     $activityRow->row_id = $subActivityRowId;
                     $activityRow->subactivities = null;
-                    $activityRow->_sort_priority = 0;  // Parent activity sorts first
-                    $rows[] = $activityRow;  // Add parent activity first
+                    $activityRow->subsubactivities = null;
+                    $activityRow->level_6 = null;
+                    $activityRow->level_7 = null;
+                    $activityRow->level_8 = null;
+                    $activityRow->_sort_priority = 4;
+                    $rows[] = $activityRow;
                 }
             }
 
             if (!isset($row->_sort_priority)) {
-                $row->_sort_priority = 1;  // Child sub-activity sorts after parent
+                $row->_sort_priority = 5;
             }
-            $rows[] = $row;  // Add original row (sub-sub-activity or regular row)
+            $rows[] = $row;
             return $rows;
         })
         ->sortBy(function ($row) {
-            $priority = $row->_sort_priority ?? 1;
+            $priority = $row->_sort_priority ?? 5;
             return strtolower(trim((string) ($row->title ?? '')))
                 . '|' . strtolower(trim((string) ($row->program ?? '')))
                 . '|' . strtolower(trim((string) ($row->project ?? '')))
@@ -145,6 +320,42 @@ class GassController extends Controller
                 . '|' . $priority
                 . '|' . strtolower(trim((string) ($row->subactivities ?? '')));
         }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
+        ->values();
+
+        // Also expand programsRaw for consistency (already expanded above)
+        $programsRaw = $programsRaw->sortBy(function ($row) {
+            $priority = $row->_sort_priority ?? 5;
+            return strtolower(trim((string) ($row->title ?? '')))
+                . '|' . strtolower(trim((string) ($row->program ?? '')))
+                . '|' . strtolower(trim((string) ($row->project ?? '')))
+                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+                . '|' . $priority
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+        }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subsubactivities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_6 ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_7 ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_8 ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
         ->values();
 
         $allIndicatorOfficeIds = $indicators
@@ -204,8 +415,8 @@ class GassController extends Controller
         
         $existing = $entries->keyBy('programs_id');
 
-        $targets = Gass_Target::where('years', $year)
-            ->get()
+        // Transform targets into keyed structure
+        $targets = $targets
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
                 $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
@@ -220,8 +431,8 @@ class GassController extends Controller
                 return $carry;
             }, []);
 
-        $accomplishments = Gass_Accomplishment::where('years', $year)
-            ->get()
+        // Transform accomplishments into keyed structure
+        $accomplishments = $accomplishments
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
                 $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
@@ -260,6 +471,12 @@ class GassController extends Controller
             ->sort()
             ->values();
 
+        $papSubSubactivities = $programs->pluck('subsubactivities')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sort()
+            ->values();
+        
         $papPrefillData = $programsRaw
             ->groupBy($sortProgramHierarchy)
             ->map(function ($groupPrograms) use ($indicators, $indicatorTypeMap) {
@@ -288,6 +505,10 @@ class GassController extends Controller
                     'project' => (string) ($pap->project ?? ''),
                     'activities' => (string) ($pap->activities ?? ''),
                     'subactivities' => (string) ($pap->subactivities ?? ''),
+                    'subsubactivities' => (string) ($pap->subsubactivities ?? ''),
+                    'level_6' => (string) ($pap->level_6 ?? ''),
+                    'level_7' => (string) ($pap->level_7 ?? ''),
+                    'level_8' => (string) ($pap->level_8 ?? ''),
                     'indicators' => $indicatorRows
                         ->map(function ($indicator) use ($indicatorTypeMap) {
                             return [
@@ -313,7 +534,20 @@ class GassController extends Controller
         // Get all offices organized by parent for the modal
         $offices = Office::groupedForUi();
 
-        $yearOptions = collect(range((int) now()->year + 2, 2020))->values();
+        // Build a clean descending list of years from the ppa database, always including the selected year.
+        $currentYear = (int) now()->year;
+        $yearOptions = DB::table('ppa')
+            ->whereNotNull('year')
+            ->where('year', '>', 0)
+            ->distinct()
+            ->pluck('year')
+            ->map(fn ($y) => (int) $y)
+            ->push((int) $year)
+            ->unique()
+            ->sort()
+            ->reverse()
+            ->values()
+            ->all();
 
         return view('admin.gass.gass_physical', compact(
             'entries',
@@ -329,6 +563,7 @@ class GassController extends Controller
             'papProjects',
             'papActivities',
             'papSubactivities',
+            'papSubSubactivities',
             'papPrefillData',
             'indicatorTypeOptions',
             'year',
@@ -520,8 +755,13 @@ class GassController extends Controller
             'title' => 'required|string|max:255',
             'program' => 'nullable|string|max:150',
             'project' => 'nullable|string|max:150',
-            'activities' => 'nullable|string',
-            'subactivities' => 'nullable|string',
+            'activities' => 'nullable|string|max:255',
+            'subactivities' => 'nullable|string|max:255',
+            'subsubactivities' => 'nullable|string|max:255',
+            'level_6' => 'nullable|string|max:255',
+            'level_7' => 'nullable|string|max:255',
+            'level_8' => 'nullable|string|max:255',
+            'year' => 'nullable|integer|min:2000|max:2099',
         ]);
 
         DB::beginTransaction();
@@ -555,11 +795,16 @@ class GassController extends Controller
             ['record_type' => 'MAIN ACTIVITY', 'name' => trim((string) ($papData['project'] ?? ''))],
             ['record_type' => 'SUB-ACTIVITY', 'name' => trim((string) ($papData['activities'] ?? ''))],
             ['record_type' => 'SUB-SUB-ACTIVITY', 'name' => trim((string) ($papData['subactivities'] ?? ''))],
+            ['record_type' => 'SUB-SUB-SUB-ACTIVITY', 'name' => trim((string) ($papData['subsubactivities'] ?? ''))],
+            ['record_type' => 'LEVEL-7', 'name' => trim((string) ($papData['level_6'] ?? ''))],
+            ['record_type' => 'LEVEL-8', 'name' => trim((string) ($papData['level_7'] ?? ''))],
+            ['record_type' => 'LEVEL-9', 'name' => trim((string) ($papData['level_8'] ?? ''))],
         ];
 
         $parentDetailId = null;
         $rootPpaId = null;
         $leafPpaId = null;
+        $isNewHierarchy = true;
 
         foreach ($levels as $index => $level) {
             if ($level['name'] === '') {
@@ -590,7 +835,13 @@ class GassController extends Controller
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
+                
+                // Update year on existing root PPA if this is the first level and year is provided
+                if ($index === 0 && isset($papData['year'])) {
+                    DB::table('ppa')->where('id', $ppaId)->update(['year' => $papData['year']]);
+                }
             } else {
+                $isNewHierarchy = false;
                 $detailId = DB::table('ppa_details')->insertGetId([
                     'parent_id' => $parentDetailId,
                     'column_order' => $index + 1,
@@ -598,7 +849,7 @@ class GassController extends Controller
                     'updated_at' => now(),
                 ]);
 
-                $ppaId = DB::table('ppa')->insertGetId([
+                $ppaInsertData = [
                     'name' => $level['name'],
                     'types_id' => $typeId,
                     'record_type_id' => $recordTypeId,
@@ -607,7 +858,14 @@ class GassController extends Controller
                     'office_id' => null,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+
+                // Add year to the root (first level) PPA record
+                if ($index === 0 && isset($papData['year'])) {
+                    $ppaInsertData['year'] = $papData['year'];
+                }
+
+                $ppaId = DB::table('ppa')->insertGetId($ppaInsertData);
             }
 
             if ($rootPpaId === null) {
@@ -1568,6 +1826,38 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             $join->on('sub_sub_activity_ppa.ppa_details_id', '=', 'sub_sub_activity_detail.id')
                 ->where('sub_sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-SUB-ACTIVITY']);
         })
+        ->leftJoin('ppa_details as sub_sub_sub_activity_detail', function ($join) {
+            $join->on('sub_sub_sub_activity_detail.parent_id', '=', 'sub_sub_activity_detail.id')
+                ->where('sub_sub_sub_activity_detail.column_order', '=', 6);
+        })
+        ->leftJoin('ppa as sub_sub_sub_activity_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('sub_sub_sub_activity_ppa.ppa_details_id', '=', 'sub_sub_sub_activity_detail.id')
+                ->where('sub_sub_sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-SUB-SUB-ACTIVITY']);
+        })
+        ->leftJoin('ppa_details as level_7_detail', function ($join) {
+            $join->on('level_7_detail.parent_id', '=', 'sub_sub_sub_activity_detail.id')
+                ->where('level_7_detail.column_order', '=', 7);
+        })
+        ->leftJoin('ppa as level_7_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_7_ppa.ppa_details_id', '=', 'level_7_detail.id')
+                ->where('level_7_ppa.record_type_id', '=', $recordTypeIds['LEVEL-7']);
+        })
+        ->leftJoin('ppa_details as level_8_detail', function ($join) {
+            $join->on('level_8_detail.parent_id', '=', 'level_7_detail.id')
+                ->where('level_8_detail.column_order', '=', 8);
+        })
+        ->leftJoin('ppa as level_8_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_8_ppa.ppa_details_id', '=', 'level_8_detail.id')
+                ->where('level_8_ppa.record_type_id', '=', $recordTypeIds['LEVEL-8']);
+        })
+        ->leftJoin('ppa_details as level_9_detail', function ($join) {
+            $join->on('level_9_detail.parent_id', '=', 'level_8_detail.id')
+                ->where('level_9_detail.column_order', '=', 9);
+        })
+        ->leftJoin('ppa as level_9_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_9_ppa.ppa_details_id', '=', 'level_9_detail.id')
+                ->where('level_9_ppa.record_type_id', '=', $recordTypeIds['LEVEL-9']);
+        })
         ->where('program_ppa.types_id', $typeId)
         ->where('program_ppa.record_type_id', $recordTypeIds['PROGRAM'])
         ->select([
@@ -1577,7 +1867,11 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             'main_activity_ppa.id as main_activity_row_id',
             'sub_activity_ppa.id as sub_activity_row_id',
             'sub_sub_activity_ppa.id as sub_sub_activity_row_id',
-            DB::raw('COALESCE(sub_sub_activity_ppa.id, sub_activity_ppa.id, main_activity_ppa.id, project_ppa.id, program_ppa.id) as row_id'),
+            'sub_sub_sub_activity_ppa.id as sub_sub_sub_activity_row_id',
+            'level_7_ppa.id as level_7_row_id',
+            'level_8_ppa.id as level_8_row_id',
+            'level_9_ppa.id as level_9_row_id',
+            DB::raw('COALESCE(level_9_ppa.id, level_8_ppa.id, level_7_ppa.id, sub_sub_sub_activity_ppa.id, sub_sub_activity_ppa.id, sub_activity_ppa.id, main_activity_ppa.id, project_ppa.id, program_ppa.id) as row_id'),
             'program_ppa.ppa_details_id',
             'program_ppa.created_at',
             'program_ppa.updated_at',
@@ -1586,6 +1880,10 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             'main_activity_ppa.name as project',
             'sub_activity_ppa.name as activities',
             'sub_sub_activity_ppa.name as subactivities',
+            'sub_sub_sub_activity_ppa.name as subsubactivities',
+            'level_7_ppa.name as level_6',
+            'level_8_ppa.name as level_7',
+            'level_9_ppa.name as level_8',
         ])
         ->orderBy('program_ppa.created_at')
         ->orderBy('program_ppa.id');
@@ -1604,6 +1902,10 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             $row->main_activity_row_id = (int) ($row->main_activity_row_id ?? 0);
             $row->sub_activity_row_id = (int) ($row->sub_activity_row_id ?? 0);
             $row->sub_sub_activity_row_id = (int) ($row->sub_sub_activity_row_id ?? 0);
+            $row->sub_sub_sub_activity_row_id = (int) ($row->sub_sub_sub_activity_row_id ?? 0);
+            $row->level_7_row_id = (int) ($row->level_7_row_id ?? 0);
+            $row->level_8_row_id = (int) ($row->level_8_row_id ?? 0);
+            $row->level_9_row_id = (int) ($row->level_9_row_id ?? 0);
             $row->row_id = (int) ($row->row_id ?? $row->id);
             $row->ppa_details_id = (int) $row->ppa_details_id;
             return $row;
@@ -1613,7 +1915,11 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
                 . $normalizeHierarchyValue($row->program ?? '') . '|'
                 . $normalizeHierarchyValue($row->project ?? '') . '|'
                 . $normalizeHierarchyValue($row->activities ?? '') . '|'
-                . $normalizeHierarchyValue($row->subactivities ?? '');
+                . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_8 ?? '');
         })
         ->flatMap(function ($group) {
             $usedRowIds = [];
@@ -1621,6 +1927,10 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             return $group->map(function ($row) use (&$usedRowIds) {
                 $candidateRowIds = [
                     (int) ($row->row_id ?? 0),
+                    (int) ($row->level_9_row_id ?? 0),
+                    (int) ($row->level_8_row_id ?? 0),
+                    (int) ($row->level_7_row_id ?? 0),
+                    (int) ($row->sub_sub_sub_activity_row_id ?? 0),
                     (int) ($row->sub_sub_activity_row_id ?? 0),
                     (int) ($row->sub_activity_row_id ?? 0),
                     (int) ($row->main_activity_row_id ?? 0),
@@ -1646,6 +1956,10 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
                 . $normalizeHierarchyValue($row->project ?? '') . '|'
                 . $normalizeHierarchyValue($row->activities ?? '') . '|'
                 . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_8 ?? '') . '|'
                 . (int) ($row->row_id ?? 0);
         })
         ->values();
@@ -1671,6 +1985,10 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
             $program->project,
             $program->activities,
             $program->subactivities,
+            $program->subsubactivities ?? null,
+            $program->level_6 ?? null,
+            $program->level_7 ?? null,
+            $program->level_8 ?? null,
         ];
 
         foreach ($fields as $field) {
@@ -1748,6 +2066,10 @@ private function getGassRecordTypeIds(): array
             'MAIN ACTIVITY',
             'SUB-ACTIVITY',
             'SUB-SUB-ACTIVITY',
+            'SUB-SUB-SUB-ACTIVITY',
+            'LEVEL-7',
+            'LEVEL-8',
+            'LEVEL-9',
         ])
         ->pluck('id', 'name')
         ->map(fn ($id) => (int) $id)
@@ -1759,6 +2081,10 @@ private function getGassRecordTypeIds(): array
         'MAIN ACTIVITY',
         'SUB-ACTIVITY',
         'SUB-SUB-ACTIVITY',
+        'SUB-SUB-SUB-ACTIVITY',
+        'LEVEL-7',
+        'LEVEL-8',
+        'LEVEL-9',
     ];
 
     foreach ($requiredNames as $name) {

@@ -9,324 +9,7 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-    <style>
-        :root {
-            --month-bg: #f1f5f9;
-            --quarter-bg: #e7d8bd;
-            --annual-bg: #cacaca;
-            --header-blue: #1e40af;
-            --border: #cbd5e1;
-        }
-
-        .year-header {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--header-blue);
-            text-align: center;
-            padding: 14px 0;
-            background: linear-gradient(to right, #eff6ff, #dbeafe);
-            border-bottom: 3px solid #3b82f6;
-            margin-bottom: 1rem;
-        }
-
-        .group-header {
-            font-size: 1rem;
-            font-weight: 700;
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        .group-target {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .group-accomp {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .month-header {
-            background: #496cce;
-            color: white;
-            text-align: center;
-            font-weight: 600;
-            font-size: 0.78rem;
-            padding: 6px 4px;
-            min-width: 44px;
-            border: 1px solid #1e40af;
-            white-space: nowrap;
-        }
-
-        .month-header.quarter {
-            background: #f59e0b;
-            min-width: 50px;
-            font-size: 0.82rem;
-            color: #000 !important;
-            font-style: bold;
-        }
-
-        .month-header.annual {
-            background: #334155;
-            min-width: 50px;
-            font-size: 0.9rem;
-            font-weight: 700;
-        }
-
-        /* When Accomplishments are shown → pink month headers (JAN–DEC only) */
-        th.month-header.accomp-month:not(.quarter):not(.annual) {
-            background: #16958d !important;
-            /* pastel pink */
-            color: white !important;
-            /* dark pink text for contrast */
-        }
-
-        .month-box {
-            width: 100%;
-            height: 28px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            text-align: center;
-            font-size: 13px;
-            padding: 2px 4px;
-        }
-
-        .month-box[readonly] {
-            background: var(--month-bg);
-            color: #334155;
-            font-weight: 500;
-            cursor: default;
-        }
-
-        .month-box:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-
-        .office-lines {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .office-line {
-            min-height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            line-height: 1.1;
-            text-align: center;
-        }
-
-        .input-line {
-            min-height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .target-box {
-            background: #f0fdf4;
-            border-color: #86efac;
-        }
-
-        .target-box[readonly] {
-            background: #ecfccb !important;
-            color: #166534;
-        }
-
-        .accomp-box {
-            background: white;
-        }
-
-        .target-total {
-            background: #e7d8bd !important;
-        }
-
-        .annual-target {
-            background: #cacaca !important;
-            font-weight: 600;
-        }
-
-        .quarter-total {
-            background: var(--quarter-bg) !important;
-        }
-
-        .annual-total {
-            background: var(--annual-bg) !important;
-            font-weight: 600;
-        }
-
-        .car-total-box {
-            background: #eef2ff !important;
-            border-color: #dc2626;
-            color: #1e3a8a;
-            font-weight: 700;
-        }
-
-        .car-office-line {
-            font-weight: 700;
-            color: #1e3a8a;
-        }
-
-        .group-total-office-line {
-            font-weight: 700;
-            color: #0f766e;
-        }
-
-        .group-total-box {
-            background: #ecfeff !important;
-            border-color: #c48282;
-            color: #115e59;
-            font-weight: 700;
-        }
-
-        .table-container {
-            --table-sticky-top: 0px;
-            position: relative;
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: calc(100vh - 230px);
-            margin: 1rem 0;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            min-width: 1400px;
-        }
-
-        th,
-        td {
-            border: 1px solid var(--border);
-            vertical-align: middle;
-        }
-
-        thead tr:not(.group-row) th {
-            position: sticky;
-            top: var(--table-sticky-top, 0px);
-            z-index: 12;
-        }
-
-        thead tr.group-row th {
-            position: sticky;
-            top: calc(var(--table-sticky-top, 0px) + var(--table-header-row-height, 46px));
-            z-index: 11;
-        }
-
-        tr.bg-gray-100 td {
-            background: #f8fafc;
-            font-weight: 600;
-        }
-
-        tr.program-header {
-            background: #e0e7ff !important;
-            font-weight: 600 !important;
-            color: #1e40af;
-            cursor: pointer;
-        }
-
-        tr.program-header:hover {
-            background: #c7d2fe !important;
-        }
-
-        tr.program-header td {
-            user-select: none;
-            padding: 16px !important;
-        }
-
-        .program-toggle-icon {
-            display: inline-block;
-            margin-right: 12px;
-            transition: transform 0.3s ease;
-            font-size: 0.85rem;
-            color: #1e40af;
-        }
-
-        tr.program-header .program-toggle-icon {
-            transition: transform 0.3s ease;
-            transform: rotate(0deg);
-        }
-
-        .program-toggle-icon.rotate-180 {
-            transform: rotate(-180deg);
-        }
-
-        .data-row:hover {
-            background-color: #f1f5f9;
-        }
-
-        .black-checkbox {
-            border-color: #000 !important;
-        }
-
-        .black-checkbox:checked {
-            background-color: #2772fd !important;
-            border-color: #2772fd !important;
-        }
-
-        .remarks-header {
-            background: #fef3c7;
-            color: #92400e;
-            font-weight: 700;
-            min-width: 200px;
-        }
-
-        .remarks-box {
-            width: 100%;
-            min-width: 200px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 12px;
-            padding: 2px 6px;
-            height: 28px;
-            min-height: 28px;
-            max-height: 28px;
-            resize: none;
-            overflow-y: auto;
-            line-height: 1.1;
-        }
-
-        .remarks-spacer {
-            visibility: hidden;
-            pointer-events: none;
-        }
-
-        td[data-dynamic-section="remarks"] .input-line {
-            width: 100%;
-            justify-content: flex-start;
-        }
-
-        td[data-dynamic-section="summary"] .office-lines {
-            width: 100%;
-            align-items: stretch;
-        }
-
-        td[data-dynamic-section="summary"] .input-line {
-            width: 100%;
-            justify-content: flex-start;
-        }
-
-        td[data-dynamic-section="summary"] .month-box {
-            width: 100%;
-            min-width: 200px;
-            box-sizing: border-box;
-            font-size: 12px;
-            padding: 2px 6px;
-            height: 28px;
-            min-height: 28px;
-            max-height: 28px;
-            text-align: center;
-            line-height: 1.1;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ asset('css/admin/enf/enf_physical.css') }}">
 </head>
 
 <body class="bg-light">
@@ -338,131 +21,12 @@
 
         <main class="flex-grow-1 p-3">
 
-            <div class="year-header">
-                (ENF) - Physical Performance
-            </div>
+            @include('admin.enf.partials.enf_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                <!-- TABS -->
-                <div class="flex items-center mt-4">
-                    <div class="flex gap-6">
-                        <a href="{{ route('enf') }}">
-                            <button class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2">
-                                Physical
-                            </button>
-                        </a>
-                        <button class="text-gray-400 pb-2">
-                            Financial
-                        </button>
-                    </div>
-                </div>
-
-                <div class="d-flex justify-content-end align-items-center mt-3 mb-1">
-                    <form method="GET" action="{{ url()->current() }}" class="d-flex align-items-center gap-2">
-                        @if(request()->filled('office_id'))
-                            <input type="hidden" name="office_id" value="{{ request('office_id') }}">
-                        @endif
-                        <label for="year_filter" class="form-label fw-semibold text-muted mb-0 small">Year</label>
-                        <select id="year_filter" name="year"
-                            class="form-select form-select-sm shadow-sm border-primary-subtle" style="width: 110px;"
-                            onchange="this.form.submit()">
-                            @php
-                                $selectedYear = (int) ($year ?? now()->year);
-                                $yearRangeOptions = $yearOptions ?? collect(range(now()->year + 1, 2020))->values();
-                            @endphp
-                            @foreach($yearRangeOptions as $optionYear)
-                                <option value="{{ $optionYear }}" {{ $selectedYear === (int) $optionYear ? 'selected' : '' }}>
-                                    {{ $optionYear }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </form>
-                </div>
-
-                <div class="row g-3 mt-1 mb-2" id="performanceSummaryCards">
-                    <div class="col-12 col-md-4">
-                        <div class="card border-0 shadow-sm h-100 bg-primary text-white">
-                            <div class="card-body text-white">
-                                <div class="fw-bold small text-white text-center">Targets</div>
-                                <div class="fs-3 fw-bold text-white text-center" id="summaryTargetTotal">0</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-4">
-                        <div class="card border-0 shadow-sm h-100 bg-success text-white">
-                            <div class="card-body text-white">
-                                <div class="fw-bold small text-white text-center">Accomplishments</div>
-                                <div class="fs-3 fw-bold text-white text-center" id="summaryAccompTotal">0</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-4">
-                        <div class="card border-0 shadow-sm h-100 bg-danger text-white">
-                            <div class="card-body text-white">
-                                <div class="fw-bold small text-white text-center">Pending</div>
-                                <div class="fs-3 fw-bold text-white text-center" id="summaryNotYetDone">0</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <div class="flex items-center justify-between mt-2">
-                        <!-- Left side -->
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <button class="btn btn-primary btn-sm" data-bs-toggle="modal"
-                                data-bs-target="#addIndicatorModal">
-                                <i class="fa fa-plus me-1"></i> Add PAP
-                            </button>
-
-                            <form method="GET" action="{{ url()->current() }}"
-                                class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
-                                {{-- Preserve important filters --}}
-                                @if(request()->filled('year'))
-                                    <input type="hidden" name="year" value="{{ $year ?? now()->year }}">
-                                @endif
-                                @if(request()->filled('office_id'))
-                                    <input type="hidden" name="office_id" value="{{ request('office_id') }}">
-                                @endif
-
-                                <div class="position-relative flex-grow-1" style="min-width: 320px; max-width: 480px;">
-                                    <input type="search" name="search" id="papSearchInput"
-                                        class="form-control form-control pe-5 ps-4 shadow-sm" placeholder="Search…"
-                                        value="{{ old('search', $search ?? '') }}" autocomplete="off"
-                                        aria-label="Search programs, projects and activities" required>
-                                    <!-- Search icon inside input (very common pattern) -->
-                                    <span class="position-absolute top-50 end-0 translate-middle-y pe-3 text-muted">
-                                        <i class="bi bi-search"></i>
-                                    </span>
-                                </div>
-
-                            </form>
-                        </div>
-
-                        <!-- Right side -->
-                        <div class="flex items-center gap-2 ">
-                            <button onclick="toggleTargetColumns()" class="btn btn-danger btn-sm" id="targetBtn">
-                                <i class="fa fa-plus me-1"></i> Targets
-                            </button>
-                            <button onclick="toggleMonthInputs()" class="btn btn-outline-secondary btn-sm" id="monthBtn"
-                                disabled style="display:none;">
-                                <i class="fa fa-calendar-days me-1"></i> Months
-                            </button>
-                            <button onclick="toggleAccompColumns()" class="btn btn-success btn-sm" id="accompBtn">
-                                <i class="fa fa-plus me-1"></i> Accomplishments
-                            </button>
-                            <button onclick="toggleRemarksColumn()" class="btn btn-warning btn-sm" id="remarksBtn"
-                                style="display:none;">
-                                <i class="fa fa-plus me-1"></i> Remarks
-                            </button>
-                            <button onclick="toggleSummaryColumns()" class="btn btn-info btn-sm" id="summaryBtn">
-                                <i class="fa fa-chart-bar me-1"></i> Summary
-                            </button>
-                            <button onclick="saveAllSectionEntries()" class="btn btn-primary btn-sm" id="saveAllBtn">
-                                <i class="fa fa-floppy-disk me-1"></i> Save
-                            </button>
-                        </div>
-                    </div>
-
+                @include('admin.enf.partials.enf_physical_tabs')
+                @include('admin.enf.partials.enf_physical_summary')
+                @include('admin.enf.partials.enf_physical_toolbar')
 
                     <div class="table-container">
                         <table class="text-sm" id="performanceTable">
@@ -485,415 +49,8 @@
                             </thead>
 
                             <tbody class="text-gray-800">
-                                @php
-                                    $indicatorTypeNameById = collect($indicatorTypeOptions ?? [])
-                                        ->mapWithKeys(fn($type) => [(int) ($type->id ?? 0) => (string) ($type->name ?? '')])
-                                        ->all();
-                                @endphp
-                                @php
-                                    $normalizeGroupValue = function ($value) {
-                                        $normalized = strtolower(trim((string) ($value ?? '')));
-                                        return preg_replace('/\s+/', ' ', $normalized);
-                                    };
-
-                                    $groupedPrograms = collect($programsRaw ?? $programs)
-                                        ->sortBy(function ($row) use ($normalizeGroupValue) {
-                                            return $normalizeGroupValue($row->title ?? '') . '|'
-                                                . $normalizeGroupValue($row->program ?? '') . '|'
-                                                . $normalizeGroupValue($row->project ?? '') . '|'
-                                                . $normalizeGroupValue($row->activities ?? '') . '|'
-                                                . $normalizeGroupValue($row->subactivities ?? '');
-                                        }, SORT_NATURAL | SORT_FLAG_CASE)
-                                        ->groupBy(function ($row) use ($normalizeGroupValue) {
-                                            return $normalizeGroupValue($row->title ?? '') . '|'
-                                                . $normalizeGroupValue($row->program ?? '') . '|'
-                                                . $normalizeGroupValue($row->project ?? '');
-                                        })
-                                        ->values();
-
-                                    $buildOfficeMeta = function (array $officeIds) use ($offices) {
-                                        $selectedParentGroups = collect($offices ?? [])
-                                            ->map(function ($parent) use ($officeIds) {
-                                                $parentId = (int) ($parent->id ?? 0);
-                                                $parentSelected = in_array($parentId, $officeIds, true);
-                                                $children = collect($parent->children ?? []);
-                                                $selectedChildren = $children
-                                                    ->filter(fn($child) => in_array((int) ($child->id ?? 0), $officeIds, true))
-                                                    ->values();
-
-                                                if (!$parentSelected && $selectedChildren->isEmpty()) {
-                                                    return null;
-                                                }
-
-                                                return [
-                                                    'id' => $parentId,
-                                                    'name' => (string) ($parent->name ?? ''),
-                                                    'office_types_id' => (int) ($parent->office_types_id ?? 0),
-                                                    'selected_parent' => $parentSelected,
-                                                    'children' => $selectedChildren
-                                                        ->map(fn($child) => [
-                                                            'id' => (int) ($child->id ?? 0),
-                                                            'name' => (string) ($child->name ?? ''),
-                                                            'office_types_id' => (int) ($child->office_types_id ?? 0),
-                                                        ])
-                                                        ->filter(fn($child) => $child['id'] > 0)
-                                                        ->values()
-                                                        ->all(),
-                                                ];
-                                            })
-                                            ->filter()
-                                            ->values()
-                                            ->all();
-
-                                        $inputOffices = collect($selectedParentGroups)
-                                            ->flatMap(function ($group) {
-                                                $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                $children = collect($group['children'] ?? [])->map(fn($child) => [
-                                                    'id' => (int) ($child['id'] ?? 0),
-                                                    'name' => (string) ($child['name'] ?? ''),
-                                                    'is_parent' => false,
-                                                ]);
-                                                $parentCollection = $selectedParent ? collect([[
-                                                    'id' => (int) ($group['id'] ?? 0),
-                                                    'name' => (string) ($group['name'] ?? ''),
-                                                    'is_parent' => true,
-                                                ]]) : collect();
-
-                                                return $parentCollection->merge($children);
-                                            })
-                                            ->filter(fn($office) => !empty($office['id']))
-                                            ->unique('id')
-                                            ->values()
-                                            ->all();
-
-                                        $groupSizes = collect($selectedParentGroups)
-                                            ->map(function ($group) {
-                                                $selectedParent = (bool) ($group['selected_parent'] ?? false);
-                                                $childrenCount = collect($group['children'] ?? [])->count();
-                                                return ($selectedParent ? 1 : 0) + $childrenCount;
-                                            })
-                                            ->values();
-
-                                        $groupPenroFlags = collect($selectedParentGroups)
-                                            ->map(function ($group) {
-                                                $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                if ($officeTypeId === 2) {
-                                                    return 1;
-                                                }
-
-                                                $groupName = (string) ($group['name'] ?? '');
-                                                return preg_match('/\bPENRO\b/i', $groupName) === 1 ? 1 : 0;
-                                            })
-                                            ->values()
-                                            ->all();
-
-                                        $groupBreakIndices = [];
-                                        $runningTotal = 0;
-                                        foreach ($groupSizes as $index => $size) {
-                                            $runningTotal += (int) $size;
-                                            if ($index < ($groupSizes->count() - 1)) {
-                                                $groupBreakIndices[] = $runningTotal - 1;
-                                            }
-                                        }
-
-                                        return [
-                                            'selected_parent_groups' => $selectedParentGroups,
-                                            'input_offices' => $inputOffices,
-                                            'office_names_csv' => collect($selectedParentGroups)
-                                                ->pluck('name')
-                                                ->map(fn($name) => str_replace('|', '/', (string) $name))
-                                                ->implode('|'),
-                                            'input_office_ids_csv' => collect($inputOffices)->pluck('id')->implode(','),
-                                            'input_office_names_csv' => collect($inputOffices)
-                                                ->pluck('name')
-                                                ->map(fn($name) => str_replace('|', '/', (string) $name))
-                                                ->implode('|'),
-                                            'group_break_indices_csv' => implode(',', $groupBreakIndices),
-                                            'group_penro_flags_csv' => implode(',', $groupPenroFlags),
-                                        ];
-                                    };
-
-                                    $indicatorOfficeMeta = [];
-                                    collect($indicators ?? [])->flatten(1)->each(function ($indicator) use (&$indicatorOfficeMeta, $buildOfficeMeta) {
-                                        $officeIds = collect($indicator->office_id ?? [])
-                                            ->map(fn($id) => (int) $id)
-                                            ->filter(fn($id) => $id > 0)
-                                            ->values()
-                                            ->all();
-
-                                        $signature = implode(',', $officeIds);
-                                        if (!array_key_exists($signature, $indicatorOfficeMeta)) {
-                                            $indicatorOfficeMeta[$signature] = $buildOfficeMeta($officeIds);
-                                        }
-                                    });
-                                @endphp
-                                @foreach($groupedPrograms as $groupPrograms)
-                                    @php
-                                        $program = $groupPrograms->first();
-                                        $programCoreKey = $normalizeGroupValue($program->title ?? '') . '|' . $normalizeGroupValue($program->program ?? '') . '|' . $normalizeGroupValue($program->project ?? '');
-                                    @endphp
-                                        <tr class="program-header group" data-program-id="{{ $program->id }}"
-                                            data-core-key="{{ $programCoreKey }}"
-                                            onclick='toggleRowsByCoreKey(@json($programCoreKey))'>
-                                            <td class="px-6 py-4" colspan="3">
-                                                <div class="flex items-center justify-between">
-                                                    <span>
-                                                        <strong>{{ $program->title }}</strong>
-                                                        @if($program->program)
-                                                            <span class="text-gray-600 font-normal text-sm ml-3">
-                                                                • {{ $program->program }}
-                                                            </span>
-                                                        @endif
-                                                        @if($program->project)
-                                                            <div class="text-sm text-gray-700 font-medium mt-1">
-                                                                Project: {{ $program->project }}
-                                                            </div>
-                                                        @endif
-                                                    </span>
-                                                    <span class="flex items-center">
-                                                        @php
-                                                            $hasIndicatorDataForIcon = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
-                                                        @endphp
-                                                        @if($hasIndicatorDataForIcon)
-                                                            <i class="fa-solid fa-circle-check text-success me-2 ml-2" title="Indicator data available"></i>
-                                                        @else
-                                                            <i class="fa-solid fa-circle-xmark text-danger me-2" title="No indicator data yet"></i>
-                                                        @endif
-                                                        <form method="POST"
-                                                            action="{{ route('admin.enf.pap.destroy', ['program' => $program->id]) }}"
-                                                            class="me-2 delete-program-form"
-                                                            id="deleteProgramForm-{{ $program->id }}">
-                                                            @csrf
-                                                            @method('DELETE')
-                                                               @foreach($groupPrograms as $gp)
-                                                                   <input type="hidden" name="group_ids[]" value="{{ $gp->id }}">
-                                                               @endforeach
-                                                            <button type="button"
-                                                                class="btn btn-sm text-danger py-0 px-1 border-0 bg-transparent"
-                                                                title="Delete PAP" data-bs-toggle="modal"
-                                                                data-bs-target="#deleteProgramConfirmModal"
-                                                                data-delete-form-id="deleteProgramForm-{{ $program->id }}"
-                                                                onclick="event.stopPropagation();">
-                                                                <i class="fa-solid fa-trash"></i>
-                                                            </button>
-                                                        </form>
-                                                        <i id="icon-{{ $program->id }}"
-                                                            class="fa-solid fa-chevron-down program-toggle-icon transition-transform group-hover:text-indigo-600"></i>
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        @php
-                                            $subActivityGroups = $groupPrograms
-                                                ->sortBy(fn($row) => trim((string)($row->activities ?? '')), SORT_NATURAL | SORT_FLAG_CASE)
-                                                ->groupBy(function($row) {
-                                                    return strtolower(trim((string)($row->activities ?? '')));
-                                                })->values();
-                                        @endphp
-                                        @foreach($subActivityGroups as $subActivityGroup)
-                                            @php
-                                                $subActivityName = (string)($subActivityGroup->first()->activities ?? '');
-                                                $hasSubSubActivities = $subActivityGroup->contains(fn($r) => filled($r->subactivities));
-                                                $showAsGroup = $subActivityName && ($subActivityGroup->count() > 1 || $hasSubSubActivities);
-                                            @endphp
-                                            @if($showAsGroup)
-                                                <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
-                                                    <td colspan="3" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
-                                                        <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $subActivityName }}
-                                                    </td>
-                                                </tr>
-                                            @endif
-                                            @php
-                                                $subSubActivityGroups = $subActivityGroup
-                                                    ->sortBy(fn($row) => trim((string)($row->subactivities ?? '')), SORT_NATURAL | SORT_FLAG_CASE)
-                                                    ->groupBy(function($row) {
-                                                        return strtolower(trim((string)($row->subactivities ?? '')));
-                                                    })->values();
-                                            @endphp
-                                            @foreach($subSubActivityGroups as $subSubActivityGroup)
-                                                @php
-                                                    $totalIndicatorCount = $subSubActivityGroup->sum(function($sp) use ($indicators) {
-                                                        return isset($indicators[$sp->id]) && $indicators[$sp->id]->count() > 0
-                                                            ? $indicators[$sp->id]->count() : 1;
-                                                    });
-                                                    $firstSubProgram = $subSubActivityGroup->first();
-                                                    $showActivityInCell = !$showAsGroup;
-                                                    $isPapCellRendered = false;
-                                                @endphp
-                                            @foreach($subSubActivityGroup as $subProgram)
-                                                @php
-                                                    $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
-                                                @endphp
-                                                @if($hasIndicatorData)
-                                                @foreach($indicators[$subProgram->id] as $indicator)
-                                                  
-                                                      @php
-                                                          $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
-                                                          if ($resolvedIndicatorType === '') {
-                                                              $resolvedIndicatorType = (string) ($indicatorTypeNameById[(int) ($indicator->indicator_type_id ?? 0)] ?? '');
-                                                          }
-                                                          $indicatorSyncKey = $programCoreKey
-                                                              . '|' . strtolower(trim((string) ($indicator->name ?? '')))
-                                                              . '|' . strtolower(trim($resolvedIndicatorType))
-                                                              . '|row-' . (int) ($subProgram->row_id ?? $subProgram->id);
-                                                          $officeIds = collect($indicator->office_id ?? [])
-                                                              ->map(fn($id) => (int) $id)
-                                                              ->filter()
-                                                              ->values()
-                                                              ->all();
-                                                          $officeSignature = implode(',', $officeIds);
-                                                          $officeMeta = $indicatorOfficeMeta[$officeSignature] ?? [
-                                                              'selected_parent_groups' => [],
-                                                              'input_offices' => [],
-                                                              'office_names_csv' => '',
-                                                              'input_office_ids_csv' => '',
-                                                              'input_office_names_csv' => '',
-                                                              'group_break_indices_csv' => '',
-                                                              'group_penro_flags_csv' => '',
-                                                          ];
-                                                          $selectedParentGroups = collect($officeMeta['selected_parent_groups'] ?? []);
-                                                          $inputOffices = collect($officeMeta['input_offices'] ?? []);
-                                                      @endphp
-                                                      <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
-                                                          data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}" data-program-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
-                                                          data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
-                                                          data-indicator-type="{{ $resolvedIndicatorType }}"
-                                                          data-office-ids="{{ implode(',', $officeIds) }}"
-                                                          data-office-names="{{ $officeMeta['office_names_csv'] ?? '' }}"
-                                                          data-input-office-ids="{{ $officeMeta['input_office_ids_csv'] ?? '' }}"
-                                                          data-input-office-names="{{ $officeMeta['input_office_names_csv'] ?? '' }}"
-                                                          data-input-break-indices="{{ $officeMeta['group_break_indices_csv'] ?? '' }}"
-                                                          data-input-group-penro-flags="{{ $officeMeta['group_penro_flags_csv'] ?? '' }}"
-                                                          id="content-{{ $subProgram->id }}-{{ $loop->index }}" style="display:none;">
-                                                          @if(!$isPapCellRendered)
-                                                              @php $isPapCellRendered = true; @endphp
-                                                              <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
-                                                                  @if($showActivityInCell)
-                                                                      <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
-                                                                  @endif
-                                                                  @if(filled($firstSubProgram->subactivities))
-                                                                      <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
-                                                                  @endif
-                                                              </td>
-                                                          @endif
-                                                              <td class="px-4 py-3">
-                                                                  @php
-                                                                      $indTypeLower = strtolower(trim((string)($indicator->indicator_type ?? '')));
-                                                                      if ($indTypeLower === '' && isset($indicatorTypeNameById)) {
-                                                                          $indTypeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($indicator->indicator_type_id ?? 0)] ?? '')));
-                                                                      }
-                                                                      $indTypeShort = '';
-                                                                      $indTypeTitle = '';
-                                                                      $indTypeBg = '#6c757d';
-                                                                      if ($indTypeLower === 'cumulative') { $indTypeShort = 'C'; $indTypeTitle = 'Cumulative'; $indTypeBg = '#2563eb'; }
-                                                                      elseif ($indTypeLower === 'non-cumulative') { $indTypeShort = 'NC'; $indTypeTitle = 'Non-cumulative'; $indTypeBg = '#dc2626'; }
-                                                                      elseif ($indTypeLower === 'semi-cumulative') { $indTypeShort = 'SC'; $indTypeTitle = 'Semi-cumulative'; $indTypeBg = '#d97706'; }
-                                                                  @endphp
-                                                                  <div class="d-flex flex-column gap-1">
-                                                                      <span>{{ $indicator->name ?? 'N/A' }}</span>
-                                                                      @if($indTypeShort)
-                                                                          <span title="{{ $indTypeTitle }}" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:{{ $indTypeBg }};color:#fff;font-size:10px;font-weight:700;">{{ $indTypeShort }}</span>
-                                                                      @endif
-                                                                  </div>
-                                                              </td>
-                                                              <td class="px-4 py-3 small text-center">
-                                                                  @if($inputOffices->isNotEmpty())
-                                                                      <div class="office-lines">
-                                                                          <div class="office-line car-office-line">CAR</div>
-                                                                          @foreach($selectedParentGroups as $group)
-                                                                              @php
-                                                                                  $parentNameRaw = (string) ($group['name'] ?? '');
-                                                                                  $parentSubtotalLabel = preg_replace('/\b(PENRO|CENRO|TOTAL)\b/i', '', $parentNameRaw);
-                                                                                  $parentSubtotalLabel = trim(preg_replace('/\s+/', ' ', (string) $parentSubtotalLabel));
-                                                                                  $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                                                  $isPenroParent = $officeTypeId === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
-                                                                                  $groupDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
-                                                                                  $selectedChildIds = collect($group['children'] ?? [])
-                                                                                      ->pluck('id')
-                                                                                      ->map(fn($id) => (int) $id)
-                                                                                      ->all();
-                                                                                  $groupInputOffices = $inputOffices
-                                                                                      ->filter(function ($office) use ($group, $selectedChildIds) {
-                                                                                          if ((bool) ($office['is_parent'] ?? false)) {
-                                                                                              return (int) ($office['id'] ?? 0) === (int) ($group['id'] ?? 0);
-                                                                                          }
-                                                                                          return in_array((int) ($office['id'] ?? 0), $selectedChildIds, true);
-                                                                                      })
-                                                                                      ->values();
-                                                                              @endphp
-                                                                              @if($groupInputOffices->isEmpty())
-                                                                                  @continue
-                                                                              @endif
-                                                                              @if($isPenroParent)
-                                                                                  <div class="office-line group-total-office-line">
-                                                                                      PENRO {{ $groupDisplayLabel }}
-                                                                                  </div>
-                                                                              @endif
-                                                                              @foreach($groupInputOffices as $office)
-                                                                                  @if($office['is_parent'] ?? false)
-                                                                                      <div class="office-line fw-bold">
-                                                                                          {{ $groupDisplayLabel }}
-                                                                                      </div>
-                                                                                  @else
-                                                                                      <div class="office-line">{{ $office['name'] ?? '' }}</div>
-                                                                                  @endif
-                                                                              @endforeach
-                                                                          @endforeach
-                                                                      </div>
-                                                                  @else
-                                                                      <div class="office-lines">
-                                                                          <div class="office-line car-office-line">CAR</div>
-                                                                          <div class="office-line">N/A</div>
-                                                                      </div>
-                                                                  @endif
-                                                              </td>
-                                                      </tr>
-                                                @endforeach
-                                            @else
-                                                <tr class="data-row first-indicator-row"
-                                                    data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
-                                                    data-program-id="{{ $subProgram->id }}"
-                                                    data-indicator-id=""
-                                                    data-core-key="{{ $programCoreKey }}"
-                                                    data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
-                                                    data-indicator-type=""
-                                                    data-office-ids=""
-                                                    data-office-names=""
-                                                    data-input-office-ids=""
-                                                    data-input-office-names=""
-                                                    data-input-break-indices=""
-                                                    data-input-group-penro-flags=""
-                                                    id="content-{{ $subProgram->id }}-0"
-                                                    style="display:none;">
-                                                    @if(!$isPapCellRendered)
-                                                        @php $isPapCellRendered = true; @endphp
-                                                        <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
-                                                            @if($showActivityInCell)
-                                                                <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
-                                                            @endif
-                                                            @if(filled($firstSubProgram->subactivities))
-                                                                <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
-                                                            @endif
-                                                        </td>
-                                                    @endif
-                                                    <td class="px-4 py-3">
-                                                        No performance indicator set
-                                                    </td>
-                                                    <td class="px-4 py-3 small text-center">
-                                                        <div class="office-lines">
-                                                            <div class="office-line car-office-line">CAR</div>
-                                                            <div class="office-line">N/A</div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                                @endif
-                                            @endforeach
-                                            @endforeach
-                                        @endforeach
-                                @endforeach
-
-                                <!-- Add more rows here as needed -->
-                            </tbody>
+                                @include('admin.enf.partials.enf_physical_table_rows')
+</tbody>
                         </table>
                     </div>
                 </div>
@@ -1009,8 +166,8 @@
 
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
-        const targetStoreUrl = @json(route('admin.enf.targets.store'));
-        const accompStoreUrl = @json(route('admin.enf.accomplishments.store'));
+        const targetStoreUrl = @json(route('admin.enf_physical.targets.store'));
+        const accompStoreUrl = @json(route('admin.enf_physical.accomplishments.store'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);
 
@@ -2621,29 +1778,26 @@
         }
 
         function syncMonthValueAcrossCoreRows(sourceInput) {
-            const sourceRow = sourceInput.closest('tr[data-row-id][data-indicator-id]');
-            const sourceRowId = String(sourceRow?.dataset?.rowId || '').trim();
-            const sourceIndicatorId = String(sourceRow?.dataset?.indicatorId || '').trim();
-            const sectionType = String(sourceInput.dataset.section || '').trim();
-            const col = String(sourceInput.dataset.col || '').trim();
-            const officeId = String(sourceInput.dataset.officeId || '').trim();
+            const sourceRow = sourceInput.closest('tr[data-sync-key]');
+            const syncKey = String(sourceRow?.dataset?.syncKey || '').trim();
+            if (!syncKey) return [];
 
-            if (!sourceRowId || !sourceIndicatorId || !sectionType || col === '' || !officeId) {
-                return [];
-            }
+            const sectionType = String(sourceInput.dataset.section || '');
+            const col = String(sourceInput.dataset.col || '');
+            const officeId = String(sourceInput.dataset.officeId || '');
+            if (!sectionType || col === '' || !officeId) return [];
 
             const touchedRows = new Set();
 
             document.querySelectorAll('.month-box').forEach(candidate => {
                 if (candidate === sourceInput) return;
-                if (String(candidate.dataset.section || '').trim() !== sectionType) return;
-                if (String(candidate.dataset.col || '').trim() !== col) return;
-                if (String(candidate.dataset.officeId || '').trim() !== officeId) return;
+                if (String(candidate.dataset.section || '') !== sectionType) return;
+                if (String(candidate.dataset.col || '') !== col) return;
+                if (String(candidate.dataset.officeId || '') !== officeId) return;
 
-                const candidateRow = candidate.closest('tr[data-row-id][data-indicator-id]');
+                const candidateRow = candidate.closest('tr[data-sync-key]');
                 if (!candidateRow) return;
-                if (String(candidateRow.dataset.rowId || '').trim() !== sourceRowId) return;
-                if (String(candidateRow.dataset.indicatorId || '').trim() !== sourceIndicatorId) return;
+                if (String(candidateRow.dataset.syncKey || '').trim() !== syncKey) return;
 
                 candidate.value = sourceInput.value;
                 touchedRows.add(candidateRow);
@@ -2843,11 +1997,30 @@
 
             const papActivitiesInput = document.getElementById('pap_activities');
             const papSubactivitiesInput = document.getElementById('pap_subactivities');
+            const papSubSubactivitiesInput = document.getElementById('pap_subsubactivities');
+            const papLevel6Input = document.getElementById('pap_level_6');
+            const papLevel7Input = document.getElementById('pap_level_7');
+            const papLevel8Input = document.getElementById('pap_level_8');
 
             if (programInput) programInput.value = String(matchedPap.program || '');
             if (projectInput) projectInput.value = String(matchedPap.project || '');
             if (papActivitiesInput) papActivitiesInput.value = String(matchedPap.activities || '');
             if (papSubactivitiesInput) papSubactivitiesInput.value = String(matchedPap.subactivities || '');
+            if (papSubSubactivitiesInput) papSubSubactivitiesInput.value = String(matchedPap.subsubactivities || '');
+            
+            // Show and populate dynamic levels if they exist
+            if (matchedPap.level_6) {
+                showNextPapLevel(6);
+                if (papLevel6Input) papLevel6Input.value = String(matchedPap.level_6);
+            }
+            if (matchedPap.level_7) {
+                showNextPapLevel(7);
+                if (papLevel7Input) papLevel7Input.value = String(matchedPap.level_7);
+            }
+            if (matchedPap.level_8) {
+                showNextPapLevel(8);
+                if (papLevel8Input) papLevel8Input.value = String(matchedPap.level_8);
+            }
 
             return matchedPap;
         }
@@ -2872,8 +2045,12 @@
             const project = normalizePapField(document.getElementById('pap_project')?.value);
             const activities = normalizePapField(document.getElementById('pap_activities')?.value);
             const subactivities = normalizePapField(document.getElementById('pap_subactivities')?.value);
+            const subsubactivities = normalizePapField(document.getElementById('pap_subsubactivities')?.value);
+            const level6 = normalizePapField(document.getElementById('pap_level_6')?.value);
+            const level7 = normalizePapField(document.getElementById('pap_level_7')?.value);
+            const level8 = normalizePapField(document.getElementById('pap_level_8')?.value);
 
-            if (!title && !program && !project && !activities && !subactivities) {
+            if (!title && !program && !project && !activities && !subactivities && !subsubactivities && !level6 && !level7 && !level8) {
                 return null;
             }
 
@@ -2883,7 +2060,25 @@
                 && normalizePapField(item?.project) === project
                 && normalizePapField(item?.activities) === activities
                 && normalizePapField(item?.subactivities) === subactivities
+                && normalizePapField(item?.subsubactivities) === subsubactivities
+                && normalizePapField(item?.level_6) === level6
+                && normalizePapField(item?.level_7) === level7
+                && normalizePapField(item?.level_8) === level8
             ) || null;
+        }
+
+        function getSelectedIndicatorFromPapMatch(matchedPap) {
+            const indicatorNameInput = document.getElementById('modal_indicator_name');
+            const normalizedIndicatorName = normalizePapField(indicatorNameInput?.value);
+            const hasTypedIndicatorName = normalizedIndicatorName !== '';
+
+            if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
+                return null;
+            }
+
+            return hasTypedIndicatorName
+                ? (matchedPap.indicators.find(i => normalizePapField(i?.name) === normalizedIndicatorName) || null)
+                : (matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0] || null);
         }
 
         function applyModalPrefillFromExistingPap() {
@@ -2898,6 +2093,7 @@
             if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
                 if (indicatorIdInput) {
                     indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
                 }
                 if (!hasTypedIndicatorName && indicatorNameInput) {
                     indicatorNameInput.value = '';
@@ -2913,15 +2109,14 @@
                 return;
             }
 
-            const selectedIndicator = hasTypedIndicatorName
-                ? matchedPap.indicators.find(i => normalizePapField(i?.name) === normalizedIndicatorName)
-                : (matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0]);
+            const selectedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
 
             if (!selectedIndicator) {
                 const hadLinkedIndicator = Boolean(String(indicatorIdInput?.value || '').trim());
 
                 if (indicatorIdInput) {
                     indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
                 }
 
                 if (hadLinkedIndicator) {
@@ -2954,6 +2149,7 @@
 
             if (indicatorIdInput) {
                 indicatorIdInput.value = String(selectedIndicator.id || '').trim();
+                indicatorIdInput.dataset.rowId = String(selectedIndicator.row_id || matchedPap?.row_id || '').trim();
             }
 
             setOfficeCheckboxes(selectedIndicator.office_ids || []);
@@ -3117,9 +2313,9 @@
                         aria-label="Close"></button>
                 </div>
 
-                <form id="addIndicatorForm" method="POST" action="{{ route('admin.enf.indicators.store') }}"
-                    data-update-route-template="{{ route('admin.enf.indicators.update', ':id') }}"
-                    data-delete-route-template="{{ route('admin.enf.indicators.destroy', ':id') }}">
+                <form id="addIndicatorForm" method="POST" action="{{ route('admin.enf_physical.indicators.store') }}"
+                    data-update-route-template="{{ route('admin.enf_physical.indicators.update', ':id') }}"
+                    data-delete-route-template="{{ route('admin.enf_physical.indicators.destroy', ':id') }}">
                     @csrf
                     <input type="hidden" id="indicator_id" name="indicator_id" value="">
 
@@ -3141,15 +2337,15 @@
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label for="pap_program" class="form-label fw-bold small">Program</label>
+                                <label for="pap_program" class="form-label fw-bold small">Program <label class="text-red-500 text-[10px]">(N/A if not applicable)</label></label>
                                 <input type="text" id="pap_program" class="form-control form-control-sm py-2"
-                                    style="font-size: 0.875rem;">
+                                    style="font-size: 0.875rem;" required>
                             </div>
 
                             <div class="col-12">
-                                <label for="pap_project" class="form-label fw-bold small">Project</label>
+                                <label for="pap_project" class="form-label fw-bold small">Project <label class="text-red-500 text-[10px]">(N/A if not applicable)</label></label>
                                 <input type="text" id="pap_project" class="form-control form-control-sm py-2"
-                                    list="pap_project_options" style="font-size: 0.875rem;">
+                                    list="pap_project_options" style="font-size: 0.875rem;" required>
                                 <datalist id="pap_project_options">
                                     @foreach(($papProjects ?? []) as $existingProject)
                                         <option value="{{ $existingProject }}"></option>
@@ -3166,17 +2362,67 @@
                                         <option value="{{ $existingActivity }}"></option>
                                     @endforeach
                                 </datalist>
-                            </div>
+                            </div> 
 
                             <div class="col-12 col-md-6">
                                 <label for="pap_subactivities" class="form-label fw-bold small">Sub-activity</label>
                                 <input type="text" id="pap_subactivities" class="form-control form-control-sm py-2"
-                                    style="font-size: 0.875rem;" list="pap_subactivity_options">
+                                    style="font-size: 0.875rem;" list="pap_subactivity_options" maxlength="255">
                                 <datalist id="pap_subactivity_options">
                                     @foreach(($papSubactivities ?? []) as $existingSubactivity)
                                         <option value="{{ $existingSubactivity }}"></option>
                                     @endforeach
                                 </datalist>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label for="pap_subsubactivities" class="form-label fw-bold small">Sub-Sub-activity</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="pap_subsubactivities" class="form-control form-control-sm py-2"
+                                        style="font-size: 0.875rem;" list="pap_subsubactivity_options" maxlength="255">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="add_level_6_btn" 
+                                        onclick="showNextPapLevel(6)" title="Add Sub-Sub-Sub-activity">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                                <datalist id="pap_subsubactivity_options">
+                                    @foreach(($papSubSubactivities ?? []) as $existingSubSubactivity)
+                                        <option value="{{ $existingSubSubactivity }}"></option>
+                                    @endforeach
+                                </datalist>
+                            </div>
+
+                            <!-- Level 6: Sub-Sub-Sub-activity -->
+                            <div class="col-12 col-md-6" id="pap_level_6_container" style="display: none;">
+                                <label for="pap_level_6" class="form-label fw-bold small">Sub-Sub-Sub-activity</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="pap_level_6" class="form-control form-control-sm py-2"
+                                        style="font-size: 0.875rem;" maxlength="255">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="add_level_7_btn" 
+                                        onclick="showNextPapLevel(7)" title="Add Sub-Sub-Sub-Sub-activity">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Level 7: Sub-Sub-Sub-Sub-activity -->
+                            <div class="col-12 col-md-6" id="pap_level_7_container" style="display: none;">
+                                <label for="pap_level_7" class="form-label fw-bold small">Sub-Sub-Sub-Sub-activity</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="pap_level_7" class="form-control form-control-sm py-2"
+                                        style="font-size: 0.875rem;" maxlength="255">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="add_level_8_btn" 
+                                        onclick="showNextPapLevel(8)" title="Add Sub-Sub-Sub-Sub-Sub-activity">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+            </div>
+
+                            <!-- Level 8: Sub-Sub-Sub-Sub-Sub-activity -->
+                            <div class="col-12 col-md-6" id="pap_level_8_container" style="display: none;">
+                                <label for="pap_level_8" class="form-label fw-bold small">Sub-Sub-Sub-Sub-Sub-activity</label>
+                                <input type="text" id="pap_level_8" class="form-control form-control-sm py-2"
+                                    style="font-size: 0.875rem;" maxlength="255">
                             </div>
 
                         </div>
@@ -3186,7 +2432,7 @@
                         </h4>
                         <!-- Performance Indicator -->
                         <div class="mb-2">
-                            <label for="modal_indicator_name" class="form-label fw-bold">Performance Indicator</label>
+                            <label for="modal_indicator_name" class="form-label fw-bold">Performance Indicator <label class="text-red-500 text-[10px]">(N/A if not applicable)</label></label>
                             <textarea type="text" name="indicator_name" id="modal_indicator_name"
                                 class="form-control form-control-lg" placeholder="Input the performance indicator"
                                 required></textarea>
@@ -3234,7 +2480,7 @@
 
                             <div>
                                 <div class="row row-cols-1 row-cols-md-3">
-                                    @forelse($offices ?? [] as $parent)
+                                    @forelse(($offices ?? []) as $parent)
                                         <div class="col">
                                             <div class="form-check">
                                                 <input class="form-check-input office-checkbox black-checkbox"
@@ -3259,7 +2505,7 @@
                                                 </label>
                                             </div>
 
-                                            @foreach($parent->children ?? [] as $child)
+                                            @foreach(($parent->children ?? []) as $child)
                                                 <div class="form-check">
                                                     <input class="form-check-input office-checkbox black-checkbox"
                                                         type="checkbox" value="{{ $child->id }}" id="office_{{ $child->id }}"
@@ -3308,6 +2554,31 @@
     </div>
 
     <script>
+        function showNextPapLevel(level) {
+            const container = document.getElementById(`pap_level_${level}_container`);
+            const button = document.getElementById(`add_level_${level}_btn`);
+            
+            if (container) {
+                container.style.display = '';
+                if (button) {
+                    button.style.display = 'none'; // Hide the button that was clicked
+                }
+            }
+        }
+
+        // Function to reset PAP levels (hide all dynamic levels)
+        function resetPapLevels() {
+            for (let level = 6; level <= 8; level++) {
+                const container = document.getElementById(`pap_level_${level}_container`);
+                const input = document.getElementById(`pap_level_${level}`);
+                const button = document.getElementById(`add_level_${level}_btn`);
+                
+                if (container) container.style.display = 'none';
+                if (input) input.value = '';
+                if (button) button.style.display = '';
+            }
+        }
+
         document.getElementById('addIndicatorForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
 
@@ -3323,6 +2594,10 @@
             const papProject = document.getElementById('pap_project')?.value?.trim() || '';
             const papActivities = document.getElementById('pap_activities')?.value?.trim() || '';
             const papSubactivities = document.getElementById('pap_subactivities')?.value?.trim() || '';
+            const papSubSubactivities = document.getElementById('pap_subsubactivities')?.value?.trim() || '';
+            const papLevel6 = document.getElementById('pap_level_6')?.value?.trim() || '';
+            const papLevel7 = document.getElementById('pap_level_7')?.value?.trim() || '';
+            const papLevel8 = document.getElementById('pap_level_8')?.value?.trim() || '';
             const indicatorId = String(document.getElementById('indicator_id')?.value || '').trim();
 
             const indicatorName = document.getElementById('modal_indicator_name').value.trim();
@@ -3348,7 +2623,11 @@
 
             try {
                 const matchedPap = findMatchingPapFromModal();
+                const matchedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
+                const indicatorIdInput = document.getElementById('indicator_id');
+                const selectedIndicatorRowId = String(matchedIndicator?.row_id || indicatorIdInput?.dataset?.rowId || '').trim();
                 let programId = matchedPap?.id ? String(matchedPap.id) : '';
+                let rowId = selectedIndicatorRowId || (matchedPap?.row_id ? String(matchedPap.row_id) : '');
 
                 if (!programId) {
                     const papFormData = new FormData();
@@ -3358,8 +2637,12 @@
                     papFormData.append('project', papProject);
                     papFormData.append('activities', papActivities);
                     papFormData.append('subactivities', papSubactivities);
+                    papFormData.append('subsubactivities', papSubSubactivities);
+                    papFormData.append('level_6', papLevel6);
+                    papFormData.append('level_7', papLevel7);
+                    papFormData.append('level_8', papLevel8);
 
-                    const papResponse = await fetch(@json(route('admin.enf.pap.store')), {
+                    const papResponse = await fetch(@json(route('admin.enf_physical.pap.store')), {
                         method: 'POST',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
@@ -3376,11 +2659,15 @@
                     }
 
                     programId = String(papData.pap.id);
+                    rowId = String(papData?.pap?.row_id || papData?.pap?.id || papData.pap.id);
                 }
 
                 const formData = new FormData();
                 formData.append('_token', token);
                 formData.append('program_id', programId);
+                if (rowId) {
+                    formData.append('row_id', rowId);
+                }
                 formData.append('indicator_name', indicatorName);
                 if (indicatorTypeId) {
                     formData.append('indicator_type_id', indicatorTypeId);
@@ -3388,7 +2675,13 @@
                 selectedOffices.forEach(officeId => formData.append('office_id[]', officeId));
 
                 const updateRouteTemplate = form.dataset.updateRouteTemplate || '';
-                const shouldUpdateExistingIndicator = Boolean(indicatorId && programId && matchedPap?.id && String(matchedPap.id) === String(programId));
+                const shouldUpdateExistingIndicator = Boolean(
+                    indicatorId
+                    && programId
+                    && rowId
+                    && matchedIndicator
+                    && String(matchedIndicator.id || '') === indicatorId
+                );
 
                 let indicatorResponse;
                 if (shouldUpdateExistingIndicator && updateRouteTemplate) {
@@ -3427,7 +2720,12 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addIndicatorModal'));
                 if (modal) modal.hide();
                 form.reset();
-                document.getElementById('indicator_id').value = '';
+                resetPapLevels(); // Reset dynamic PAP levels
+                const indicatorIdField = document.getElementById('indicator_id');
+                if (indicatorIdField) {
+                    indicatorIdField.value = '';
+                    delete indicatorIdField.dataset.rowId;
+                }
                 document.querySelectorAll('.office-checkbox').forEach(cb => cb.checked = false);
                 currentProgramIndicators = [];
                 const successMessage = shouldUpdateExistingIndicator
@@ -3567,5 +2865,4 @@
 </body>
 
 </html>
-
 

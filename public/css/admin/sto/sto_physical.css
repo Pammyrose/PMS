@@ -1,0 +1,315 @@
+:root {
+    --month-bg: #f1f5f9;
+    --quarter-bg: #e7d8bd;
+    --annual-bg: #cacaca;
+    --header-blue: #1e40af;
+    --border: #cbd5e1;
+}
+
+.year-header {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--header-blue);
+    text-align: center;
+    padding: 14px 0;
+    background: linear-gradient(to right, #eff6ff, #dbeafe);
+    border-bottom: 3px solid #3b82f6;
+    margin-bottom: 1rem;
+}
+
+.group-header {
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.group-target {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.group-accomp {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.month-header {
+    background: #496cce;
+    color: white;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.78rem;
+    padding: 6px 4px;
+    min-width: 44px;
+    border: 1px solid #1e40af;
+    white-space: nowrap;
+}
+
+.month-header.quarter {
+    background: #f59e0b;
+    min-width: 50px;
+    font-size: 0.82rem;
+    color: #000 !important;
+    font-style: bold;
+}
+
+.month-header.annual {
+    background: #334155;
+    min-width: 50px;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+/* When Accomplishments are shown → pink month headers (JAN–DEC only) */
+th.month-header.accomp-month:not(.quarter):not(.annual) {
+    background: #16958d !important;
+    /* pastel pink */
+    color: white !important;
+    /* dark pink text for contrast */
+}
+
+.month-box {
+    width: 100%;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    text-align: center;
+    font-size: 13px;
+    padding: 2px 4px;
+}
+
+.month-box[readonly] {
+    background: var(--month-bg);
+    color: #334155;
+    font-weight: 500;
+    cursor: default;
+}
+
+.month-box:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.office-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+}
+
+.office-line {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1.1;
+    text-align: center;
+}
+
+.input-line {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.target-box {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.target-box[readonly] {
+    background: #ecfccb !important;
+    color: #166534;
+}
+
+.accomp-box {
+    background: white;
+}
+
+.target-total {
+    background: #e7d8bd !important;
+}
+
+.annual-target {
+    background: #cacaca !important;
+    font-weight: 600;
+}
+
+.quarter-total {
+    background: var(--quarter-bg) !important;
+}
+
+.annual-total {
+    background: var(--annual-bg) !important;
+    font-weight: 600;
+}
+
+.car-total-box {
+    background: #eef2ff !important;
+    border-color: #dc2626;
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.car-office-line {
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.group-total-office-line {
+    font-weight: 700;
+    color: #0f766e;
+}
+
+.group-total-box {
+    background: #ecfeff !important;
+    border-color: #c48282;
+    color: #115e59;
+    font-weight: 700;
+}
+
+.table-container {
+    --table-sticky-top: 0px;
+    position: relative;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 230px);
+    margin: 1rem 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 1400px;
+}
+
+th,
+td {
+    border: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+thead tr:not(.group-row) th {
+    position: sticky;
+    top: var(--table-sticky-top, 0px);
+    z-index: 12;
+}
+
+thead tr.group-row th {
+    position: sticky;
+    top: calc(var(--table-sticky-top, 0px) + var(--table-header-row-height, 46px));
+    z-index: 11;
+}
+
+tr.bg-gray-100 td {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+tr.program-header {
+    background: #e0e7ff !important;
+    font-weight: 600 !important;
+    color: #1e40af;
+    cursor: pointer;
+}
+
+tr.program-header:hover {
+    background: #c7d2fe !important;
+}
+
+tr.program-header td {
+    user-select: none;
+    padding: 16px !important;
+}
+
+.program-toggle-icon {
+    display: inline-block;
+    margin-right: 12px;
+    transition: transform 0.3s ease;
+    font-size: 0.85rem;
+    color: #1e40af;
+}
+
+tr.program-header .program-toggle-icon {
+    transition: transform 0.3s ease;
+    transform: rotate(0deg);
+}
+
+.program-toggle-icon.rotate-180 {
+    transform: rotate(-180deg);
+}
+
+.data-row:hover {
+    background-color: #f1f5f9;
+}
+
+.black-checkbox {
+    border-color: #000 !important;
+}
+
+.black-checkbox:checked {
+    background-color: #2772fd !important;
+    border-color: #2772fd !important;
+}
+
+.remarks-header {
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: 700;
+    min-width: 200px;
+}
+
+.remarks-box {
+    width: 100%;
+    min-width: 200px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 12px;
+    padding: 2px 6px;
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    resize: none;
+    overflow-y: auto;
+    line-height: 1.1;
+}
+
+.remarks-spacer {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+td[data-dynamic-section="remarks"] .input-line {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+td[data-dynamic-section="summary"] .office-lines {
+    width: 100%;
+    align-items: stretch;
+}
+
+td[data-dynamic-section="summary"] .input-line {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+td[data-dynamic-section="summary"] .month-box {
+    width: 100%;
+    min-width: 200px;
+    box-sizing: border-box;
+    font-size: 12px;
+    padding: 2px 6px;
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    text-align: center;
+    line-height: 1.1;
+}

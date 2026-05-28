@@ -14,7 +14,7 @@ Schema::create('ppa', function (Blueprint $table) {
             $table->foreignId('record_type_id')->constrained('record_types')->onDelete('restrict');
             $table->foreignId('ppa_details_id')->nullable()->constrained('ppa_details')->onDelete('set null');
             $table->foreignId('indicator_id')->nullable()->constrained('indicators')->onDelete('set null');
-            
+            $table->unsignedSmallInteger('year')->nullable()->after('office_id');
             // JSON array of office IDs
             $table->json('office_id')->nullable();   // e.g. [1, 3, 7]
             

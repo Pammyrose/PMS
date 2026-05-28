@@ -60,6 +60,10 @@ class EssentialsSeeder extends Seeder
             ['name' => 'MAIN ACTIVITY', 'desc' => 'Main activity record'],
             ['name' => 'SUB-ACTIVITY', 'desc' => 'Sub-activity record'],
             ['name' => 'SUB-SUB-ACTIVITY', 'desc' => 'Sub-sub-activity record'],
+            ['name' => 'SUB-SUB-SUB-ACTIVITY', 'desc' => 'Sub-sub-sub-activity record'],
+            ['name' => 'LEVEL-7', 'desc' => 'Level 7 record'],
+            ['name' => 'LEVEL-8', 'desc' => 'Level 8 record'],
+            ['name' => 'LEVEL-9', 'desc' => 'Level 9 record'],
         ];
 
         foreach ($recordTypes as $type) {

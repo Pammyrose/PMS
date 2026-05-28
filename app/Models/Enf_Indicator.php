@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Enf_Indicator extends Model
 {
-    protected $table = 'enf_indicators';
+    protected $table = 'indicators';
 
     protected $fillable = [
         'name',
-        'indicator_type',
+        'indicator_type_id',
         'user_id',
         'program_id',
         'office_id',

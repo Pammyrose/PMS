@@ -35,15 +35,25 @@ Route::prefix('programs')->name('programs.')->group(function () {
 
 Route::get('/gass_physical', [GassController::class, 'index'])->middleware('auth')->name('gass_physical');
 Route::get('/sto', [StoController::class, 'index'])->middleware('auth')->name('sto');
+Route::get('/sto_physical', [StoController::class, 'index'])->middleware('auth')->name('sto_physical');
 Route::get('/enf', [EnfController::class, 'index'])->middleware('auth')->name('enf');
+Route::get('/enf_physical', [EnfController::class, 'index'])->middleware('auth')->name('enf_physical');
 Route::get('/pa', [PaController::class, 'index'])->middleware('auth')->name('pa');
+Route::get('/pa_physical', [PaController::class, 'index'])->middleware('auth')->name('pa_physical');
 Route::get('/engp', [EngpController::class, 'index'])->middleware('auth')->name('engp');
+Route::get('/engp_physical', [EngpController::class, 'index'])->middleware('auth')->name('engp_physical');
 Route::get('/lands', [LandsController::class, 'index'])->middleware('auth')->name('lands');
+Route::get('/lands_physical', [LandsController::class, 'index'])->middleware('auth')->name('lands_physical');
 Route::get('/soilcon', [SoilconController::class, 'index'])->middleware('auth')->name('soilcon');
+Route::get('/soilcon_physical', [SoilconController::class, 'index'])->middleware('auth')->name('soilcon_physical');
 Route::get('/nra', [NraController::class, 'index'])->middleware('auth')->name('nra');
+Route::get('/nra_physical', [NraController::class, 'index'])->middleware('auth')->name('nra_physical');
 Route::get('/paria', [PariaController::class, 'index'])->middleware('auth')->name('paria');
+Route::get('/paria_physical', [PariaController::class, 'index'])->middleware('auth')->name('paria_physical');
 Route::get('/cobb', [CobbController::class, 'index'])->middleware('auth')->name('cobb');
+Route::get('/cobb_physical', [CobbController::class, 'index'])->middleware('auth')->name('cobb_physical');
 Route::get('/continuing', [ContinuingController::class, 'index'])->middleware('auth')->name('continuing');
+Route::get('/continuing_physical', [ContinuingController::class, 'index'])->middleware('auth')->name('continuing_physical');
 Route::get('/user', [UserController::class, 'index'])->middleware('auth')->name('user');
 Route::get('/history', [HistoryController::class, 'index'])->middleware('auth')->name('history');
 Route::post('/users', [UserController::class, 'store'])->middleware(['auth', 'field.history'])->name('users.store');
@@ -63,7 +73,7 @@ Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware([
     Route::delete('/indicators/{indicator}', [GassController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/sto')->name('admin.sto.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/sto_physical')->name('admin.sto_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [StoController::class, 'index'])->name('physical');
     Route::post('/pap', [StoController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [StoController::class, 'destroyPap'])->name('pap.destroy');
@@ -74,7 +84,7 @@ Route::prefix('admin/sto')->name('admin.sto.')->middleware(['auth', 'field.histo
     Route::delete('/indicators/{indicator}', [StoController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/enf')->name('admin.enf.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/enf_physical')->name('admin.enf_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [EnfController::class, 'index'])->name('physical');
     Route::post('/pap', [EnfController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [EnfController::class, 'destroyPap'])->name('pap.destroy');
@@ -85,7 +95,7 @@ Route::prefix('admin/enf')->name('admin.enf.')->middleware(['auth', 'field.histo
     Route::delete('/indicators/{indicator}', [EnfController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/pa')->name('admin.pa.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/pa_physical')->name('admin.pa_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [PaController::class, 'index'])->name('physical');
     Route::post('/pap', [PaController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [PaController::class, 'destroyPap'])->name('pap.destroy');
@@ -96,7 +106,7 @@ Route::prefix('admin/pa')->name('admin.pa.')->middleware(['auth', 'field.history
     Route::delete('/indicators/{indicator}', [PaController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/engp')->name('admin.engp.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/engp_physical')->name('admin.engp_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [EngpController::class, 'index'])->name('physical');
     Route::post('/pap', [EngpController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [EngpController::class, 'destroyPap'])->name('pap.destroy');
@@ -107,7 +117,7 @@ Route::prefix('admin/engp')->name('admin.engp.')->middleware(['auth', 'field.his
     Route::delete('/indicators/{indicator}', [EngpController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/lands')->name('admin.lands.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/lands_physical')->name('admin.lands_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [LandsController::class, 'index'])->name('physical');
     Route::post('/pap', [LandsController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [LandsController::class, 'destroyPap'])->name('pap.destroy');
@@ -118,7 +128,7 @@ Route::prefix('admin/lands')->name('admin.lands.')->middleware(['auth', 'field.h
     Route::delete('/indicators/{indicator}', [LandsController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/soilcon')->name('admin.soilcon.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/soilcon_physical')->name('admin.soilcon_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [SoilconController::class, 'index'])->name('physical');
     Route::post('/pap', [SoilconController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [SoilconController::class, 'destroyPap'])->name('pap.destroy');
@@ -129,7 +139,7 @@ Route::prefix('admin/soilcon')->name('admin.soilcon.')->middleware(['auth', 'fie
     Route::delete('/indicators/{indicator}', [SoilconController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/nra')->name('admin.nra.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/nra_physical')->name('admin.nra_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [NraController::class, 'index'])->name('physical');
     Route::post('/pap', [NraController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [NraController::class, 'destroyPap'])->name('pap.destroy');
@@ -140,7 +150,7 @@ Route::prefix('admin/nra')->name('admin.nra.')->middleware(['auth', 'field.histo
     Route::delete('/indicators/{indicator}', [NraController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/paria')->name('admin.paria.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/paria_physical')->name('admin.paria_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [PariaController::class, 'index'])->name('physical');
     Route::post('/pap', [PariaController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [PariaController::class, 'destroyPap'])->name('pap.destroy');
@@ -151,7 +161,7 @@ Route::prefix('admin/paria')->name('admin.paria.')->middleware(['auth', 'field.h
     Route::delete('/indicators/{indicator}', [PariaController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/cobb')->name('admin.cobb.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/cobb_physical')->name('admin.cobb_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [CobbController::class, 'index'])->name('physical');
     Route::post('/pap', [CobbController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [CobbController::class, 'destroyPap'])->name('pap.destroy');
@@ -162,7 +172,7 @@ Route::prefix('admin/cobb')->name('admin.cobb.')->middleware(['auth', 'field.his
     Route::delete('/indicators/{indicator}', [CobbController::class, 'destroyIndicator'])->name('indicators.destroy');
 });
 
-Route::prefix('admin/continuing')->name('admin.continuing.')->middleware(['auth', 'field.history'])->group(function () {
+Route::prefix('admin/continuing_physical')->name('admin.continuing_physical.')->middleware(['auth', 'field.history'])->group(function () {
     Route::get('/physical/{program?}', [ContinuingController::class, 'index'])->name('physical');
     Route::post('/pap', [ContinuingController::class, 'storePap'])->name('pap.store');
     Route::delete('/pap/{program}', [ContinuingController::class, 'destroyPap'])->name('pap.destroy');

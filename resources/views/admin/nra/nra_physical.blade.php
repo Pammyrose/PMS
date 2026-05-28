@@ -9,324 +9,7 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-    <style>
-        :root {
-            --month-bg: #f1f5f9;
-            --quarter-bg: #e7d8bd;
-            --annual-bg: #cacaca;
-            --header-blue: #1e40af;
-            --border: #cbd5e1;
-        }
-
-        .year-header {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--header-blue);
-            text-align: center;
-            padding: 14px 0;
-            background: linear-gradient(to right, #eff6ff, #dbeafe);
-            border-bottom: 3px solid #3b82f6;
-            margin-bottom: 1rem;
-        }
-
-        .group-header {
-            font-size: 1rem;
-            font-weight: 700;
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        .group-target {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .group-accomp {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .month-header {
-            background: #496cce;
-            color: white;
-            text-align: center;
-            font-weight: 600;
-            font-size: 0.78rem;
-            padding: 6px 4px;
-            min-width: 44px;
-            border: 1px solid #1e40af;
-            white-space: nowrap;
-        }
-
-        .month-header.quarter {
-            background: #f59e0b;
-            min-width: 50px;
-            font-size: 0.82rem;
-            color: #000 !important;
-            font-style: bold;
-        }
-
-        .month-header.annual {
-            background: #334155;
-            min-width: 50px;
-            font-size: 0.9rem;
-            font-weight: 700;
-        }
-
-        /* When Accomplishments are shown → pink month headers (JAN–DEC only) */
-        th.month-header.accomp-month:not(.quarter):not(.annual) {
-            background: #16958d !important;
-            /* pastel pink */
-            color: white !important;
-            /* dark pink text for contrast */
-        }
-
-        .month-box {
-            width: 100%;
-            height: 28px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            text-align: center;
-            font-size: 13px;
-            padding: 2px 4px;
-        }
-
-        .month-box[readonly] {
-            background: var(--month-bg);
-            color: #334155;
-            font-weight: 500;
-            cursor: default;
-        }
-
-        .month-box:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-
-        .office-lines {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .office-line {
-            min-height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            line-height: 1.1;
-            text-align: center;
-        }
-
-        .input-line {
-            min-height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .target-box {
-            background: #f0fdf4;
-            border-color: #86efac;
-        }
-
-        .target-box[readonly] {
-            background: #ecfccb !important;
-            color: #166534;
-        }
-
-        .accomp-box {
-            background: white;
-        }
-
-        .target-total {
-            background: #e7d8bd !important;
-        }
-
-        .annual-target {
-            background: #cacaca !important;
-            font-weight: 600;
-        }
-
-        .quarter-total {
-            background: var(--quarter-bg) !important;
-        }
-
-        .annual-total {
-            background: var(--annual-bg) !important;
-            font-weight: 600;
-        }
-
-        .car-total-box {
-            background: #eef2ff !important;
-            border-color: #dc2626;
-            color: #1e3a8a;
-            font-weight: 700;
-        }
-
-        .car-office-line {
-            font-weight: 700;
-            color: #1e3a8a;
-        }
-
-        .group-total-office-line {
-            font-weight: 700;
-            color: #0f766e;
-        }
-
-        .group-total-box {
-            background: #ecfeff !important;
-            border-color: #c48282;
-            color: #115e59;
-            font-weight: 700;
-        }
-
-        .table-container {
-            --table-sticky-top: 0px;
-            position: relative;
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: calc(100vh - 230px);
-            margin: 1rem 0;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            min-width: 1400px;
-        }
-
-        th,
-        td {
-            border: 1px solid var(--border);
-            vertical-align: middle;
-        }
-
-        thead tr:not(.group-row) th {
-            position: sticky;
-            top: var(--table-sticky-top, 0px);
-            z-index: 12;
-        }
-
-        thead tr.group-row th {
-            position: sticky;
-            top: calc(var(--table-sticky-top, 0px) + var(--table-header-row-height, 46px));
-            z-index: 11;
-        }
-
-        tr.bg-gray-100 td {
-            background: #f8fafc;
-            font-weight: 600;
-        }
-
-        tr.program-header {
-            background: #e0e7ff !important;
-            font-weight: 600 !important;
-            color: #1e40af;
-            cursor: pointer;
-        }
-
-        tr.program-header:hover {
-            background: #c7d2fe !important;
-        }
-
-        tr.program-header td {
-            user-select: none;
-            padding: 16px !important;
-        }
-
-        .program-toggle-icon {
-            display: inline-block;
-            margin-right: 12px;
-            transition: transform 0.3s ease;
-            font-size: 0.85rem;
-            color: #1e40af;
-        }
-
-        tr.program-header .program-toggle-icon {
-            transition: transform 0.3s ease;
-            transform: rotate(0deg);
-        }
-
-        .program-toggle-icon.rotate-180 {
-            transform: rotate(-180deg);
-        }
-
-        .data-row:hover {
-            background-color: #f1f5f9;
-        }
-
-        .black-checkbox {
-            border-color: #000 !important;
-        }
-
-        .black-checkbox:checked {
-            background-color: #2772fd !important;
-            border-color: #2772fd !important;
-        }
-
-        .remarks-header {
-            background: #fef3c7;
-            color: #92400e;
-            font-weight: 700;
-            min-width: 200px;
-        }
-
-        .remarks-box {
-            width: 100%;
-            min-width: 200px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 12px;
-            padding: 2px 6px;
-            height: 28px;
-            min-height: 28px;
-            max-height: 28px;
-            resize: none;
-            overflow-y: auto;
-            line-height: 1.1;
-        }
-
-        .remarks-spacer {
-            visibility: hidden;
-            pointer-events: none;
-        }
-
-        td[data-dynamic-section="remarks"] .input-line {
-            width: 100%;
-            justify-content: flex-start;
-        }
-
-        td[data-dynamic-section="summary"] .office-lines {
-            width: 100%;
-            align-items: stretch;
-        }
-
-        td[data-dynamic-section="summary"] .input-line {
-            width: 100%;
-            justify-content: flex-start;
-        }
-
-        td[data-dynamic-section="summary"] .month-box {
-            width: 100%;
-            min-width: 200px;
-            box-sizing: border-box;
-            font-size: 12px;
-            padding: 2px 6px;
-            height: 28px;
-            min-height: 28px;
-            max-height: 28px;
-            text-align: center;
-            line-height: 1.1;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ asset('css/admin/nra/nra_physical.css') }}">
 </head>
 
 <body class="bg-light">
@@ -346,12 +29,11 @@
                 <!-- TABS -->
                 <div class="flex items-center mt-4">
                     <div class="flex gap-6">
-                        <a href="{{ route('nra') }}">
-                            <button class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2">
-                                Physical
-                            </button>
+                        <a href="{{ route('nra_physical') }}"
+                            class="font-semibold text-blue-600 border-b-2 border-blue-600 pb-2 text-decoration-none d-inline-block">
+                            Physical
                         </a>
-                        <button class="text-gray-400 pb-2">
+                        <button type="button" class="text-gray-400 pb-2">
                             Financial
                         </button>
                     </div>
@@ -496,13 +178,33 @@
                                         return preg_replace('/\s+/', ' ', $normalized);
                                     };
 
+                                    $hierarchySortValue = function ($value) use ($normalizeGroupValue) {
+                                        $normalized = $normalizeGroupValue($value);
+
+                                        if ($normalized === '') {
+                                            return '2|999999.999999.999999.999999.999999|';
+                                        }
+
+                                        if (preg_match('/^(\d+(?:\.\d+)*)\s*(?:[.)-]|\s|$)/', $normalized, $matches)) {
+                                            $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
+                                            $segments = array_pad($segments, 5, 0);
+                                            $numericKey = collect(array_slice($segments, 0, 5))
+                                                ->map(fn($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                                                ->implode('.');
+
+                                            return '0|' . $numericKey . '|' . $normalized;
+                                        }
+
+                                        return '1|' . $normalized;
+                                    };
+
                                     $groupedPrograms = collect($programsRaw ?? $programs)
-                                        ->sortBy(function ($row) use ($normalizeGroupValue) {
-                                            return $normalizeGroupValue($row->title ?? '') . '|'
-                                                . $normalizeGroupValue($row->program ?? '') . '|'
-                                                . $normalizeGroupValue($row->project ?? '') . '|'
-                                                . $normalizeGroupValue($row->activities ?? '') . '|'
-                                                . $normalizeGroupValue($row->subactivities ?? '');
+                                        ->sortBy(function ($row) use ($hierarchySortValue) {
+                                            return $hierarchySortValue($row->title ?? '') . '|'
+                                                . $hierarchySortValue($row->program ?? '') . '|'
+                                                . $hierarchySortValue($row->project ?? '') . '|'
+                                                . $hierarchySortValue($row->activities ?? '') . '|'
+                                                . $hierarchySortValue($row->subactivities ?? '');
                                         }, SORT_NATURAL | SORT_FLAG_CASE)
                                         ->groupBy(function ($row) use ($normalizeGroupValue) {
                                             return $normalizeGroupValue($row->title ?? '') . '|'
@@ -652,7 +354,12 @@
                                                     </span>
                                                     <span class="flex items-center">
                                                         @php
-                                                            $hasIndicatorDataForIcon = isset($indicators[$program->id]) && $indicators[$program->id]->count() > 0;
+                                                            $hasIndicatorDataForIcon = $groupPrograms->contains(function ($groupProgram) use ($indicators) {
+                                                                $rowKey = (int) ($groupProgram->row_id ?? $groupProgram->id);
+                                                                $programKey = (int) ($groupProgram->id ?? 0);
+                                                                return (isset($indicators[$rowKey]) && $indicators[$rowKey]->count() > 0)
+                                                                    || (isset($indicators[$programKey]) && $indicators[$programKey]->count() > 0);
+                                                            });
                                                         @endphp
                                                         @if($hasIndicatorDataForIcon)
                                                             <i class="fa-solid fa-circle-check text-success me-2 ml-2" title="Indicator data available"></i>
@@ -660,7 +367,7 @@
                                                             <i class="fa-solid fa-circle-xmark text-danger me-2" title="No indicator data yet"></i>
                                                         @endif
                                                         <form method="POST"
-                                                            action="{{ route('admin.nra.pap.destroy', ['program' => $program->id]) }}"
+                                                            action="{{ route('admin.nra_physical.pap.destroy', ['program' => $program->id]) }}"
                                                             class="me-2 delete-program-form"
                                                             id="deleteProgramForm-{{ $program->id }}">
                                                             @csrf
@@ -685,7 +392,7 @@
                                         </tr>
                                         @php
                                             $subActivityGroups = $groupPrograms
-                                                ->sortBy(fn($row) => trim((string)($row->activities ?? '')), SORT_NATURAL | SORT_FLAG_CASE)
+                                                ->sortBy(fn($row) => $hierarchySortValue($row->activities ?? ''), SORT_NATURAL | SORT_FLAG_CASE)
                                                 ->groupBy(function($row) {
                                                     return strtolower(trim((string)($row->activities ?? '')));
                                                 })->values();
@@ -694,7 +401,7 @@
                                             @php
                                                 $subActivityName = (string)($subActivityGroup->first()->activities ?? '');
                                                 $hasSubSubActivities = $subActivityGroup->contains(fn($r) => filled($r->subactivities));
-                                                $showAsGroup = $subActivityName && ($subActivityGroup->count() > 1 || $hasSubSubActivities);
+                                                $showAsGroup = filled($subActivityName);
                                             @endphp
                                             @if($showAsGroup)
                                                 <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
@@ -705,27 +412,46 @@
                                             @endif
                                             @php
                                                 $subSubActivityGroups = $subActivityGroup
-                                                    ->sortBy(fn($row) => trim((string)($row->subactivities ?? '')), SORT_NATURAL | SORT_FLAG_CASE)
+                                                    ->sortBy(function($row) use ($hierarchySortValue) {
+                                                        $priority = $row->_sort_priority ?? 1;
+                                                        return $priority . '|' . $hierarchySortValue($row->subactivities ?? '');
+                                                    }, SORT_NATURAL | SORT_FLAG_CASE)
                                                     ->groupBy(function($row) {
                                                         return strtolower(trim((string)($row->subactivities ?? '')));
                                                     })->values();
                                             @endphp
                                             @foreach($subSubActivityGroups as $subSubActivityGroup)
                                                 @php
+                                                    $groupHasIndicatorData = $subSubActivityGroup->contains(function($sp) use ($indicators) {
+                                                        $rowKey = (int) ($sp->row_id ?? $sp->id);
+                                                        $programKey = (int) ($sp->id ?? 0);
+                                                        $indicatorCollection = $indicators[$rowKey] ?? $indicators[$programKey] ?? collect();
+                                                        return $indicatorCollection->count() > 0;
+                                                    });
                                                     $totalIndicatorCount = $subSubActivityGroup->sum(function($sp) use ($indicators) {
-                                                        return isset($indicators[$sp->id]) && $indicators[$sp->id]->count() > 0
-                                                            ? $indicators[$sp->id]->count() : 1;
+                                                        $rowKey = (int) ($sp->row_id ?? $sp->id);
+                                                        $programKey = (int) ($sp->id ?? 0);
+                                                        $indicatorCollection = $indicators[$rowKey] ?? $indicators[$programKey] ?? collect();
+                                                        return max($indicatorCollection->count(), 1);
                                                     });
                                                     $firstSubProgram = $subSubActivityGroup->first();
-                                                    $showActivityInCell = !$showAsGroup;
+                                                    $showActivityInCell = !filled($firstSubProgram->subactivities) && filled($firstSubProgram->activities);
+                                                    $papLeafLabel = filled($firstSubProgram->subactivities)
+                                                        ? $firstSubProgram->subactivities
+                                                        : '';
                                                     $isPapCellRendered = false;
+                                                    $renderedEmptyIndicatorPlaceholder = false;
                                                 @endphp
                                             @foreach($subSubActivityGroup as $subProgram)
                                                 @php
-                                                    $hasIndicatorData = isset($indicators[$subProgram->id]) && $indicators[$subProgram->id]->count() > 0;
+                                                    $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
+                                                    $subProgramIndicatorCollection = $indicators[$subProgramRowKey] ?? $indicators[(int) $subProgram->id] ?? collect();
+                                                    $hasIndicatorData = $subProgramIndicatorCollection->count() > 0;
+                                                    $renderCount = 0;
                                                 @endphp
                                                 @if($hasIndicatorData)
-                                                @foreach($indicators[$subProgram->id] as $indicator)
+                                                @foreach($subProgramIndicatorCollection as $indicator)
+                                                  @php $renderCount++; @endphp
                                                   
                                                       @php
                                                           $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
@@ -771,8 +497,8 @@
                                                                   @if($showActivityInCell)
                                                                       <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
                                                                   @endif
-                                                                  @if(filled($firstSubProgram->subactivities))
-                                                                      <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
+                                                                  @if($papLeafLabel !== '')
+                                                                      <span class="{{ $showActivityInCell ? 'ms-4 small' : '' }}">{{ $papLeafLabel }}</span>
                                                                   @endif
                                                               </td>
                                                           @endif
@@ -850,42 +576,50 @@
                                                       </tr>
                                                 @endforeach
                                             @else
-                                                <tr class="data-row first-indicator-row"
-                                                    data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
-                                                    data-program-id="{{ $subProgram->id }}"
-                                                    data-indicator-id=""
-                                                    data-core-key="{{ $programCoreKey }}"
-                                                    data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
-                                                    data-indicator-type=""
-                                                    data-office-ids=""
-                                                    data-office-names=""
-                                                    data-input-office-ids=""
-                                                    data-input-office-names=""
-                                                    data-input-break-indices=""
-                                                    data-input-group-penro-flags=""
-                                                    id="content-{{ $subProgram->id }}-0"
-                                                    style="display:none;">
-                                                    @if(!$isPapCellRendered)
-                                                        @php $isPapCellRendered = true; @endphp
-                                                        <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
-                                                            @if($showActivityInCell)
-                                                                <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
-                                                            @endif
-                                                            @if(filled($firstSubProgram->subactivities))
-                                                                <span class="ms-4 small">{{ $firstSubProgram->subactivities }}</span>
-                                                            @endif
+                                                @if($renderCount === 0)
+                                                    @php 
+                                                        $renderCount++; 
+                                                        if (!$isPapCellRendered) {
+                                                            $renderedEmptyIndicatorPlaceholder = true;
+                                                        }
+                                                    @endphp
+                                                    <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
+                                                        data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
+                                                        data-program-id="{{ $subProgram->id }}"
+                                                        data-indicator-id=""
+                                                        data-core-key="{{ $programCoreKey }}"
+                                                        data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
+                                                        data-indicator-type=""
+                                                        data-office-ids=""
+                                                        data-office-names=""
+                                                        data-input-office-ids=""
+                                                        data-input-office-names=""
+                                                        data-input-break-indices=""
+                                                        data-input-group-penro-flags=""
+                                                        id="content-{{ $subProgram->id }}-0"
+                                                        style="display:none;">
+                                                        @if(!$isPapCellRendered)
+                                                            @php $isPapCellRendered = true; @endphp
+                                                            <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ max($totalIndicatorCount, 1) }}">
+                                                                @if($showActivityInCell)
+                                                                    <div>{{ $firstSubProgram->activities ?: 'N/A' }}</div>
+                                                                @endif
+                                                                @if($papLeafLabel !== '')
+                                                                    <span class="{{ $showActivityInCell ? 'ms-4 small' : '' }}">{{ $papLeafLabel }}</span>
+                                                                @endif
+                                                            </td>
+                                                        @endif
+                                                        <td class="px-4 py-3">
+                                                            No performance indicator set
                                                         </td>
-                                                    @endif
-                                                    <td class="px-4 py-3">
-                                                        No performance indicator set
-                                                    </td>
-                                                    <td class="px-4 py-3 small text-center">
-                                                        <div class="office-lines">
-                                                            <div class="office-line car-office-line">CAR</div>
-                                                            <div class="office-line">N/A</div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                        <td class="px-4 py-3 small text-center">
+                                                            <div class="office-lines">
+                                                                <div class="office-line car-office-line">CAR</div>
+                                                                <div class="office-line">N/A</div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                @endif
                                                 @endif
                                             @endforeach
                                             @endforeach
@@ -1009,8 +743,8 @@
 
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
-        const targetStoreUrl = @json(route('admin.nra.targets.store'));
-        const accompStoreUrl = @json(route('admin.nra.accomplishments.store'));
+        const targetStoreUrl = @json(route('admin.nra_physical.targets.store'));
+        const accompStoreUrl = @json(route('admin.nra_physical.accomplishments.store'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);
 
@@ -2621,29 +2355,26 @@
         }
 
         function syncMonthValueAcrossCoreRows(sourceInput) {
-            const sourceRow = sourceInput.closest('tr[data-row-id][data-indicator-id]');
-            const sourceRowId = String(sourceRow?.dataset?.rowId || '').trim();
-            const sourceIndicatorId = String(sourceRow?.dataset?.indicatorId || '').trim();
-            const sectionType = String(sourceInput.dataset.section || '').trim();
-            const col = String(sourceInput.dataset.col || '').trim();
-            const officeId = String(sourceInput.dataset.officeId || '').trim();
+            const sourceRow = sourceInput.closest('tr[data-sync-key]');
+            const syncKey = String(sourceRow?.dataset?.syncKey || '').trim();
+            if (!syncKey) return [];
 
-            if (!sourceRowId || !sourceIndicatorId || !sectionType || col === '' || !officeId) {
-                return [];
-            }
+            const sectionType = String(sourceInput.dataset.section || '');
+            const col = String(sourceInput.dataset.col || '');
+            const officeId = String(sourceInput.dataset.officeId || '');
+            if (!sectionType || col === '' || !officeId) return [];
 
             const touchedRows = new Set();
 
             document.querySelectorAll('.month-box').forEach(candidate => {
                 if (candidate === sourceInput) return;
-                if (String(candidate.dataset.section || '').trim() !== sectionType) return;
-                if (String(candidate.dataset.col || '').trim() !== col) return;
-                if (String(candidate.dataset.officeId || '').trim() !== officeId) return;
+                if (String(candidate.dataset.section || '') !== sectionType) return;
+                if (String(candidate.dataset.col || '') !== col) return;
+                if (String(candidate.dataset.officeId || '') !== officeId) return;
 
-                const candidateRow = candidate.closest('tr[data-row-id][data-indicator-id]');
+                const candidateRow = candidate.closest('tr[data-sync-key]');
                 if (!candidateRow) return;
-                if (String(candidateRow.dataset.rowId || '').trim() !== sourceRowId) return;
-                if (String(candidateRow.dataset.indicatorId || '').trim() !== sourceIndicatorId) return;
+                if (String(candidateRow.dataset.syncKey || '').trim() !== syncKey) return;
 
                 candidate.value = sourceInput.value;
                 touchedRows.add(candidateRow);
@@ -2886,6 +2617,20 @@
             ) || null;
         }
 
+        function getSelectedIndicatorFromPapMatch(matchedPap) {
+            const indicatorNameInput = document.getElementById('modal_indicator_name');
+            const normalizedIndicatorName = normalizePapField(indicatorNameInput?.value);
+            const hasTypedIndicatorName = normalizedIndicatorName !== '';
+
+            if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
+                return null;
+            }
+
+            return hasTypedIndicatorName
+                ? (matchedPap.indicators.find(i => normalizePapField(i?.name) === normalizedIndicatorName) || null)
+                : (matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0] || null);
+        }
+
         function applyModalPrefillFromExistingPap() {
             const matchedPap = findMatchingPapFromModal();
             const indicatorIdInput = document.getElementById('indicator_id');
@@ -2898,6 +2643,7 @@
             if (!matchedPap || !Array.isArray(matchedPap.indicators) || matchedPap.indicators.length === 0) {
                 if (indicatorIdInput) {
                     indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
                 }
                 if (!hasTypedIndicatorName && indicatorNameInput) {
                     indicatorNameInput.value = '';
@@ -2913,15 +2659,14 @@
                 return;
             }
 
-            const selectedIndicator = hasTypedIndicatorName
-                ? matchedPap.indicators.find(i => normalizePapField(i?.name) === normalizedIndicatorName)
-                : (matchedPap.indicators.find(i => String(i?.name || '').trim() !== '') || matchedPap.indicators[0]);
+            const selectedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
 
             if (!selectedIndicator) {
                 const hadLinkedIndicator = Boolean(String(indicatorIdInput?.value || '').trim());
 
                 if (indicatorIdInput) {
                     indicatorIdInput.value = '';
+                    delete indicatorIdInput.dataset.rowId;
                 }
 
                 if (hadLinkedIndicator) {
@@ -2954,6 +2699,7 @@
 
             if (indicatorIdInput) {
                 indicatorIdInput.value = String(selectedIndicator.id || '').trim();
+                indicatorIdInput.dataset.rowId = String(selectedIndicator.row_id || matchedPap?.row_id || '').trim();
             }
 
             setOfficeCheckboxes(selectedIndicator.office_ids || []);
@@ -3117,9 +2863,9 @@
                         aria-label="Close"></button>
                 </div>
 
-                <form id="addIndicatorForm" method="POST" action="{{ route('admin.nra.indicators.store') }}"
-                    data-update-route-template="{{ route('admin.nra.indicators.update', ':id') }}"
-                    data-delete-route-template="{{ route('admin.nra.indicators.destroy', ':id') }}">
+                <form id="addIndicatorForm" method="POST" action="{{ route('admin.nra_physical.indicators.store') }}"
+                    data-update-route-template="{{ route('admin.nra_physical.indicators.update', ':id') }}"
+                    data-delete-route-template="{{ route('admin.nra_physical.indicators.destroy', ':id') }}">
                     @csrf
                     <input type="hidden" id="indicator_id" name="indicator_id" value="">
 
@@ -3234,7 +2980,7 @@
 
                             <div>
                                 <div class="row row-cols-1 row-cols-md-3">
-                                    @forelse($offices ?? [] as $parent)
+                                    @forelse(($offices ?? []) as $parent)
                                         <div class="col">
                                             <div class="form-check">
                                                 <input class="form-check-input office-checkbox black-checkbox"
@@ -3259,7 +3005,7 @@
                                                 </label>
                                             </div>
 
-                                            @foreach($parent->children ?? [] as $child)
+                                            @foreach(($parent->children ?? []) as $child)
                                                 <div class="form-check">
                                                     <input class="form-check-input office-checkbox black-checkbox"
                                                         type="checkbox" value="{{ $child->id }}" id="office_{{ $child->id }}"
@@ -3348,7 +3094,11 @@
 
             try {
                 const matchedPap = findMatchingPapFromModal();
+                const matchedIndicator = getSelectedIndicatorFromPapMatch(matchedPap);
+                const indicatorIdInput = document.getElementById('indicator_id');
+                const selectedIndicatorRowId = String(matchedIndicator?.row_id || indicatorIdInput?.dataset?.rowId || '').trim();
                 let programId = matchedPap?.id ? String(matchedPap.id) : '';
+                let rowId = selectedIndicatorRowId || (matchedPap?.row_id ? String(matchedPap.row_id) : '');
 
                 if (!programId) {
                     const papFormData = new FormData();
@@ -3359,7 +3109,7 @@
                     papFormData.append('activities', papActivities);
                     papFormData.append('subactivities', papSubactivities);
 
-                    const papResponse = await fetch(@json(route('admin.nra.pap.store')), {
+                    const papResponse = await fetch(@json(route('admin.nra_physical.pap.store')), {
                         method: 'POST',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
@@ -3376,11 +3126,15 @@
                     }
 
                     programId = String(papData.pap.id);
+                    rowId = String(papData?.pap?.row_id || papData?.pap?.id || papData.pap.id);
                 }
 
                 const formData = new FormData();
                 formData.append('_token', token);
                 formData.append('program_id', programId);
+                if (rowId) {
+                    formData.append('row_id', rowId);
+                }
                 formData.append('indicator_name', indicatorName);
                 if (indicatorTypeId) {
                     formData.append('indicator_type_id', indicatorTypeId);
@@ -3388,7 +3142,13 @@
                 selectedOffices.forEach(officeId => formData.append('office_id[]', officeId));
 
                 const updateRouteTemplate = form.dataset.updateRouteTemplate || '';
-                const shouldUpdateExistingIndicator = Boolean(indicatorId && programId && matchedPap?.id && String(matchedPap.id) === String(programId));
+                const shouldUpdateExistingIndicator = Boolean(
+                    indicatorId
+                    && programId
+                    && rowId
+                    && matchedIndicator
+                    && String(matchedIndicator.id || '') === indicatorId
+                );
 
                 let indicatorResponse;
                 if (shouldUpdateExistingIndicator && updateRouteTemplate) {
@@ -3427,7 +3187,11 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addIndicatorModal'));
                 if (modal) modal.hide();
                 form.reset();
-                document.getElementById('indicator_id').value = '';
+                const indicatorIdField = document.getElementById('indicator_id');
+                if (indicatorIdField) {
+                    indicatorIdField.value = '';
+                    delete indicatorIdField.dataset.rowId;
+                }
                 document.querySelectorAll('.office-checkbox').forEach(cb => cb.checked = false);
                 currentProgramIndicators = [];
                 const successMessage = shouldUpdateExistingIndicator
@@ -3567,8 +3331,3 @@
 </body>
 
 </html>
-
-
-
-
-
