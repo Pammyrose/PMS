@@ -20,4 +20,3 @@ class Enf_Indicator extends Model
         'office_id' => 'array',
     ];
 }
-

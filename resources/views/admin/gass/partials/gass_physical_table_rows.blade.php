@@ -9,24 +9,52 @@
         return preg_replace('/\s+/', ' ', $normalized);
     };
 
-    $hierarchySortValue = function ($value) use ($normalizeGroupValue) {
+    $hierarchySortValue = function ($value, bool $singleIAsRoman = false) use ($normalizeGroupValue) {
+        $raw = trim((string) ($value ?? ''));
         $normalized = $normalizeGroupValue($value);
 
         if ($normalized === '') {
-            return '2|999999.999999.999999.999999.999999|';
+            return '4|999999.999999.999999.999999.999999|';
         }
 
-        if (preg_match('/^(\d+(?:\.\d+)*)\s*(?:[.)-]|\s|$)/', $normalized, $matches)) {
-            $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
-            $segments = array_pad($segments, 5, 0);
-            $numericKey = collect(array_slice($segments, 0, 5))
-                ->map(fn($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
-                ->implode('.');
+        if (preg_match('/^(\d+(?:\.\d+)*)([.)-]+)?(?:\s|$)/', $normalized, $matches)) {
+            if (($matches[2] ?? '') !== '' || str_contains($matches[1], '.')) {
+                $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
+                $segments = array_pad($segments, 5, 0);
+                $numericKey = collect(array_slice($segments, 0, 5))
+                    ->map(fn($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                    ->implode('.');
 
-            return '0|' . $numericKey . '|' . $normalized;
+                return '0|' . $numericKey . '|' . $normalized;
+            }
         }
 
-        return '1|' . $normalized;
+        if (preg_match('/^([VX]|[IVXLCDM]{2,})[.)-]\s*/', $raw, $matches) || ($singleIAsRoman && preg_match('/^(I)[.)-]\s*/', $raw, $matches))) {
+            $romanMap = ['i' => 1, 'v' => 5, 'x' => 10, 'l' => 50, 'c' => 100, 'd' => 500, 'm' => 1000];
+            $roman = strtolower($matches[1]);
+            $value = 0;
+            $length = strlen($roman);
+
+            for ($index = 0; $index < $length; $index++) {
+                $current = $romanMap[$roman[$index]] ?? 0;
+                $next = $index + 1 < $length ? ($romanMap[$roman[$index + 1]] ?? 0) : 0;
+                $value += $current < $next ? -$current : $current;
+            }
+
+            return '1|' . str_pad((string) $value, 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        if (preg_match('/^([A-Za-z])[.)-]\s*/', $raw, $matches)) {
+            return '2|' . str_pad((string) (ord(strtoupper($matches[1])) - 64), 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        return '3|' . $normalized;
+    };
+
+    $hasRomanSequence = function ($rows, string $field): bool {
+        return collect($rows)->contains(function ($row) use ($field) {
+            return preg_match('/^([VX]|[IVXLCDM]{2,})[.)-]\s*/', trim((string) ($row->{$field} ?? ''))) === 1;
+        });
     };
 
     $groupedPrograms = collect($programsRaw ?? $programs)
@@ -158,25 +186,31 @@
     @php
         $program = $groupPrograms->first();
         $programCoreKey = $normalizeGroupValue($program->title ?? '') . '|' . $normalizeGroupValue($program->program ?? '') . '|' . $normalizeGroupValue($program->project ?? '');
+        $programSearchText = collect([
+            $program->title ?? '',
+            $program->program ?? '',
+            $program->project ?? '',
+        ])->filter()->implode(' ');
     @endphp
     <tr class="program-header group" data-program-id="{{ $program->id }}"
         data-core-key="{{ $programCoreKey }}"
+        data-search-text="{{ e($programSearchText) }}"
         onclick='toggleRowsByCoreKey(@json($programCoreKey))'>
         <td class="px-6 py-4" colspan="3">
             <div class="flex items-center justify-between">
-                <span>
+                <div class="flex flex-col items-start">
                     <strong>{{ $program->title }}</strong>
                     @if($program->program)
-                        <span class="text-gray-600 font-normal text-sm ml-3">
-                            • {{ $program->program }}
-                        </span>
-                    @endif
-                    @if($program->project)
-                        <div class="text-sm text-gray-700 font-medium mt-1">
-                            Project: {{ $program->project }}
+                        <div class="text-sm mt-1 ml-6" style="font-weight: 600 !important; color: maroon;">
+                            {{ $program->program }}
                         </div>
                     @endif
-                </span>
+                    @if($program->project)
+                        <div class="text-sm text-gray-700 font-normal mt-2 ml-10">
+                            {{ $program->project }}
+                        </div>
+                    @endif
+                </div>
                 <span class="flex items-center">
                     @php
                         $hasIndicatorDataForIcon = $groupPrograms->contains(function ($groupProgram) use ($indicators) {
@@ -216,8 +250,9 @@
         </td>
     </tr>
     @php
+        $activitiesUseRomanSequence = $hasRomanSequence($groupPrograms, 'activities');
         $subActivityGroups = $groupPrograms
-            ->sortBy(fn($row) => $hierarchySortValue($row->activities ?? ''), SORT_NATURAL | SORT_FLAG_CASE)
+            ->sortBy(fn($row) => $hierarchySortValue($row->activities ?? '', $activitiesUseRomanSequence), SORT_NATURAL | SORT_FLAG_CASE)
             ->groupBy(function($row) {
                 return strtolower(trim((string)($row->activities ?? '')));
             })->values();
@@ -229,17 +264,19 @@
             $showAsGroup = filled($subActivityName);
         @endphp
         @if($showAsGroup)
-            <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
+            <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}"
+                data-search-text="{{ e($programSearchText . ' ' . $subActivityName) }}" style="display:none;">
                 <td colspan="3" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
                     <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $subActivityName }}
                 </td>
             </tr>
         @endif
         @php
+            $subactivitiesUseRomanSequence = $hasRomanSequence($subActivityGroup, 'subactivities');
             $subSubActivityGroups = $subActivityGroup
-                ->sortBy(function($row) use ($hierarchySortValue) {
+                ->sortBy(function($row) use ($hierarchySortValue, $subactivitiesUseRomanSequence) {
                     $priority = $row->_sort_priority ?? 1;
-                    return $priority . '|' . $hierarchySortValue($row->subactivities ?? '');
+                    return $priority . '|' . $hierarchySortValue($row->subactivities ?? '', $subactivitiesUseRomanSequence);
                 }, SORT_NATURAL | SORT_FLAG_CASE)
                 ->groupBy(function($row) {
                     return strtolower(trim((string)($row->subactivities ?? ''))) . '|'
@@ -248,6 +285,8 @@
                         . strtolower(trim((string)(isset($row->level_7) ? $row->level_7 : ''))) . '|'
                         . strtolower(trim((string)(isset($row->level_8) ? $row->level_8 : '')));
                 })->values();
+            $previousPapHierarchyLevels = [];
+            $renderedPromotedHierarchyGroupLabels = [];
         @endphp
         @foreach($subSubActivityGroups as $subSubActivityGroup)
             @php
@@ -276,9 +315,75 @@
                                 : (filled($firstSubProgram->subactivities)
                                     ? $firstSubProgram->subactivities
                                     : ''))));
+                $fullPapHierarchyLevels = [];
+                if (filled($firstSubProgram->subactivities)) $fullPapHierarchyLevels[] = $firstSubProgram->subactivities;
+                if (filled(isset($firstSubProgram->subsubactivities) ? $firstSubProgram->subsubactivities : null)) $fullPapHierarchyLevels[] = $firstSubProgram->subsubactivities;
+                if (filled(isset($firstSubProgram->level_6) ? $firstSubProgram->level_6 : null)) $fullPapHierarchyLevels[] = $firstSubProgram->level_6;
+                if (filled(isset($firstSubProgram->level_7) ? $firstSubProgram->level_7 : null)) $fullPapHierarchyLevels[] = $firstSubProgram->level_7;
+                if (filled(isset($firstSubProgram->level_8) ? $firstSubProgram->level_8 : null)) $fullPapHierarchyLevels[] = $firstSubProgram->level_8;
+
+                $promotedHierarchyGroupLabel = null;
+                $hierarchyLevelDepth = function ($value) {
+                    $value = trim((string) $value);
+                    if (preg_match('/^(\d+(?:\.\d+)*)(?:[.)]|\s|$)/', $value, $matches)) {
+                        return substr_count($matches[1], '.') + 1;
+                    }
+                    return null;
+                };
+                if (!filled($subActivityName) && !empty($fullPapHierarchyLevels)) {
+                    $firstDepth = $hierarchyLevelDepth($fullPapHierarchyLevels[0] ?? '');
+                    $secondDepth = count($fullPapHierarchyLevels) > 1
+                        ? $hierarchyLevelDepth($fullPapHierarchyLevels[1] ?? '')
+                        : null;
+
+                    if ($firstDepth === 1 && ($secondDepth === null || $secondDepth > $firstDepth)) {
+                        $promotedHierarchyGroupLabel = array_shift($fullPapHierarchyLevels);
+                    }
+                }
+
+                $firstChangedHierarchyIndex = 0;
+                foreach ($fullPapHierarchyLevels as $levelIndex => $levelValue) {
+                    if (!isset($previousPapHierarchyLevels[$levelIndex]) || $previousPapHierarchyLevels[$levelIndex] !== $levelValue) {
+                        $firstChangedHierarchyIndex = $levelIndex;
+                        break;
+                    }
+                    $firstChangedHierarchyIndex = $levelIndex + 1;
+                }
+                $hierarchyLevelsToDisplay = array_slice($fullPapHierarchyLevels, $firstChangedHierarchyIndex);
+                $hierarchyDisplayStartIndex = $firstChangedHierarchyIndex;
+                if (
+                    count($hierarchyLevelsToDisplay) > 1
+                    && filled($subActivityName)
+                    && $normalizeGroupValue($hierarchyLevelsToDisplay[0] ?? '') === $normalizeGroupValue($subActivityName)
+                ) {
+                    array_shift($hierarchyLevelsToDisplay);
+                    $hierarchyDisplayStartIndex++;
+                }
+                if (empty($hierarchyLevelsToDisplay) && !empty($fullPapHierarchyLevels)) {
+                    $hierarchyLevelsToDisplay = [end($fullPapHierarchyLevels)];
+                    $hierarchyDisplayStartIndex = count($fullPapHierarchyLevels) - 1;
+                }
+                $previousPapHierarchyLevels = $fullPapHierarchyLevels;
                 $isPapCellRendered = false;
                 $renderedEmptyIndicatorPlaceholder = false;
             @endphp
+            @php
+                $promotedHierarchyGroupKey = $normalizeGroupValue($promotedHierarchyGroupLabel ?? '');
+                $shouldRenderPromotedHierarchyGroup = !filled($subActivityName)
+                    && filled($promotedHierarchyGroupLabel)
+                    && !in_array($promotedHierarchyGroupKey, $renderedPromotedHierarchyGroupLabels, true);
+                if ($shouldRenderPromotedHierarchyGroup) {
+                    $renderedPromotedHierarchyGroupLabels[] = $promotedHierarchyGroupKey;
+                }
+            @endphp
+            @if($shouldRenderPromotedHierarchyGroup)
+                <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}"
+                    data-search-text="{{ e($programSearchText . ' ' . $promotedHierarchyGroupLabel) }}" style="display:none;">
+                    <td colspan="3" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
+                        <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $promotedHierarchyGroupLabel }}
+                    </td>
+                </tr>
+            @endif
             @foreach($subSubActivityGroup as $subProgram)
                 @php
                     $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
@@ -317,6 +422,38 @@
                     $renderCount = 0;
                 @endphp
                 @if($hasIndicatorData)
+                    @php
+                        $deleteIndicatorIds = $subSubActivityGroup
+                            ->flatMap(function ($row) use ($indicators) {
+                                $candidateKeys = [
+                                    (int) ($row->row_id ?? $row->id),
+                                    (int) (isset($row->level_9_row_id) ? $row->level_9_row_id : 0),
+                                    (int) (isset($row->level_8_row_id) ? $row->level_8_row_id : 0),
+                                    (int) (isset($row->level_7_row_id) ? $row->level_7_row_id : 0),
+                                    (int) (isset($row->level_6_row_id) ? $row->level_6_row_id : 0),
+                                    (int) (isset($row->subsubactivities_row_id) ? $row->subsubactivities_row_id : 0),
+                                    (int) ($row->subactivities_row_id ?? 0),
+                                    (int) ($row->activities_row_id ?? 0),
+                                    (int) ($row->project_row_id ?? 0),
+                                    (int) ($row->program_row_id ?? 0),
+                                    (int) ($row->id ?? 0),
+                                ];
+
+                                foreach ($candidateKeys as $candidateKey) {
+                                    $indicatorCollection = $indicators[$candidateKey] ?? collect();
+                                    if ($indicatorCollection->isNotEmpty()) {
+                                        return $indicatorCollection->pluck('id');
+                                    }
+                                }
+
+                                return collect();
+                            })
+                            ->map(fn($id) => (int) $id)
+                            ->filter()
+                            ->unique()
+                            ->values()
+                            ->all();
+                    @endphp
                     @foreach($subProgramIndicatorCollection as $indicator)
                         @php $renderCount++; @endphp
                         @php
@@ -345,10 +482,24 @@
                             ];
                             $selectedParentGroups = collect($officeMeta['selected_parent_groups'] ?? []);
                             $inputOffices = collect($officeMeta['input_offices'] ?? []);
+                            $rowSearchText = collect([
+                                $programSearchText,
+                                $subProgram->activities ?? '',
+                                $subProgram->subactivities ?? '',
+                                $subProgram->subsubactivities ?? '',
+                                $subProgram->level_6 ?? '',
+                                $subProgram->level_7 ?? '',
+                                $subProgram->level_8 ?? '',
+                                $indicator->name ?? '',
+                                $resolvedIndicatorType,
+                                $officeMeta['office_names_csv'] ?? '',
+                                $officeMeta['input_office_names_csv'] ?? '',
+                            ])->filter()->implode(' ');
                         @endphp
                         <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
                             data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}" data-program-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
                             data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
+                            data-search-text="{{ e($rowSearchText) }}"
                             data-indicator-type="{{ $resolvedIndicatorType }}"
                             data-office-ids="{{ implode(',', $officeIds) }}"
                             data-office-names="{{ $officeMeta['office_names_csv'] ?? '' }}"
@@ -359,18 +510,25 @@
                             id="content-{{ $subProgram->id }}-{{ $loop->index }}" style="display:none;">
                             @if(!$isPapCellRendered)
                                 @php $isPapCellRendered = true; @endphp
-                                <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ $totalIndicatorCount }}">
+                                <td class="px-4 py-3 pl-5 text-primary fw-medium position-relative" rowspan="{{ $totalIndicatorCount }}" style="vertical-align: middle; padding-left: 3.75rem !important;">
                                     @php
-                                        $hierarchyLevels = [];
-                                        if (filled($firstSubProgram->subactivities)) $hierarchyLevels[] = $firstSubProgram->subactivities;
-                                        if (filled(isset($firstSubProgram->subsubactivities) ? $firstSubProgram->subsubactivities : null)) $hierarchyLevels[] = $firstSubProgram->subsubactivities;
-                                        if (filled(isset($firstSubProgram->level_6) ? $firstSubProgram->level_6 : null)) $hierarchyLevels[] = $firstSubProgram->level_6;
-                                        if (filled(isset($firstSubProgram->level_7) ? $firstSubProgram->level_7 : null)) $hierarchyLevels[] = $firstSubProgram->level_7;
-                                        if (filled(isset($firstSubProgram->level_8) ? $firstSubProgram->level_8 : null)) $hierarchyLevels[] = $firstSubProgram->level_8;
+                                        $hierarchyLevels = $hierarchyLevelsToDisplay;
                                     @endphp
+                                    <button type="button"
+                                        class="btn btn-sm btn-outline-danger delete-physical-row-btn d-inline-flex align-items-center justify-content-center position-absolute"
+                                        style="top: 0.35rem; left: 0.75rem;"
+                                        title="Delete row"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deletePhysicalRowConfirmModal"
+                                        data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
+                                        data-indicator-id="{{ $indicator->id }}"
+                                        data-indicator-ids="{{ implode(',', $deleteIndicatorIds) }}"
+                                        data-office-ids="{{ implode(',', $officeIds) }}">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
                                     @if(count($hierarchyLevels) > 0)
                                         @foreach($hierarchyLevels as $index => $level)
-                                            <div class="{{ $index > 0 ? 'ms-4 mt-2 fst-italic text-secondary' : '' }}">{{ $level }}</div>
+                                            <div class="{{ ($hierarchyDisplayStartIndex + $index) > 0 ? 'ms-4 mt-2 fst-italic text-secondary' : '' }}">{{ $level }}</div>
                                         @endforeach
                                     @else
                                         N/A
@@ -406,9 +564,9 @@
                                                 $parentNameRaw = (string) ($group['name'] ?? '');
                                                 $parentSubtotalLabel = preg_replace('/\b(PENRO|CENRO|TOTAL)\b/i', '', $parentNameRaw);
                                                 $parentSubtotalLabel = trim(preg_replace('/\s+/', ' ', (string) $parentSubtotalLabel));
-                                                $officeTypeId = (int) ($group['office_types_id'] ?? 0);
-                                                $isPenroParent = $officeTypeId === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
+                                                $isProvinceTotal = (int) ($group['office_types_id'] ?? 0) === 2 || preg_match('/\bPENRO\b/i', $parentNameRaw) === 1;
                                                 $groupDisplayLabel = $parentSubtotalLabel !== '' ? $parentSubtotalLabel : $parentNameRaw;
+                                                $parentOfficeLineLabel = $isProvinceTotal ? 'PENRO' : $groupDisplayLabel;
                                                 $selectedChildIds = collect($group['children'] ?? [])
                                                     ->pluck('id')
                                                     ->map(fn($id) => (int) $id)
@@ -425,15 +583,15 @@
                                             @if($groupInputOffices->isEmpty())
                                                 @continue
                                             @endif
-                                            @if($isPenroParent)
+                                            @if($isProvinceTotal)
                                                 <div class="office-line group-total-office-line">
-                                                    PENRO {{ $groupDisplayLabel }}
+                                                    {{ $groupDisplayLabel }}
                                                 </div>
                                             @endif
                                             @foreach($groupInputOffices as $office)
                                                 @if($office['is_parent'] ?? false)
-                                                    <div class="office-line fw-bold">
-                                                        {{ $groupDisplayLabel }}
+                                                    <div class="office-line">
+                                                        {{ $parentOfficeLineLabel }}
                                                     </div>
                                                 @else
                                                     <div class="office-line">{{ $office['name'] ?? '' }}</div>
@@ -457,6 +615,15 @@
                             if (!$isPapCellRendered) {
                                 $renderedEmptyIndicatorPlaceholder = true;
                             }
+                            $rowSearchText = collect([
+                                $programSearchText,
+                                $subProgram->activities ?? '',
+                                $subProgram->subactivities ?? '',
+                                $subProgram->subsubactivities ?? '',
+                                $subProgram->level_6 ?? '',
+                                $subProgram->level_7 ?? '',
+                                $subProgram->level_8 ?? '',
+                            ])->filter()->implode(' ');
                         @endphp
                         <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
                             data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
@@ -464,6 +631,7 @@
                             data-indicator-id=""
                             data-core-key="{{ $programCoreKey }}"
                             data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
+                            data-search-text="{{ e($rowSearchText) }}"
                             data-indicator-type=""
                             data-office-ids=""
                             data-office-names=""
@@ -475,18 +643,28 @@
                             style="display:none;">
                             @if(!$isPapCellRendered)
                                 @php $isPapCellRendered = true; @endphp
-                                <td class="px-4 py-3 pl-5 text-primary fw-medium" rowspan="{{ max($totalIndicatorCount, 1) }}">
+                                <td class="px-4 py-3 pl-5 text-primary fw-medium position-relative" rowspan="{{ max($totalIndicatorCount, 1) }}" style="padding-left: 3.75rem !important;">
                                     @php
-                                        $hierarchyLevels = [];
-                                        if (filled($firstSubProgram->subactivities)) $hierarchyLevels[] = $firstSubProgram->subactivities;
-                                        if (filled(isset($firstSubProgram->subsubactivities) ? $firstSubProgram->subsubactivities : null)) $hierarchyLevels[] = $firstSubProgram->subsubactivities;
-                                        if (filled(isset($firstSubProgram->level_6) ? $firstSubProgram->level_6 : null)) $hierarchyLevels[] = $firstSubProgram->level_6;
-                                        if (filled(isset($firstSubProgram->level_7) ? $firstSubProgram->level_7 : null)) $hierarchyLevels[] = $firstSubProgram->level_7;
-                                        if (filled(isset($firstSubProgram->level_8) ? $firstSubProgram->level_8 : null)) $hierarchyLevels[] = $firstSubProgram->level_8;
+                                        $hierarchyLevels = $hierarchyLevelsToDisplay;
+                                        $showPlaceholderDeleteButton = count($hierarchyLevels) > 0;
                                     @endphp
+                                    @if($showPlaceholderDeleteButton)
+                                        <button type="button"
+                                            class="btn btn-sm btn-outline-danger delete-physical-row-btn d-inline-flex align-items-center justify-content-center position-absolute"
+                                            style="top: 0.35rem; left: 0.75rem;"
+                                            title="Delete row"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deletePhysicalRowConfirmModal"
+                                            data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
+                                            data-indicator-id=""
+                                            data-indicator-ids=""
+                                            data-office-ids="">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    @endif
                                     @if(count($hierarchyLevels) > 0)
                                         @foreach($hierarchyLevels as $index => $level)
-                                            <div class="{{ $index > 0 ? 'ms-4 mt-2 fst-italic text-secondary' : '' }}">{{ $level }}</div>
+                                            <div class="{{ ($hierarchyDisplayStartIndex + $index) > 0 ? 'ms-4 mt-2 fst-italic text-secondary' : '' }}">{{ $level }}</div>
                                         @endforeach
                                     @else
                                         N/A
@@ -494,7 +672,7 @@
                                 </td>
                             @endif
                             <td class="px-4 py-3">
-                                No performance indicator set
+                                N/A
                             </td>
                             <td class="px-4 py-3 small text-center">
                                 <div class="office-lines">

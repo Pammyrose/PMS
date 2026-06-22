@@ -25,24 +25,24 @@ class GassController extends Controller
     public function index(Request $request, $program = null)
     {
         $year = $request->query('year', now()->year);
-        $office_id = $request->query('office_id', 1);   // change default later if needed
+        $office_id = $this->officeIdForPhysicalPage($request);
         $search = trim((string) $request->query('search', ''));
 
         $programId = $program !== null ? (int) $program : null;
 
         $sortProgramHierarchy = function ($row) {
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         };
 
-        $programsRaw = $this->getGassPrograms($programId, $search)
+        $programsRaw = $this->getGassPrograms($programId, $search, (int) $year)
             ->sortBy($sortProgramHierarchy, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
@@ -79,31 +79,18 @@ class GassController extends Controller
             : collect();
 
         // Fetch indicators grouped by program from section metadata.
-        $indicators = $this->getIndicatorsGroupedByProgram($programIds);
+        $indicators = $this->getIndicatorsGroupedByProgram($programIds, (int) $year);
+        $indicators = $this->filterIndicatorsForOffice($indicators, $office_id);
+        $programsRaw = $this->filterProgramRowsForOffice($programsRaw, $indicators, $office_id);
+        $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
 
-        // Filter programs to only include those with data (entries, targets, accomplishments, or indicators) in the selected year
-        $targets = Gass_Target::where('years', $year)->get();
-        $accomplishments = Gass_Accomplishment::where('years', $year)->get();
-        
-        $programIdsWithData = collect()
-            ->merge($entries->pluck('programs_id'))
-            ->merge($targets->pluck('programs_id'))
-            ->merge($accomplishments->pluck('programs_id'))
-            ->merge($indicators->keys())
-            ->unique()
-            ->filter(fn ($id) => $id > 0)
-            ->all();
+        $targets = Gass_Target::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->get();
+        $accomplishments = Gass_Accomplishment::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->get();
 
-        // Filter programsRaw and programs to only include those with data in selected year
-        $programsRaw = $programsRaw->filter(function ($row) use ($programIdsWithData) {
-            $rowId = (int) ($row->row_id ?? $row->id ?? 0);
-            return in_array((int) $row->id, $programIdsWithData) || 
-                   in_array((int) ($row->program_row_id ?? 0), $programIdsWithData) ||
-                   in_array((int) ($row->project_row_id ?? 0), $programIdsWithData) ||
-                   in_array($rowId, $programIdsWithData);
-        })->values();
-
-        // Group by normalized group key (program, project, activities, subactivities) - already filtered above
         $programs = $programsRaw
             ->unique($sortProgramHierarchy)
             ->values();
@@ -200,16 +187,16 @@ class GassController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -313,12 +300,12 @@ class GassController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')));
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -333,16 +320,16 @@ class GassController extends Controller
         // Also expand programsRaw for consistency (already expanded above)
         $programsRaw = $programsRaw->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -447,6 +434,10 @@ class GassController extends Controller
                 return $carry;
             }, []);
 
+        $targets = $this->filterSectionDataForOffice($targets, $office_id);
+        $accomplishments = $this->filterSectionDataForOffice($accomplishments, $office_id);
+        $pendingTotalsByRow = $this->buildPendingTotalsByRow($targets, $accomplishments);
+
         $papTitles = $programs->pluck('title')
             ->filter(fn ($value) => filled($value))
             ->unique()
@@ -549,7 +540,7 @@ class GassController extends Controller
             ->values()
             ->all();
 
-        return view('admin.gass.gass_physical', compact(
+        return view($this->roleView('gass.gass_physical'), compact(
             'entries',
             'programs',
             'programsRaw',
@@ -558,6 +549,7 @@ class GassController extends Controller
             'indicatorsForJs',
             'targets',
             'accomplishments',
+            'pendingTotalsByRow',
             'offices',
             'papTitles',
             'papProjects',
@@ -784,10 +776,12 @@ class GassController extends Controller
         }
     }
 
-    private function storePapHierarchyInPpa(array $papData): object
+    protected function storePapHierarchyInPpa(array $papData): object
     {
         $typeId = $this->getGassTypeId();
         $recordTypeIds = $this->getGassRecordTypeIds();
+        $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
+        $forceDuplicateLeaf = !empty($papData['duplicate_leaf']);
 
         $levels = [
             ['record_type' => 'PROGRAM', 'name' => trim((string) ($papData['title'] ?? ''))],
@@ -800,6 +794,10 @@ class GassController extends Controller
             ['record_type' => 'LEVEL-8', 'name' => trim((string) ($papData['level_7'] ?? ''))],
             ['record_type' => 'LEVEL-9', 'name' => trim((string) ($papData['level_8'] ?? ''))],
         ];
+        $lastLevelIndex = collect($levels)
+            ->keys()
+            ->filter(fn ($index) => $levels[$index]['name'] !== '')
+            ->last();
 
         $parentDetailId = null;
         $rootPpaId = null;
@@ -817,29 +815,30 @@ class GassController extends Controller
                 throw new \RuntimeException("Record type {$level['record_type']} is not configured.");
             }
 
-            $existingNode = DB::table('ppa_details as details')
-                ->join('ppa', 'ppa.ppa_details_id', '=', 'details.id')
-                ->where('ppa.types_id', $typeId)
-                ->where('ppa.record_type_id', $recordTypeId)
-                ->where('details.column_order', $index + 1)
-                ->when(
-                    $parentDetailId === null,
-                    fn ($query) => $query->whereNull('details.parent_id'),
-                    fn ($query) => $query->where('details.parent_id', $parentDetailId)
-                )
-                ->whereRaw('LOWER(TRIM(ppa.name)) = ?', [strtolower($level['name'])])
-                ->orderBy('ppa.id')
-                ->select('ppa.id', 'details.id as detail_id')
-                ->first();
+            $existingNode = null;
+            if (!$forceDuplicateLeaf || $index !== $lastLevelIndex) {
+                $existingNode = DB::table('ppa_details as details')
+                    ->join('ppa', 'ppa.ppa_details_id', '=', 'details.id')
+                    ->where('ppa.types_id', $typeId)
+                    ->where('ppa.record_type_id', $recordTypeId)
+                    ->where('details.column_order', $index + 1)
+                    ->when(
+                        $parentDetailId === null,
+                        fn ($query) => $query->whereNull('details.parent_id'),
+                        fn ($query) => $query->where('details.parent_id', $parentDetailId)
+                    )
+                    ->whereRaw('LOWER(TRIM(ppa.name)) = ?', [strtolower($level['name'])])
+                    ->when($index === 0 && $papYear !== null, function ($query) use ($papYear) {
+                        $query->where('ppa.year', $papYear);
+                    })
+                    ->orderBy('ppa.id')
+                    ->select('ppa.id', 'details.id as detail_id')
+                    ->first();
+            }
 
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
-                
-                // Update year on existing root PPA if this is the first level and year is provided
-                if ($index === 0 && isset($papData['year'])) {
-                    DB::table('ppa')->where('id', $ppaId)->update(['year' => $papData['year']]);
-                }
             } else {
                 $isNewHierarchy = false;
                 $detailId = DB::table('ppa_details')->insertGetId([
@@ -861,8 +860,8 @@ class GassController extends Controller
                 ];
 
                 // Add year to the root (first level) PPA record
-                if ($index === 0 && isset($papData['year'])) {
-                    $ppaInsertData['year'] = $papData['year'];
+                if ($index === 0 && $papYear !== null) {
+                    $ppaInsertData['year'] = $papYear;
                 }
 
                 $ppaId = DB::table('ppa')->insertGetId($ppaInsertData);
@@ -889,6 +888,58 @@ class GassController extends Controller
             'activities' => (string) ($papData['activities'] ?? ''),
             'subactivities' => (string) ($papData['subactivities'] ?? ''),
         ];
+    }
+
+    private function hierarchySortValue($value, bool $singleIAsRoman = false): string
+    {
+        $raw = trim((string) ($value ?? ''));
+        $normalized = strtolower($raw);
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+
+        if ($normalized === '') {
+            return '4|999999.999999.999999.999999.999999|';
+        }
+
+        if (
+            preg_match('/^(\d+(?:\.\d+)*)([.)-]+)(?=\s|[A-Za-z(]|$)/u', $normalized, $matches)
+            || preg_match('/^(\d+(?:\.\d+)+)(?=\s|[A-Za-z(]|$)/u', $normalized, $matches)
+        ) {
+            if (($matches[2] ?? '') !== '' || str_contains($matches[1], '.')) {
+                $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
+                $segments = array_pad($segments, 5, 0);
+                $numericKey = collect(array_slice($segments, 0, 5))
+                    ->map(fn ($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                    ->implode('.');
+
+                return '0|' . $numericKey . '|' . $normalized;
+            }
+        }
+
+        if (preg_match('/^([VX]|[IVXLCDM]{2,})[.)-]\s*/', $raw, $matches) || ($singleIAsRoman && preg_match('/^(I)[.)-]\s*/', $raw, $matches))) {
+            return '1|' . str_pad((string) $this->romanToInteger($matches[1]), 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        if (preg_match('/^([A-Za-z])[.)-]\s*/', $raw, $matches)) {
+            return '2|' . str_pad((string) (ord(strtoupper($matches[1])) - 64), 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        return '3|' . $normalized;
+    }
+
+    private function romanToInteger(string $roman): int
+    {
+        $map = ['i' => 1, 'v' => 5, 'x' => 10, 'l' => 50, 'c' => 100, 'd' => 500, 'm' => 1000];
+        $roman = strtolower($roman);
+        $value = 0;
+        $length = strlen($roman);
+
+        for ($index = 0; $index < $length; $index++) {
+            $current = $map[$roman[$index]] ?? 0;
+            $next = $index + 1 < $length ? ($map[$roman[$index + 1]] ?? 0) : 0;
+            $value += $current < $next ? -$current : $current;
+        }
+
+        return $value;
     }
 
     public function destroyPap($program)
@@ -1153,6 +1204,176 @@ public function destroyIndicator(Request $request, Gass_Indicator $indicator)
     return redirect()
         ->back()
         ->with('success', 'Indicator deleted successfully.');
+}
+
+public function destroyPhysicalRow(Request $request)
+{
+    $validated = $request->validate([
+        'row_id' => [
+            'required',
+            'integer',
+            Rule::exists('ppa', 'id')->where(fn ($query) => $query->where('types_id', $this->getGassTypeId())),
+        ],
+        'indicator_id' => 'nullable|integer|exists:indicators,id',
+        'indicator_ids' => 'nullable|array',
+        'indicator_ids.*' => 'integer|exists:indicators,id',
+        'year' => 'required|integer|min:2000|max:2100',
+        'office_ids' => 'nullable|array',
+        'office_ids.*' => 'integer|exists:offices,id',
+    ]);
+
+    $rowId = (int) $validated['row_id'];
+    $indicatorIds = collect($validated['indicator_ids'] ?? [])
+        ->push($validated['indicator_id'] ?? null)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+    $year = (int) $validated['year'];
+    $officeIds = collect($validated['office_ids'] ?? [])
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    DB::beginTransaction();
+    try {
+        $ppaRow = DB::table('ppa')
+            ->where('id', $rowId)
+            ->where('types_id', $this->getGassTypeId())
+            ->first();
+
+        $detailIdsToDelete = [];
+        $ppaIdsToDelete = [$rowId];
+
+        if ($ppaRow && (int) ($ppaRow->ppa_details_id ?? 0) > 0) {
+            $detailIdsToDelete = $this->collectPpaDetailTreeIds((int) $ppaRow->ppa_details_id);
+            $detailIdsToDelete = array_values(array_unique(array_merge(
+                $detailIdsToDelete,
+                $this->collectEmptyActivityParentDetailIds((int) $ppaRow->ppa_details_id, $detailIdsToDelete)
+            )));
+            $ppaIdsToDelete = DB::table('ppa')
+                ->whereIn('ppa_details_id', $detailIdsToDelete)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if (empty($ppaIdsToDelete)) {
+            $ppaIdsToDelete = [$rowId];
+        }
+
+        $deletedTargets = $this->deleteSectionRowsForPhysicalRows(Gass_Target::class, $ppaIdsToDelete, $indicatorIds, $year, $officeIds);
+        $deletedAccomplishments = $this->deleteSectionRowsForPhysicalRows(Gass_Accomplishment::class, $ppaIdsToDelete, $indicatorIds, $year, $officeIds);
+
+        $indicatorNames = empty($indicatorIds)
+            ? []
+            : Gass_Indicator::query()
+                ->whereIn('id', $indicatorIds)
+                ->pluck('name')
+                ->map(fn ($name) => trim((string) $name))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        $deletedPhysical = 0;
+
+        if (Schema::hasTable('gass_physical')) {
+            $physicalQuery = Gass_Physical::query()
+                ->whereIn('programs_id', $ppaIdsToDelete)
+                ->where('year', $year);
+
+            if (!empty($officeIds)) {
+                $physicalQuery->whereIn('office_id', $officeIds);
+            }
+
+            if (!empty($indicatorNames)) {
+                $physicalQuery->whereIn('performance_indicator', $indicatorNames);
+            }
+
+            $deletedPhysical = $physicalQuery->delete();
+        }
+
+        DB::table('ppa')->whereIn('id', $ppaIdsToDelete)->delete();
+
+        if (!empty($detailIdsToDelete)) {
+            DB::table('ppa_details')->whereIn('id', array_reverse($detailIdsToDelete))->delete();
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Row deleted successfully.',
+            'deleted' => [
+                'targets' => $deletedTargets,
+                'accomplishments' => $deletedAccomplishments,
+                'physical' => $deletedPhysical,
+                'ppa' => count($ppaIdsToDelete),
+            ],
+        ]);
+    } catch (\Throwable $exception) {
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete row. Please try again.',
+        ], 500);
+    }
+}
+
+private function deleteSectionRowsForPhysicalRows(string $modelClass, array $rowIds, array $indicatorIds, int $year, array $officeIds = []): int
+{
+    $rowIds = collect($rowIds)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    if (empty($rowIds)) {
+        return 0;
+    }
+
+    $query = $modelClass::query()->where('years', $year);
+
+    if (!empty($officeIds)) {
+        $query->whereIn('office_ids', $officeIds);
+    }
+
+    $deletedCount = 0;
+    foreach ($query->get() as $record) {
+        $meta = $this->parseSectionValues($record->values ?? null);
+        $recordRowIds = collect([
+            $record->program_id ?? null,
+            $meta['row_id'] ?? null,
+            $meta['program_id'] ?? null,
+        ])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $recordIndicatorId = (int) ($record->indicator_id ?? $meta['indicator_id'] ?? 0);
+
+        if (empty(array_intersect($rowIds, $recordRowIds))) {
+            continue;
+        }
+
+        if (!empty($indicatorIds) && !in_array($recordIndicatorId, $indicatorIds, true)) {
+            continue;
+        }
+
+        $record->delete();
+        $deletedCount++;
+    }
+
+    return $deletedCount;
 }
 
 public function storeTargets(Request $request)
@@ -1508,10 +1729,51 @@ private function formatSectionRecordForJs($row, array $meta = []): array
         'dec' => (float) ($row->dec ?? 0),
         'q4' => (float) ($row->q4 ?? 0),
         'annual_total' => (float) ($row->annual_total ?? 0),
+        'imported_from' => (string) ($meta['imported_from'] ?? ''),
         'car_totals' => is_array($meta['car_totals'] ?? null) ? $meta['car_totals'] : [],
         'group_totals' => is_array($meta['group_totals'] ?? null) ? $meta['group_totals'] : [],
         'remarks' => $this->decodeRemarksFromStorage($row->remarks ?? null),
     ];
+}
+
+private function buildPendingTotalsByRow(array $targets, array $accomplishments): array
+{
+    $periodKeys = [
+        'jan', 'feb', 'mar', 'q1',
+        'apr', 'may', 'jun', 'q2',
+        'jul', 'aug', 'sep', 'q3',
+        'oct', 'nov', 'dec', 'q4', 'annual_total',
+    ];
+
+    $pending = [];
+
+    foreach ($targets as $rowId => $indicators) {
+        foreach ($indicators as $indicatorId => $offices) {
+            foreach ($periodKeys as $periodKey) {
+                $targetTotal = $this->sectionPeriodTotal($offices, $periodKey);
+                $accompTotal = $this->sectionPeriodTotal($accomplishments[$rowId][$indicatorId] ?? [], $periodKey);
+
+                $pending[(string) $rowId][(string) $indicatorId][$periodKey] = max($targetTotal - $accompTotal, 0);
+            }
+        }
+    }
+
+    return $pending;
+}
+
+private function sectionPeriodTotal(array $offices, string $periodKey): float
+{
+    foreach ($offices as $entry) {
+        $carValue = $entry['car_totals'][$periodKey] ?? null;
+        if (is_numeric($carValue)) {
+            return (float) $carValue;
+        }
+    }
+
+    return (float) collect($offices)->sum(function ($entry) use ($periodKey) {
+        $value = $entry[$periodKey] ?? 0;
+        return is_numeric($value) ? (float) $value : 0;
+    });
 }
 
 private function encodeRemarksForStorage($remarks): ?string
@@ -1555,7 +1817,7 @@ private function decodeRemarksFromStorage($raw): string
     return (string) $raw;
 }
 
-private function parseSectionValues($raw): array
+protected function parseSectionValues($raw): array
 {
     if (is_array($raw)) {
         return $raw;
@@ -1603,13 +1865,14 @@ private function resolveIndicatorTargetRowId(int $rowId, string $indicatorName =
         'record_type_id' => $existingRow->record_type_id,
         'ppa_details_id' => $existingRow->ppa_details_id,
         'indicator_id' => null,
+        'year' => $existingRow->year,
         'office_id' => null,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
 }
 
-private function syncProgramIndicatorInPpa(int $programId, int $indicatorId, array $officeIds = []): void
+protected function syncProgramIndicatorInPpa(int $programId, int $indicatorId, array $officeIds = []): void
 {
     if ($programId <= 0 || $indicatorId <= 0) {
         return;
@@ -1645,7 +1908,7 @@ private function isIndicatorAssignedToOtherRows(int $indicatorId, ?int $exceptPp
         ->exists();
 }
 
-private function hasIndicatorColumn(string $column): bool
+protected function hasIndicatorColumn(string $column): bool
 {
     static $columnCache = [];
 
@@ -1656,7 +1919,7 @@ private function hasIndicatorColumn(string $column): bool
     return $columnCache[$column];
 }
 
-private function getIndicatorsGroupedByProgram(array $programIds): Collection
+private function getIndicatorsGroupedByProgram(array $programIds, ?int $year = null): Collection
 {
     $programIds = collect($programIds)
         ->map(fn ($id) => (int) $id)
@@ -1668,12 +1931,76 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         return $grouped;
     }
 
-    $programIndicatorRows = DB::table('ppa')
+    $programIdLookup = array_fill_keys($programIds->all(), true);
+
+    $indicatorAssignments = collect();
+
+    DB::table('ppa')
         ->whereIn('id', $programIds->all())
         ->whereNotNull('indicator_id')
-        ->get(['id', 'indicator_id', 'office_id']);
+        ->get(['id', 'indicator_id', 'office_id'])
+        ->each(function ($row) use (&$indicatorAssignments) {
+            $programId = (int) ($row->id ?? 0);
+            $indicatorId = (int) ($row->indicator_id ?? 0);
+            if ($programId <= 0 || $indicatorId <= 0) {
+                return;
+            }
 
-    $allIndicatorIds = $programIndicatorRows
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $this->parseJsonIdArray($row->office_id ?? null),
+                'sort_order' => PHP_INT_MAX,
+            ]);
+        });
+
+    Gass_Target::query()
+        ->when($year !== null, fn ($query) => $query->where('years', $year))
+        ->orderBy('id')
+        ->get(['id', 'office_ids', 'values'])
+        ->each(function ($target) use (&$indicatorAssignments, $programIdLookup) {
+            $meta = $this->parseSectionValues($target->values ?? null);
+            $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+            $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+            if ($programId <= 0 || $indicatorId <= 0 || !isset($programIdLookup[$programId])) {
+                return;
+            }
+
+            $officeId = (int) ($target->office_ids ?? 0);
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $officeId > 0 ? [$officeId] : [],
+                'sort_order' => (int) ($target->id ?? PHP_INT_MAX),
+            ]);
+        });
+
+    $indicatorAssignments = $indicatorAssignments
+        ->groupBy(fn ($row) => (int) $row['program_id'] . '|' . (int) $row['indicator_id'])
+        ->map(function ($rows) {
+            $first = $rows->first();
+
+            return [
+                'program_id' => (int) ($first['program_id'] ?? 0),
+                'indicator_id' => (int) ($first['indicator_id'] ?? 0),
+                'office_ids' => $rows
+                    ->flatMap(fn ($row) => $row['office_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn ($id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all(),
+                'sort_order' => $rows
+                    ->pluck('sort_order')
+                    ->map(fn ($value) => (int) $value)
+                    ->min() ?? PHP_INT_MAX,
+            ];
+        })
+        ->sortBy('sort_order')
+        ->values();
+
+    $allIndicatorIds = $indicatorAssignments
         ->pluck('indicator_id')
         ->map(fn ($id) => (int) $id)
         ->filter(fn ($id) => $id > 0)
@@ -1689,10 +2016,9 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         ->get()
         ->keyBy(fn ($row) => (int) $row->id);
 
-
-    foreach ($programIndicatorRows as $programIndicatorRow) {
-        $programId = (int) ($programIndicatorRow->id ?? 0);
-        $indicatorId = (int) ($programIndicatorRow->indicator_id ?? 0);
+    foreach ($indicatorAssignments as $assignment) {
+        $programId = (int) ($assignment['program_id'] ?? 0);
+        $indicatorId = (int) ($assignment['indicator_id'] ?? 0);
         if ($programId <= 0 || $indicatorId <= 0) {
             continue;
         }
@@ -1704,7 +2030,7 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
 
         // Clone the indicator to avoid mutating the original object in the collection
         $indicatorClone = clone $indicator;
-        $indicatorClone->office_id = $this->parseJsonIdArray($programIndicatorRow->office_id ?? null);
+        $indicatorClone->office_id = $assignment['office_ids'] ?? [];
 
         // Append indicator to the program's collection
         if (!$grouped->has($programId)) {
@@ -1787,7 +2113,7 @@ private function deleteProgramSectionRows(int $programId, Collection $rows): voi
     $modelClass::query()->whereIn('id', $idsToDelete)->delete();
 }
 
-private function getGassPrograms(?int $programId = null, string $search = ''): Collection
+private function getGassPrograms(?int $programId = null, string $search = '', ?int $year = null): Collection
 {
     $recordTypeIds = $this->getGassRecordTypeIds();
     $typeId = $this->getGassTypeId();
@@ -1860,6 +2186,9 @@ private function getGassPrograms(?int $programId = null, string $search = ''): C
         })
         ->where('program_ppa.types_id', $typeId)
         ->where('program_ppa.record_type_id', $recordTypeIds['PROGRAM'])
+        ->when($year !== null, function ($query) use ($year) {
+            $query->where('program_ppa.year', $year);
+        })
         ->select([
             'program_ppa.id',
             'program_ppa.id as program_row_id',
@@ -2042,6 +2371,46 @@ private function collectPpaDetailTreeIds(int $rootDetailId): array
     }
 
     return $detailIds;
+}
+
+private function collectEmptyActivityParentDetailIds(int $rootDetailId, array $detailIdsToDelete): array
+{
+    $extraDetailIds = [];
+    $scheduledDetailIds = collect($detailIdsToDelete)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    $current = DB::table('ppa_details')
+        ->where('id', $rootDetailId)
+        ->first();
+
+    while ($current && (int) ($current->parent_id ?? 0) > 0) {
+        $parent = DB::table('ppa_details')
+            ->where('id', (int) $current->parent_id)
+            ->first();
+
+        if (!$parent || (int) ($parent->column_order ?? 0) < 4) {
+            break;
+        }
+
+        $remainingChildCount = DB::table('ppa_details')
+            ->where('parent_id', (int) $parent->id)
+            ->whereNotIn('id', $scheduledDetailIds)
+            ->count();
+
+        if ($remainingChildCount > 0) {
+            break;
+        }
+
+        $extraDetailIds[] = (int) $parent->id;
+        $scheduledDetailIds[] = (int) $parent->id;
+        $current = $parent;
+    }
+
+    return $extraDetailIds;
 }
 
 private function getGassTypeId(): int

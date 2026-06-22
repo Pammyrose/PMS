@@ -52,7 +52,8 @@
                         <tr>
                             <th scope="col" class="px-6 py-3 font-medium">Name</th>
                             <th scope="col" class="px-6 py-3 font-medium">Email</th>
-                            <th scope="col" class="px-6 py-3 font-medium">Roles</th>
+                            <th scope="col" class="px-6 py-3 font-medium">Role</th>
+                            <th scope="col" class="px-6 py-3 font-medium">Office</th>
                             <th scope="col" class="px-6 py-3 font-medium">Action</th>
                         </tr>
                     </thead>
@@ -61,7 +62,8 @@
                             <tr class="bg-neutral-primary border-b border-default">
                                 <th scope="row" class="px-6 py-4 font-medium">{{ $user->name ?? '—' }}</th>
                                 <td class="px-6 py-4">{{ $user->email ?? '—' }}</td>
-                                <td class="px-6 py-4">{{ $user->role ?? 'N/A' }}</td>
+                                <td class="px-6 py-4">{{ $user->role_name ?? 'N/A' }}</td>
+                                <td class="px-6 py-4">{{ $user->office?->name ?? 'N/A' }}</td>
                                 <td class="px-6 py-4">
                                     <div class="d-flex gap-2 align-items-center">
                                         <button type="button" class="btn btn-sm text-primary edit-user-btn"
@@ -91,7 +93,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">
                                     No users found.
                                 </td>
                             </tr>
@@ -158,11 +160,37 @@
                                 <label class="form-label">Role</label>
                                 <select name="role" id="userRole" class="form-select" required>
                                     <option value="">— Select Role —</option>
+                                    <option value="super-admin" {{ old('role') == 'super-admin' ? 'selected' : '' }}>Region</option>
+                                    <option value="ro-office" {{ old('role') == 'ro-office' ? 'selected' : '' }}>RO Office</option>
                                     <option value="admin" {{ old('role') == 'admin' ? 'selected' : '' }}>Admin</option>
-                                    <option value="staff" {{ old('role') == 'staff' ? 'selected' : '' }}>Staff</option>
-                                    <option value="user" {{ old('role') == 'user' ? 'selected' : '' }}>User</option>
+                                    <option value="penro" {{ old('role') == 'penro' ? 'selected' : '' }}>PENRO</option>
+                                    <option value="cenro" {{ old('role') == 'cenro' ? 'selected' : '' }}>CENRO</option>
                                 </select>
                                 @error('role') <div class="text-red-600 text-xs mt-1">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Office</label>
+                                <select name="office_id" id="userOffice" class="form-select">
+                                    <option value="">Select Office</option>
+                                    @foreach(($offices ?? []) as $office)
+                                        @php
+                                            $officeTypeName = match ((int) ($office->office_types_id ?? 0)) {
+                                                1 => 'RO',
+                                                2 => 'PENRO',
+                                                3 => 'CENRO',
+                                                default => 'Office',
+                                            };
+                                        @endphp
+                                        <option value="{{ $office->id }}"
+                                            data-office-type="{{ (int) ($office->office_types_id ?? 0) }}"
+                                            {{ (string) old('office_id') === (string) $office->id ? 'selected' : '' }}>
+                                            {{ $officeTypeName }} - {{ $office->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <div class="text-muted text-xs mt-1" id="officeHelpText">Required for PENRO and CENRO users.</div>
+                                @error('office_id') <div class="text-red-600 text-xs mt-1">{{ $message }}</div> @enderror
                             </div>
                         </div>
 
@@ -289,6 +317,8 @@
             const nameInput = document.getElementById('userName');
             const emailInput = document.getElementById('userEmail');
             const roleInput = document.getElementById('userRole');
+            const officeInput = document.getElementById('userOffice');
+            const officeHelpText = document.getElementById('officeHelpText');
             const passwordInput = document.getElementById('userPassword');
             const passwordConfirmationInput = document.getElementById('userPasswordConfirmation');
             const modalTitleText = document.getElementById('userModalTitleText');
@@ -298,6 +328,52 @@
             const storeUrl = @json(route('users.store'));
             const editUrlTemplate = @json(route('users.edit', ['user' => '__USER_ID__']));
             const updateUrlTemplate = @json(route('users.update', ['user' => '__USER_ID__']));
+
+            const updateOfficeOptions = () => {
+                if (!officeInput || !roleInput) return;
+
+                const roleToOfficeType = {
+                    'super-admin': '1',
+                    'ro-office': '1',
+                    'penro': '2',
+                    'cenro': '3',
+                };
+                const allowedType = roleToOfficeType[roleInput.value] || '';
+                const isRegion = ['super-admin', 'ro-office'].includes(roleInput.value);
+
+                Array.from(officeInput.options).forEach(option => {
+                    if (!option.value) {
+                        option.hidden = false;
+                        return;
+                    }
+
+                    option.hidden = allowedType !== '' && option.dataset.officeType !== allowedType;
+                });
+
+                if (isRegion) {
+                    const regionalOffice = Array.from(officeInput.options).find(option => {
+                        return option.value && option.dataset.officeType === '1';
+                    });
+
+                    if (regionalOffice) {
+                        officeInput.value = regionalOffice.value;
+                    }
+                }
+
+                const selectedOption = officeInput.options[officeInput.selectedIndex];
+                if (selectedOption?.hidden) {
+                    officeInput.value = '';
+                }
+
+                officeInput.required = ['penro', 'cenro'].includes(roleInput.value);
+                officeInput.disabled = isRegion;
+
+                if (officeHelpText) {
+                    officeHelpText.textContent = isRegion
+                        ? 'Region is automatically assigned to RO.'
+                        : 'Required for PENRO and CENRO users.';
+                }
+            };
 
             const setCreateMode = (clearFields = true) => {
                 if (!form) return;
@@ -320,9 +396,12 @@
                     if (nameInput) nameInput.value = '';
                     if (emailInput) emailInput.value = '';
                     if (roleInput) roleInput.value = '';
+                    if (officeInput) officeInput.value = '';
                     if (passwordInput) passwordInput.value = '';
                     if (passwordConfirmationInput) passwordConfirmationInput.value = '';
                 }
+
+                updateOfficeOptions();
             };
 
             const setEditMode = (user) => {
@@ -338,7 +417,8 @@
                 if (userIdField) userIdField.value = String(user.id);
                 if (nameInput) nameInput.value = user.name || '';
                 if (emailInput) emailInput.value = user.email || '';
-                if (roleInput) roleInput.value = user.role || '';
+                if (roleInput) roleInput.value = user.role === 'ro office' ? 'ro-office' : (user.role || '');
+                if (officeInput) officeInput.value = user.office_id || '';
                 if (passwordInput) {
                     passwordInput.required = false;
                     passwordInput.value = '';
@@ -351,7 +431,10 @@
                 if (modalTitleText) modalTitleText.textContent = 'Edit User';
                 if (submitText) submitText.textContent = 'Update';
                 if (passwordEditHint) passwordEditHint.classList.remove('d-none');
+                updateOfficeOptions();
             };
+
+            roleInput?.addEventListener('change', updateOfficeOptions);
 
             createButton?.addEventListener('click', function () {
                 setCreateMode(true);
@@ -410,6 +493,7 @@
                         name: @json(old('name')),
                         email: @json(old('email')),
                         role: @json(old('role')),
+                        office_id: @json(old('office_id')),
                     });
                 }
 

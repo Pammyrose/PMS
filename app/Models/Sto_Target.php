@@ -11,6 +11,8 @@ class Sto_Target extends Model
     protected $fillable = [
         'user_id',
         'office_ids',
+        'program_id',
+        'indicator_id',
         'values',
         'years',
         'jan', 'feb', 'mar', 'q1',

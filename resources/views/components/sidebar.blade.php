@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Accomplishment Monitoring System • Admin</title>
+  <title>Accomplishment Monitoring System â€¢ Admin</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -31,6 +31,8 @@
     })();
   </script>
   <!-- For icons (optional) -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <style>
@@ -82,6 +84,10 @@
 </style>
 
 <body class="bg-gray-50 text-gray-800 antialiased">
+  @php
+    $signedInUser = auth()->user();
+    $canManageSystem = ($signedInUser?->isAdmin() ?? false) && ! ($signedInUser?->isRegionalOffice() ?? false);
+  @endphp
 
   <!-- SIDEBAR -->
   <aside id="sidebar"
@@ -115,7 +121,7 @@
 
 
           <i class="fa-solid fa-layer-group mr-3 w-5 text-center"></i>
-          Fields
+          Sectors
           <i class="fa-solid fa-chevron-down ml-auto transition-transform group-open:rotate-180"></i>
         </summary>
 
@@ -181,17 +187,19 @@
       </details>
 
 
-      <a href="{{ route('user') }}"
-        class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('user') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
-        <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
-        Users & Roles
-      </a>
+      @if ($canManageSystem)
+        <a href="{{ route('user') }}"
+          class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('user') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
+          Users & Roles
+        </a>
 
-      <a href="{{ route('history') }}"
-        class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('history') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
-        <i class="fa-solid fa-clock-rotate-left mr-3 w-5 text-center"></i>
-        History
-      </a>
+        <a href="{{ route('history') }}"
+          class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('history') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <i class="fa-solid fa-clock-rotate-left mr-3 w-5 text-center"></i>
+          History
+        </a>
+      @endif
     </nav>
 
     <div class="absolute bottom-6 left-0 right-0 px-4">
@@ -307,6 +315,54 @@
         saveSidebarState(true);
       }
     });
+
+    (() => {
+      const prefetchedPages = new Set();
+
+      const prefetchPage = (href) => {
+        if (!href || href.startsWith('#') || prefetchedPages.has(href)) return;
+
+        let url;
+        try {
+          url = new URL(href, window.location.href);
+        } catch (error) {
+          return;
+        }
+
+        if (url.origin !== window.location.origin || url.href === window.location.href) return;
+
+        prefetchedPages.add(url.href);
+
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.as = 'document';
+        link.href = url.href;
+        document.head.appendChild(link);
+
+        try {
+          fetch(url.href, {
+            credentials: 'same-origin',
+            cache: 'force-cache',
+            priority: 'low',
+          }).catch(() => {});
+        } catch (error) {
+          // Browsers without fetch priority still keep the <link rel="prefetch"> hint above.
+        }
+      };
+
+      const prepareLink = (event) => {
+        const link = event.currentTarget;
+        prefetchPage(link?.getAttribute('href'));
+      };
+
+      document.querySelectorAll('#sidebar a[href]').forEach((link) => {
+        if (link.getAttribute('href') === '#') return;
+
+        link.addEventListener('pointerenter', prepareLink, { passive: true, once: true });
+        link.addEventListener('focus', prepareLink, { passive: true, once: true });
+        link.addEventListener('touchstart', prepareLink, { passive: true, once: true });
+      });
+    })();
   </script>
 
   <style>

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gass_Physical;
-use App\Models\Gass_Indicator;
+use App\Models\Pa_Indicator;
 use App\Models\Pa_Target;
 use App\Models\Pa_Accomplishment;
 use App\Models\Office;
@@ -25,7 +25,7 @@ class PaController extends Controller
     public function index(Request $request, $program = null)
     {
         $year = $request->query('year', now()->year);
-        $office_id = $request->query('office_id', 1);   // change default later if needed
+        $office_id = $this->officeIdForPhysicalPage($request);
         $search = trim((string) $request->query('search', ''));
 
         $programId = $program !== null ? (int) $program : null;
@@ -35,10 +35,14 @@ class PaController extends Controller
                 . '|' . strtolower(trim((string) ($row->program ?? '')))
                 . '|' . strtolower(trim((string) ($row->project ?? '')))
                 . '|' . strtolower(trim((string) ($row->activities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')));
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
         };
 
-        $programsRaw = $this->getPaPrograms($programId, $search)
+        $programsRaw = $this->getPaPrograms($programId, $search, (int) $year)
             ->sortBy($sortProgramHierarchy, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
@@ -52,6 +56,12 @@ class PaController extends Controller
                 return [
                     (int) ($row->id ?? 0),
                     (int) ($row->row_id ?? $row->id ?? 0),
+                    (int) ($row->sub_activity_row_id ?? 0),
+                    (int) ($row->sub_sub_activity_row_id ?? 0),
+                    (int) ($row->sub_sub_sub_activity_row_id ?? 0),
+                    (int) ($row->level_7_row_id ?? 0),
+                    (int) ($row->level_8_row_id ?? 0),
+                    (int) ($row->level_9_row_id ?? 0),
                 ];
             })
             ->filter(fn ($id) => $id > 0)
@@ -75,6 +85,239 @@ class PaController extends Controller
 
         // Fetch indicators grouped by program from section metadata.
         $indicators = $this->getIndicatorsGroupedByProgram($programIds);
+        $indicators = $this->filterIndicatorsForOffice($indicators, $office_id);
+        $programsRaw = $this->filterProgramRowsForOffice($programsRaw, $indicators, $office_id);
+        $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
+
+        // Expand programs to include separate activity rows when they have indicators
+        $programs = $programs->flatMap(function ($row) use ($indicators) {
+            $rows = [];
+
+            // Check level 8 to level 9 (if we have both level_7 and level_8)
+            if (filled($row->level_7 ?? null) && filled($row->level_8 ?? null) && (int) ($row->level_8_row_id ?? 0) > 0) {
+                $level8RowId = (int) $row->level_8_row_id;
+                $hasLevel8Indicators = isset($indicators[$level8RowId]) && $indicators[$level8RowId]->count() > 0;
+                
+                if ($hasLevel8Indicators) {
+                    $level8Row = clone $row;
+                    $level8Row->row_id = $level8RowId;
+                    $level8Row->level_8 = null;
+                    $level8Row->_sort_priority = 0;
+                    $rows[] = $level8Row;
+                }
+            }
+
+            // Check level 7 to level 8 (if we have both level_6 and level_7)
+            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row->level_7_row_id ?? 0) > 0) {
+                $level7RowId = (int) $row->level_7_row_id;
+                $hasLevel7Indicators = isset($indicators[$level7RowId]) && $indicators[$level7RowId]->count() > 0;
+                
+                if ($hasLevel7Indicators) {
+                    $level7Row = clone $row;
+                    $level7Row->row_id = $level7RowId;
+                    $level7Row->level_7 = null;
+                    $level7Row->level_8 = null;
+                    $level7Row->_sort_priority = 1;
+                    $rows[] = $level7Row;
+                }
+            }
+
+            // Check sub-sub-sub-activity to level 7 (if we have both subsubactivities and level_6)
+            if (filled($row->subsubactivities ?? null) && filled($row->level_6 ?? null) && (int) ($row->sub_sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubSubActivityRowId = (int) $row->sub_sub_sub_activity_row_id;
+                $hasSubSubSubActivityIndicators = isset($indicators[$subSubSubActivityRowId]) && $indicators[$subSubSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubSubActivityIndicators) {
+                    $subSubSubActivityRow = clone $row;
+                    $subSubSubActivityRow->row_id = $subSubSubActivityRowId;
+                    $subSubSubActivityRow->level_6 = null;
+                    $subSubSubActivityRow->level_7 = null;
+                    $subSubSubActivityRow->level_8 = null;
+                    $subSubSubActivityRow->_sort_priority = 2;
+                    $rows[] = $subSubSubActivityRow;
+                }
+            }
+
+            // Check sub-sub-activity level (if we have both sub-sub-activity and sub-sub-sub-activity)
+            if (filled($row->subactivities ?? null) && filled($row->subsubactivities ?? null) && (int) ($row->sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubActivityRowId = (int) $row->sub_sub_activity_row_id;
+                $hasSubSubActivityIndicators = isset($indicators[$subSubActivityRowId]) && $indicators[$subSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubActivityIndicators) {
+                    $subSubActivityRow = clone $row;
+                    $subSubActivityRow->row_id = $subSubActivityRowId;
+                    $subSubActivityRow->subsubactivities = null;
+                    $subSubActivityRow->level_6 = null;
+                    $subSubActivityRow->level_7 = null;
+                    $subSubActivityRow->level_8 = null;
+                    $subSubActivityRow->_sort_priority = 3;
+                    $rows[] = $subSubActivityRow;
+                }
+            }
+
+            // Check sub-activity level (if we have both activity and subactivity)
+            if (filled($row->activities ?? null) && filled($row->subactivities ?? null) && (int) ($row->sub_activity_row_id ?? 0) > 0) {
+                $subActivityRowId = (int) $row->sub_activity_row_id;
+                $hasActivityIndicators = isset($indicators[$subActivityRowId]) && $indicators[$subActivityRowId]->count() > 0;
+                
+                if ($hasActivityIndicators) {
+                    $activityRow = clone $row;
+                    $activityRow->row_id = $subActivityRowId;
+                    $activityRow->subactivities = null;
+                    $activityRow->subsubactivities = null;
+                    $activityRow->level_6 = null;
+                    $activityRow->level_7 = null;
+                    $activityRow->level_8 = null;
+                    $activityRow->_sort_priority = 4;
+                    $rows[] = $activityRow;
+                }
+            }
+
+            if (!isset($row->_sort_priority)) {
+                $row->_sort_priority = 5;
+            }
+            $rows[] = $row;
+            return $rows;
+        })
+        ->sortBy(function ($row) {
+            $priority = $row->_sort_priority ?? 5;
+            return strtolower(trim((string) ($row->title ?? '')))
+                . '|' . strtolower(trim((string) ($row->program ?? '')))
+                . '|' . strtolower(trim((string) ($row->project ?? '')))
+                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+                . '|' . $priority
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+        }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
+        ->values();
+
+        // Also expand programsRaw for consistency
+        $programsRaw = $programsRaw->flatMap(function ($row) use ($indicators) {
+            $rows = [];
+
+            // Check level 8 to level 9
+            if (filled($row->level_7 ?? null) && filled($row->level_8 ?? null) && (int) ($row->level_8_row_id ?? 0) > 0) {
+                $level8RowId = (int) $row->level_8_row_id;
+                $hasLevel8Indicators = isset($indicators[$level8RowId]) && $indicators[$level8RowId]->count() > 0;
+                
+                if ($hasLevel8Indicators) {
+                    $level8Row = clone $row;
+                    $level8Row->row_id = $level8RowId;
+                    $level8Row->level_8 = null;
+                    $level8Row->_sort_priority = 0;
+                    $rows[] = $level8Row;
+                }
+            }
+
+            // Check level 7 to level 8
+            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row->level_7_row_id ?? 0) > 0) {
+                $level7RowId = (int) $row->level_7_row_id;
+                $hasLevel7Indicators = isset($indicators[$level7RowId]) && $indicators[$level7RowId]->count() > 0;
+                
+                if ($hasLevel7Indicators) {
+                    $level7Row = clone $row;
+                    $level7Row->row_id = $level7RowId;
+                    $level7Row->level_7 = null;
+                    $level7Row->level_8 = null;
+                    $level7Row->_sort_priority = 1;
+                    $rows[] = $level7Row;
+                }
+            }
+
+            // Check sub-sub-sub-activity to level 7
+            if (filled($row->subsubactivities ?? null) && filled($row->level_6 ?? null) && (int) ($row->sub_sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubSubActivityRowId = (int) $row->sub_sub_sub_activity_row_id;
+                $hasSubSubSubActivityIndicators = isset($indicators[$subSubSubActivityRowId]) && $indicators[$subSubSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubSubActivityIndicators) {
+                    $subSubSubActivityRow = clone $row;
+                    $subSubSubActivityRow->row_id = $subSubSubActivityRowId;
+                    $subSubSubActivityRow->level_6 = null;
+                    $subSubSubActivityRow->level_7 = null;
+                    $subSubSubActivityRow->level_8 = null;
+                    $subSubSubActivityRow->_sort_priority = 2;
+                    $rows[] = $subSubSubActivityRow;
+                }
+            }
+
+            // Check sub-sub-activity level
+            if (filled($row->subactivities ?? null) && filled($row->subsubactivities ?? null) && (int) ($row->sub_sub_activity_row_id ?? 0) > 0) {
+                $subSubActivityRowId = (int) $row->sub_sub_activity_row_id;
+                $hasSubSubActivityIndicators = isset($indicators[$subSubActivityRowId]) && $indicators[$subSubActivityRowId]->count() > 0;
+                
+                if ($hasSubSubActivityIndicators) {
+                    $subSubActivityRow = clone $row;
+                    $subSubActivityRow->row_id = $subSubActivityRowId;
+                    $subSubActivityRow->subsubactivities = null;
+                    $subSubActivityRow->level_6 = null;
+                    $subSubActivityRow->level_7 = null;
+                    $subSubActivityRow->level_8 = null;
+                    $subSubActivityRow->_sort_priority = 3;
+                    $rows[] = $subSubActivityRow;
+                }
+            }
+
+            // Check sub-activity level
+            if (filled($row->activities ?? null) && filled($row->subactivities ?? null) && (int) ($row->sub_activity_row_id ?? 0) > 0) {
+                $subActivityRowId = (int) $row->sub_activity_row_id;
+                $hasActivityIndicators = isset($indicators[$subActivityRowId]) && $indicators[$subActivityRowId]->count() > 0;
+                
+                if ($hasActivityIndicators) {
+                    $activityRow = clone $row;
+                    $activityRow->row_id = $subActivityRowId;
+                    $activityRow->subactivities = null;
+                    $activityRow->subsubactivities = null;
+                    $activityRow->level_6 = null;
+                    $activityRow->level_7 = null;
+                    $activityRow->level_8 = null;
+                    $activityRow->_sort_priority = 4;
+                    $rows[] = $activityRow;
+                }
+            }
+
+            if (!isset($row->_sort_priority)) {
+                $row->_sort_priority = 5;
+            }
+            $rows[] = $row;
+            return $rows;
+        })
+        ->sortBy(function ($row) {
+            $priority = $row->_sort_priority ?? 5;
+            return strtolower(trim((string) ($row->title ?? '')))
+                . '|' . strtolower(trim((string) ($row->program ?? '')))
+                . '|' . strtolower(trim((string) ($row->project ?? '')))
+                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+                . '|' . $priority
+                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
+                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+        }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subsubactivities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_6 ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_7 ?? ''))) . '|'
+                . strtolower(trim((string) ($row->level_8 ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
+        ->values();
 
         $allIndicatorOfficeIds = $indicators
             ->flatten(1)
@@ -93,7 +336,7 @@ class PaController extends Controller
                 ->get(['id', 'name'])
                 ->mapWithKeys(fn ($office) => [(int) $office->id => (string) $office->name]);
 
-        // Prepare indicators data for JavaScript (flat structure by program_id)
+        // Prestore indicators data for JavaScript (flat structure by program_id)
         $indicatorsForJs = [];
         foreach ($indicators as $programId => $programIndicators) {
             $indicatorsForJs[$programId] = $programIndicators->map(function ($indicator) use ($programId, $officeNameById, $indicatorTypeMap) {
@@ -134,36 +377,41 @@ class PaController extends Controller
         $existing = $entries->keyBy('programs_id');
 
         $targets = Pa_Target::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
             ->get()
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
-                $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+                $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
                 $indicatorId = (int) ($meta['indicator_id'] ?? 0);
-                if ($rowId <= 0 || $indicatorId <= 0) {
+                if ($programId <= 0 || $indicatorId <= 0) {
                     return $carry;
                 }
 
                 $officeKey = (string) ((int) ($row->office_ids ?? 0));
-                $carry[(string) $rowId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
+                $carry[(string) $programId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
 
                 return $carry;
             }, []);
 
         $accomplishments = Pa_Accomplishment::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
             ->get()
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
-                $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+                $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
                 $indicatorId = (int) ($meta['indicator_id'] ?? 0);
-                if ($rowId <= 0 || $indicatorId <= 0) {
+                if ($programId <= 0 || $indicatorId <= 0) {
                     return $carry;
                 }
 
                 $officeKey = (string) ((int) ($row->office_ids ?? 0));
-                $carry[(string) $rowId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
+                $carry[(string) $programId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
 
                 return $carry;
             }, []);
+
+        $targets = $this->filterSectionDataForOffice($targets, $office_id);
+        $accomplishments = $this->filterSectionDataForOffice($accomplishments, $office_id);
 
         $papTitles = $programs->pluck('title')
             ->filter(fn ($value) => filled($value))
@@ -189,6 +437,12 @@ class PaController extends Controller
             ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
+        $papSubSubactivities = $programs->pluck('subsubactivities')
+            ->filter(fn ($value) => filled($value))
+            ->unique()
+            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
         $papPrefillData = $programs
             ->map(function ($pap) use ($indicators, $indicatorTypeMap) {
                 $rowId = (int) ($pap->row_id ?? $pap->id);
@@ -202,6 +456,10 @@ class PaController extends Controller
                     'project' => (string) ($pap->project ?? ''),
                     'activities' => (string) ($pap->activities ?? ''),
                     'subactivities' => (string) ($pap->subactivities ?? ''),
+                    'subsubactivities' => (string) ($pap->subsubactivities ?? ''),
+                    'level_6' => (string) ($pap->level_6 ?? ''),
+                    'level_7' => (string) ($pap->level_7 ?? ''),
+                    'level_8' => (string) ($pap->level_8 ?? ''),
                     'indicators' => $indicatorRows
                         ->map(function ($indicator) use ($indicatorTypeMap) {
                             return [
@@ -226,9 +484,20 @@ class PaController extends Controller
         // Get all offices organized by parent for the modal
         $offices = Office::groupedForUi();
 
-        $yearOptions = collect(range((int) now()->year + 2, 2020))->values();
+        $yearOptions = DB::table('ppa')
+            ->whereNotNull('year')
+            ->where('year', '>', 0)
+            ->distinct()
+            ->pluck('year')
+            ->map(fn ($y) => (int) $y)
+            ->push((int) $year)
+            ->unique()
+            ->sort()
+            ->reverse()
+            ->values()
+            ->all();
 
-        return view('admin.pa.pa_physical', compact(
+        return view($this->roleView('pa.pa_physical'), compact(
             'entries',
             'programs',
             'programsRaw',
@@ -242,6 +511,7 @@ class PaController extends Controller
             'papProjects',
             'papActivities',
             'papSubactivities',
+            'papSubSubactivities',
             'papPrefillData',
             'indicatorTypeOptions',
             'year',
@@ -298,7 +568,6 @@ class PaController extends Controller
         })->values();
 
         $grouped->each(function ($program) use ($indicators) {
-            /** @var object $program */
             $program->indicator = ($indicators[$program->id] ?? collect())->first();
             $program->indicators = $indicators[$program->id] ?? collect();
         });
@@ -308,7 +577,7 @@ class PaController extends Controller
     }
 
     /**
-     * Store or update physical accomplishment entries
+     * Pare or update physical accomplishment entries
      */
     public function save(Request $request)
     {
@@ -416,7 +685,7 @@ class PaController extends Controller
 
     public function indicatorsIndex(Request $request)
     {
-        $indicators = Gass_Indicator::latest()->get();
+        $indicators = Pa_Indicator::latest()->get();
 
         return view('admin.pa.indicators', compact('indicators'));
     }
@@ -435,8 +704,13 @@ class PaController extends Controller
             'title' => 'required|string|max:255',
             'program' => 'nullable|string|max:150',
             'project' => 'nullable|string|max:150',
-            'activities' => 'nullable|string',
-            'subactivities' => 'nullable|string',
+            'activities' => 'nullable|string|max:255',
+            'subactivities' => 'nullable|string|max:255',
+            'subsubactivities' => 'nullable|string|max:255',
+            'level_6' => 'nullable|string|max:255',
+            'level_7' => 'nullable|string|max:255',
+            'level_8' => 'nullable|string|max:255',
+            'year' => 'nullable|integer|min:2000|max:2099',
         ]);
 
         DB::beginTransaction();
@@ -463,6 +737,7 @@ class PaController extends Controller
     {
         $typeId = $this->getPaTypeId();
         $recordTypeIds = $this->getPaRecordTypeIds();
+        $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
 
         $levels = [
             ['record_type' => 'PROGRAM', 'name' => trim((string) ($papData['title'] ?? ''))],
@@ -470,6 +745,10 @@ class PaController extends Controller
             ['record_type' => 'MAIN ACTIVITY', 'name' => trim((string) ($papData['project'] ?? ''))],
             ['record_type' => 'SUB-ACTIVITY', 'name' => trim((string) ($papData['activities'] ?? ''))],
             ['record_type' => 'SUB-SUB-ACTIVITY', 'name' => trim((string) ($papData['subactivities'] ?? ''))],
+            ['record_type' => 'SUB-SUB-SUB-ACTIVITY', 'name' => trim((string) ($papData['subsubactivities'] ?? ''))],
+            ['record_type' => 'LEVEL-7', 'name' => trim((string) ($papData['level_6'] ?? ''))],
+            ['record_type' => 'LEVEL-8', 'name' => trim((string) ($papData['level_7'] ?? ''))],
+            ['record_type' => 'LEVEL-9', 'name' => trim((string) ($papData['level_8'] ?? ''))],
         ];
 
         $parentDetailId = null;
@@ -498,6 +777,9 @@ class PaController extends Controller
                     fn ($query) => $query->where('details.parent_id', $parentDetailId)
                 )
                 ->whereRaw('LOWER(TRIM(ppa.name)) = ?', [strtolower($level['name'])])
+                ->when($index === 0 && $papYear !== null, function ($query) use ($papYear) {
+                    $query->where('ppa.year', $papYear);
+                })
                 ->orderBy('ppa.id')
                 ->select('ppa.id', 'details.id as detail_id')
                 ->first();
@@ -513,7 +795,7 @@ class PaController extends Controller
                     'updated_at' => now(),
                 ]);
 
-                $ppaId = DB::table('ppa')->insertGetId([
+                $ppaInsertData = [
                     'name' => $level['name'],
                     'types_id' => $typeId,
                     'record_type_id' => $recordTypeId,
@@ -522,7 +804,13 @@ class PaController extends Controller
                     'office_id' => null,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+
+                if ($index === 0 && $papYear !== null) {
+                    $ppaInsertData['year'] = $papYear;
+                }
+
+                $ppaId = DB::table('ppa')->insertGetId($ppaInsertData);
             }
 
             if ($rootPpaId === null) {
@@ -587,7 +875,7 @@ class PaController extends Controller
     }
 
     /**
-     * Store new indicator
+     * Pare new indicator
      */
     public function storeIndicator(Request $request)
     {
@@ -612,7 +900,7 @@ class PaController extends Controller
         $indicatorName = trim($baseValidated['indicator_name']);
         $targetRowId = (int) ($baseValidated['row_id'] ?? $baseValidated['program_id'] ?? 0);
 
-        $indicator = new Gass_Indicator();
+        $indicator = new Pa_Indicator();
 
         $wasNew = true;
 
@@ -638,6 +926,7 @@ class PaController extends Controller
         }
 
         $indicator->save();
+        
         $resolvedRowId = $this->resolveIndicatorTargetRowId($targetRowId, $indicatorName);
         $this->syncProgramIndicatorInPpa($resolvedRowId, (int) $indicator->id, $selectedOfficeIds);
 
@@ -673,7 +962,7 @@ class PaController extends Controller
         return view('admin.pa.program_edit', compact('program'));
     }
 
-public function update(Request $request, Gass_Indicator $indicator)
+public function update(Request $request, Pa_Indicator $indicator)
 {
     $programExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
         $query->where('types_id', $this->getPaTypeId())
@@ -693,10 +982,10 @@ public function update(Request $request, Gass_Indicator $indicator)
         'office_id.*' => 'required|exists:offices,id',
     ]);
 
-    $targetRowId = (int) ($validated['row_id'] ?? $validated['program_id'] ?? 0);
-    $newName = array_key_exists('indicator_name', $validated) ? trim((string) ($validated['indicator_name'] ?? '')) : null;
+    $newName = isset($validated['indicator_name']) ? trim($validated['indicator_name']) : null;
     $nameChanged = $newName !== null && $newName !== '' && $newName !== $indicator->name;
-
+    $targetRowId = (int) ($validated['row_id'] ?? $validated['program_id'] ?? 0);
+    
     $selectedOfficeIds = array_key_exists('office_id', $validated)
         ? collect($validated['office_id'])
             ->map(fn ($id) => (int) $id)
@@ -725,7 +1014,7 @@ public function update(Request $request, Gass_Indicator $indicator)
         || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId));
 
     if ($shouldCreateSnapshot) {
-        $newIndicator = new Gass_Indicator();
+        $newIndicator = new Pa_Indicator();
         $newIndicator->name = $newName !== null && $newName !== '' ? $newName : (string) $indicator->name;
 
         if ($this->hasIndicatorColumn('user_id')) {
@@ -775,11 +1064,10 @@ public function update(Request $request, Gass_Indicator $indicator)
 
     if (!empty($updateData)) {
         $indicator->update($updateData);
-        $indicator->refresh();
     }
 
     if ($targetRowId > 0) {
-        $this->syncProgramIndicatorInPpa($targetRowId, (int) $indicator->id, $selectedOfficeIds ?? $this->parseJsonIdArray($indicator->office_id ?? []));
+        $this->syncProgramIndicatorInPpa($targetRowId, (int) $indicator->id, $selectedOfficeIds ?? $currentOfficeIds);
     }
 
     if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -795,7 +1083,7 @@ public function update(Request $request, Gass_Indicator $indicator)
         ->with('success', 'Indicator updated successfully.');
 }
 
-public function destroyIndicator(Request $request, Gass_Indicator $indicator)
+public function destroyIndicator(Request $request, Pa_Indicator $indicator)
 {
     $indicator->delete();
 
@@ -809,6 +1097,176 @@ public function destroyIndicator(Request $request, Gass_Indicator $indicator)
     return redirect()
         ->back()
         ->with('success', 'Indicator deleted successfully.');
+}
+
+public function destroyPhysicalRow(Request $request)
+{
+    $validated = $request->validate([
+        'row_id' => [
+            'required',
+            'integer',
+            Rule::exists('ppa', 'id')->where(fn ($query) => $query->where('types_id', $this->getPaTypeId())),
+        ],
+        'indicator_id' => 'nullable|integer|exists:indicators,id',
+        'indicator_ids' => 'nullable|array',
+        'indicator_ids.*' => 'integer|exists:indicators,id',
+        'year' => 'required|integer|min:2000|max:2100',
+        'office_ids' => 'nullable|array',
+        'office_ids.*' => 'integer|exists:offices,id',
+    ]);
+
+    $rowId = (int) $validated['row_id'];
+    $indicatorIds = collect($validated['indicator_ids'] ?? [])
+        ->push($validated['indicator_id'] ?? null)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+    $year = (int) $validated['year'];
+    $officeIds = collect($validated['office_ids'] ?? [])
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    DB::beginTransaction();
+    try {
+        $ppaRow = DB::table('ppa')
+            ->where('id', $rowId)
+            ->where('types_id', $this->getPaTypeId())
+            ->first();
+
+        $detailIdsToDelete = [];
+        $ppaIdsToDelete = [$rowId];
+
+        if ($ppaRow && (int) ($ppaRow->ppa_details_id ?? 0) > 0) {
+            $detailIdsToDelete = $this->collectPpaDetailTreeIds((int) $ppaRow->ppa_details_id);
+            $detailIdsToDelete = array_values(array_unique(array_merge(
+                $detailIdsToDelete,
+                $this->collectEmptyActivityParentDetailIds((int) $ppaRow->ppa_details_id, $detailIdsToDelete)
+            )));
+            $ppaIdsToDelete = DB::table('ppa')
+                ->whereIn('ppa_details_id', $detailIdsToDelete)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if (empty($ppaIdsToDelete)) {
+            $ppaIdsToDelete = [$rowId];
+        }
+
+        $deletedTargets = $this->deleteSectionRowsForPhysicalRows(Pa_Target::class, $ppaIdsToDelete, $indicatorIds, $year, $officeIds);
+        $deletedAccomplishments = $this->deleteSectionRowsForPhysicalRows(Pa_Accomplishment::class, $ppaIdsToDelete, $indicatorIds, $year, $officeIds);
+
+        $indicatorNames = empty($indicatorIds)
+            ? []
+            : Pa_Indicator::query()
+                ->whereIn('id', $indicatorIds)
+                ->pluck('name')
+                ->map(fn ($name) => trim((string) $name))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        $deletedPhysical = 0;
+
+        if (Schema::hasTable('gass_physical')) {
+            $physicalQuery = Gass_Physical::query()
+                ->whereIn('programs_id', $ppaIdsToDelete)
+                ->where('year', $year);
+
+            if (!empty($officeIds)) {
+                $physicalQuery->whereIn('office_id', $officeIds);
+            }
+
+            if (!empty($indicatorNames)) {
+                $physicalQuery->whereIn('performance_indicator', $indicatorNames);
+            }
+
+            $deletedPhysical = $physicalQuery->delete();
+        }
+
+        DB::table('ppa')->whereIn('id', $ppaIdsToDelete)->delete();
+
+        if (!empty($detailIdsToDelete)) {
+            DB::table('ppa_details')->whereIn('id', array_reverse($detailIdsToDelete))->delete();
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Row deleted successfully.',
+            'deleted' => [
+                'targets' => $deletedTargets,
+                'accomplishments' => $deletedAccomplishments,
+                'physical' => $deletedPhysical,
+                'ppa' => count($ppaIdsToDelete),
+            ],
+        ]);
+    } catch (\Throwable $exception) {
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete row. Please try again.',
+        ], 500);
+    }
+}
+
+private function deleteSectionRowsForPhysicalRows(string $modelClass, array $rowIds, array $indicatorIds, int $year, array $officeIds = []): int
+{
+    $rowIds = collect($rowIds)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    if (empty($rowIds)) {
+        return 0;
+    }
+
+    $query = $modelClass::query()->where('years', $year);
+
+    if (!empty($officeIds)) {
+        $query->whereIn('office_ids', $officeIds);
+    }
+
+    $deletedCount = 0;
+    foreach ($query->get() as $record) {
+        $meta = $this->parseSectionValues($record->values ?? null);
+        $recordRowIds = collect([
+            $record->program_id ?? null,
+            $meta['row_id'] ?? null,
+            $meta['program_id'] ?? null,
+        ])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $recordIndicatorId = (int) ($record->indicator_id ?? $meta['indicator_id'] ?? 0);
+
+        if (empty(array_intersect($rowIds, $recordRowIds))) {
+            continue;
+        }
+
+        if (!empty($indicatorIds) && !in_array($recordIndicatorId, $indicatorIds, true)) {
+            continue;
+        }
+
+        $record->delete();
+        $deletedCount++;
+    }
+
+    return $deletedCount;
 }
 
 public function storeTargets(Request $request)
@@ -827,7 +1285,7 @@ public function storeTargets(Request $request)
         'entries.*.program_id' => ['required', $programExistsRule],
         'entries.*.row_id' => ['nullable', $rowExistsRule],
         'entries.*.indicator_id' => 'required|exists:indicators,id',
-        'entries.*.year' => 'required|integer|min:2000|max:2100',
+            'entries.*.year' => 'required|integer|min:2000|max:2100',
         'entries.*.office_id' => 'nullable|exists:offices,id',
         'entries.*.jan' => 'nullable|numeric|min:0',
         'entries.*.feb' => 'nullable|numeric|min:0',
@@ -982,14 +1440,21 @@ public function storeAccomplishments(Request $request)
             ->where('record_type_id', $this->getPaRecordTypeIds()['PROGRAM']);
     });
 
-        $rowExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
-            $query->where('types_id', $this->getPaTypeId());
-        });
+    $rowExistsRule = Rule::exists('ppa', 'id')->where(function ($query) {
+        $query->where('types_id', $this->getPaTypeId());
+    });
 
-        $validated = $request->validate([
-            'entries' => 'required|array',
-            'entries.*.program_id' => ['required', $programExistsRule],
-            'entries.*.row_id' => ['nullable', $rowExistsRule],
+    $validated = $request->validate([
+        'entries' => 'required|array',
+        'entries.*.program_id' => ['required', $programExistsRule],
+        'entries.*.row_id' => ['nullable', $rowExistsRule],
+        'entries.*.indicator_id' => 'required|exists:indicators,id',
+            'entries.*.year' => 'required|integer|min:2000|max:2100',
+        'entries.*.office_id' => 'nullable|exists:offices,id',
+        'entries.*.jan' => 'nullable|numeric|min:0',
+        'entries.*.feb' => 'nullable|numeric|min:0',
+        'entries.*.mar' => 'nullable|numeric|min:0',
+        'entries.*.q1' => 'nullable|numeric|min:0',
         'entries.*.apr' => 'nullable|numeric|min:0',
         'entries.*.may' => 'nullable|numeric|min:0',
         'entries.*.jun' => 'nullable|numeric|min:0',
@@ -1105,8 +1570,8 @@ public function storeAccomplishments(Request $request)
         $record->annual_total = array_key_exists('annual_total', $entry) ? ($entry['annual_total'] ?? 0) : ($record->annual_total ?? 0);
         $rawRemarks = array_key_exists('remarks', $entry)
             ? ($entry['remarks'] ?? null)
-            : $this->decodeRemarksFromStorage($record->remarks ?? null);
-        $record->remarks = $this->encodeRemarksForStorage($rawRemarks);
+            : $this->decodeRemarksFromParage($record->remarks ?? null);
+        $record->remarks = $this->encodeRemarksForParage($rawRemarks);
         $record->values = json_encode([
             'user_id' => $userId,
             'program_id' => $programId,
@@ -1159,11 +1624,11 @@ private function formatSectionRecordForJs($row, array $meta = []): array
         'annual_total' => (float) ($row->annual_total ?? 0),
         'car_totals' => is_array($meta['car_totals'] ?? null) ? $meta['car_totals'] : [],
         'group_totals' => is_array($meta['group_totals'] ?? null) ? $meta['group_totals'] : [],
-        'remarks' => $this->decodeRemarksFromStorage($row->remarks ?? null),
+        'remarks' => $this->decodeRemarksFromParage($row->remarks ?? null),
     ];
 }
 
-private function encodeRemarksForStorage($remarks): ?string
+private function encodeRemarksForParage($remarks): ?string
 {
     if ($remarks === null) {
         return null;
@@ -1177,7 +1642,7 @@ private function encodeRemarksForStorage($remarks): ?string
     return json_encode($normalized);
 }
 
-private function decodeRemarksFromStorage($raw): string
+private function decodeRemarksFromParage($raw): string
 {
     if ($raw === null) {
         return '';
@@ -1237,7 +1702,7 @@ private function resolveIndicatorTargetRowId(int $rowId, string $indicatorName =
 
     $normalizedIndicatorName = mb_strtolower(trim($indicatorName));
     if ($normalizedIndicatorName !== '') {
-        $currentIndicatorName = Gass_Indicator::query()
+        $currentIndicatorName = Pa_Indicator::query()
             ->whereKey($currentIndicatorId)
             ->value('name');
 
@@ -1252,6 +1717,7 @@ private function resolveIndicatorTargetRowId(int $rowId, string $indicatorName =
         'record_type_id' => $existingRow->record_type_id,
         'ppa_details_id' => $existingRow->ppa_details_id,
         'indicator_id' => null,
+        'year' => $existingRow->year,
         'office_id' => null,
         'created_at' => now(),
         'updated_at' => now(),
@@ -1333,7 +1799,7 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         return $grouped;
     }
 
-    $indicatorsById = Gass_Indicator::query()
+    $indicatorsById = Pa_Indicator::query()
         ->whereIn('id', $allIndicatorIds->all())
         ->get()
         ->keyBy(fn ($row) => (int) $row->id);
@@ -1357,7 +1823,7 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
 
         // Append indicator to the program's collection
         if (!$grouped->has($programId)) {
-            $grouped[$programId] = collect([$indicatorClone]);
+            $grouped->put($programId, collect([$indicatorClone]));
         } else {
             $grouped[$programId]->push($indicatorClone);
         }
@@ -1436,7 +1902,7 @@ private function deleteProgramSectionRows(int $programId, Collection $rows): voi
     $modelClass::query()->whereIn('id', $idsToDelete)->delete();
 }
 
-private function getPaPrograms(?int $programId = null, string $search = ''): Collection
+private function getPaPrograms(?int $programId = null, string $search = '', ?int $year = null): Collection
 {
     $recordTypeIds = $this->getPaRecordTypeIds();
     $typeId = $this->getPaTypeId();
@@ -1475,11 +1941,55 @@ private function getPaPrograms(?int $programId = null, string $search = ''): Col
             $join->on('sub_sub_activity_ppa.ppa_details_id', '=', 'sub_sub_activity_detail.id')
                 ->where('sub_sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-SUB-ACTIVITY']);
         })
+        ->leftJoin('ppa_details as sub_sub_sub_activity_detail', function ($join) {
+            $join->on('sub_sub_sub_activity_detail.parent_id', '=', 'sub_sub_activity_detail.id')
+                ->where('sub_sub_sub_activity_detail.column_order', '=', 6);
+        })
+        ->leftJoin('ppa as sub_sub_sub_activity_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('sub_sub_sub_activity_ppa.ppa_details_id', '=', 'sub_sub_sub_activity_detail.id')
+                ->where('sub_sub_sub_activity_ppa.record_type_id', '=', $recordTypeIds['SUB-SUB-SUB-ACTIVITY']);
+        })
+        ->leftJoin('ppa_details as level_7_detail', function ($join) {
+            $join->on('level_7_detail.parent_id', '=', 'sub_sub_sub_activity_detail.id')
+                ->where('level_7_detail.column_order', '=', 7);
+        })
+        ->leftJoin('ppa as level_7_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_7_ppa.ppa_details_id', '=', 'level_7_detail.id')
+                ->where('level_7_ppa.record_type_id', '=', $recordTypeIds['LEVEL-7']);
+        })
+        ->leftJoin('ppa_details as level_8_detail', function ($join) {
+            $join->on('level_8_detail.parent_id', '=', 'level_7_detail.id')
+                ->where('level_8_detail.column_order', '=', 8);
+        })
+        ->leftJoin('ppa as level_8_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_8_ppa.ppa_details_id', '=', 'level_8_detail.id')
+                ->where('level_8_ppa.record_type_id', '=', $recordTypeIds['LEVEL-8']);
+        })
+        ->leftJoin('ppa_details as level_9_detail', function ($join) {
+            $join->on('level_9_detail.parent_id', '=', 'level_8_detail.id')
+                ->where('level_9_detail.column_order', '=', 9);
+        })
+        ->leftJoin('ppa as level_9_ppa', function ($join) use ($recordTypeIds) {
+            $join->on('level_9_ppa.ppa_details_id', '=', 'level_9_detail.id')
+                ->where('level_9_ppa.record_type_id', '=', $recordTypeIds['LEVEL-9']);
+        })
         ->where('program_ppa.types_id', $typeId)
         ->where('program_ppa.record_type_id', $recordTypeIds['PROGRAM'])
+        ->when($year !== null, function ($query) use ($year) {
+            $query->where('program_ppa.year', $year);
+        })
         ->select([
             'program_ppa.id',
-            DB::raw('COALESCE(sub_sub_activity_ppa.id, sub_activity_ppa.id, main_activity_ppa.id, project_ppa.id, program_ppa.id) as row_id'),
+            'program_ppa.id as program_row_id',
+            'project_ppa.id as project_row_id',
+            'main_activity_ppa.id as main_activity_row_id',
+            'sub_activity_ppa.id as sub_activity_row_id',
+            'sub_sub_activity_ppa.id as sub_sub_activity_row_id',
+            'sub_sub_sub_activity_ppa.id as sub_sub_sub_activity_row_id',
+            'level_7_ppa.id as level_7_row_id',
+            'level_8_ppa.id as level_8_row_id',
+            'level_9_ppa.id as level_9_row_id',
+            DB::raw('COALESCE(level_9_ppa.id, level_8_ppa.id, level_7_ppa.id, sub_sub_sub_activity_ppa.id, sub_sub_activity_ppa.id, sub_activity_ppa.id, main_activity_ppa.id, project_ppa.id, program_ppa.id) as row_id'),
             'program_ppa.ppa_details_id',
             'program_ppa.created_at',
             'program_ppa.updated_at',
@@ -1488,6 +1998,10 @@ private function getPaPrograms(?int $programId = null, string $search = ''): Col
             'main_activity_ppa.name as project',
             'sub_activity_ppa.name as activities',
             'sub_sub_activity_ppa.name as subactivities',
+            'sub_sub_sub_activity_ppa.name as subsubactivities',
+            'level_7_ppa.name as level_6',
+            'level_8_ppa.name as level_7',
+            'level_9_ppa.name as level_8',
         ])
         ->orderBy('program_ppa.created_at')
         ->orderBy('program_ppa.id');
@@ -1498,10 +2012,74 @@ private function getPaPrograms(?int $programId = null, string $search = ''): Col
 
     $programs = $query->get()->map(function ($row) {
         $row->id = (int) $row->id;
+        $row->program_row_id = (int) ($row->program_row_id ?? $row->id);
+        $row->project_row_id = (int) ($row->project_row_id ?? 0);
+        $row->main_activity_row_id = (int) ($row->main_activity_row_id ?? 0);
+        $row->sub_activity_row_id = (int) ($row->sub_activity_row_id ?? 0);
+        $row->sub_sub_activity_row_id = (int) ($row->sub_sub_activity_row_id ?? 0);
+        $row->sub_sub_sub_activity_row_id = (int) ($row->sub_sub_sub_activity_row_id ?? 0);
+        $row->level_7_row_id = (int) ($row->level_7_row_id ?? 0);
+        $row->level_8_row_id = (int) ($row->level_8_row_id ?? 0);
+        $row->level_9_row_id = (int) ($row->level_9_row_id ?? 0);
         $row->row_id = (int) ($row->row_id ?? $row->id);
         $row->ppa_details_id = (int) $row->ppa_details_id;
         return $row;
-    });
+    })
+    ->groupBy(function ($row) {
+        $normalizeHierarchyValue = fn ($value) => mb_strtolower(trim((string) $value));
+        return $normalizeHierarchyValue($row->title ?? '') . '|'
+            . $normalizeHierarchyValue($row->program ?? '') . '|'
+            . $normalizeHierarchyValue($row->project ?? '') . '|'
+            . $normalizeHierarchyValue($row->activities ?? '') . '|'
+            . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+            . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_8 ?? '');
+    })
+    ->flatMap(function ($group) {
+        $usedRowIds = [];
+
+        return $group->map(function ($row) use (&$usedRowIds) {
+            $candidateRowIds = [
+                (int) ($row->row_id ?? 0),
+                (int) ($row->level_9_row_id ?? 0),
+                (int) ($row->level_8_row_id ?? 0),
+                (int) ($row->level_7_row_id ?? 0),
+                (int) ($row->sub_sub_sub_activity_row_id ?? 0),
+                (int) ($row->sub_sub_activity_row_id ?? 0),
+                (int) ($row->sub_activity_row_id ?? 0),
+                (int) ($row->main_activity_row_id ?? 0),
+                (int) ($row->project_row_id ?? 0),
+                (int) ($row->program_row_id ?? 0),
+                (int) ($row->id ?? 0),
+            ];
+
+            foreach ($candidateRowIds as $candidateRowId) {
+                if ($candidateRowId > 0 && !in_array($candidateRowId, $usedRowIds, true)) {
+                    $row->row_id = $candidateRowId;
+                    $usedRowIds[] = $candidateRowId;
+                    break;
+                }
+            }
+
+            return $row;
+        });
+    })
+    ->unique(function ($row) {
+        $normalizeHierarchyValue = fn ($value) => mb_strtolower(trim((string) $value));
+        return $normalizeHierarchyValue($row->title ?? '') . '|'
+            . $normalizeHierarchyValue($row->program ?? '') . '|'
+            . $normalizeHierarchyValue($row->project ?? '') . '|'
+            . $normalizeHierarchyValue($row->activities ?? '') . '|'
+            . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+            . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+            . $normalizeHierarchyValue($row->level_8 ?? '') . '|'
+            . (int) ($row->row_id ?? 0);
+    })
+    ->values();
 
     if ($search === '') {
         return $programs->values();
@@ -1524,6 +2102,10 @@ private function getPaPrograms(?int $programId = null, string $search = ''): Col
             $program->project,
             $program->activities,
             $program->subactivities,
+            $program->subsubactivities ?? null,
+            $program->level_6 ?? null,
+            $program->level_7 ?? null,
+            $program->level_8 ?? null,
         ];
 
         foreach ($fields as $field) {
@@ -1579,6 +2161,46 @@ private function collectPpaDetailTreeIds(int $rootDetailId): array
     return $detailIds;
 }
 
+private function collectEmptyActivityParentDetailIds(int $rootDetailId, array $detailIdsToDelete): array
+{
+    $extraDetailIds = [];
+    $scheduledDetailIds = collect($detailIdsToDelete)
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->unique()
+        ->values()
+        ->all();
+
+    $current = DB::table('ppa_details')
+        ->where('id', $rootDetailId)
+        ->first();
+
+    while ($current && (int) ($current->parent_id ?? 0) > 0) {
+        $parent = DB::table('ppa_details')
+            ->where('id', (int) $current->parent_id)
+            ->first();
+
+        if (!$parent || (int) ($parent->column_order ?? 0) < 4) {
+            break;
+        }
+
+        $remainingChildCount = DB::table('ppa_details')
+            ->where('parent_id', (int) $parent->id)
+            ->whereNotIn('id', $scheduledDetailIds)
+            ->count();
+
+        if ($remainingChildCount > 0) {
+            break;
+        }
+
+        $extraDetailIds[] = (int) $parent->id;
+        $scheduledDetailIds[] = (int) $parent->id;
+        $current = $parent;
+    }
+
+    return $extraDetailIds;
+}
+
 private function getPaTypeId(): int
 {
     $typeId = DB::table('types')
@@ -1601,6 +2223,10 @@ private function getPaRecordTypeIds(): array
             'MAIN ACTIVITY',
             'SUB-ACTIVITY',
             'SUB-SUB-ACTIVITY',
+            'SUB-SUB-SUB-ACTIVITY',
+            'LEVEL-7',
+            'LEVEL-8',
+            'LEVEL-9',
         ])
         ->pluck('id', 'name')
         ->map(fn ($id) => (int) $id)
@@ -1612,6 +2238,10 @@ private function getPaRecordTypeIds(): array
         'MAIN ACTIVITY',
         'SUB-ACTIVITY',
         'SUB-SUB-ACTIVITY',
+        'SUB-SUB-SUB-ACTIVITY',
+        'LEVEL-7',
+        'LEVEL-8',
+        'LEVEL-9',
     ];
 
     foreach ($requiredNames as $name) {
@@ -1623,4 +2253,3 @@ private function getPaRecordTypeIds(): array
     return $recordTypeIds;
 }
 }
-

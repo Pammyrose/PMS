@@ -14,6 +14,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'office_id',
     ];
 
     protected $hidden = [
@@ -29,7 +30,7 @@ class User extends Authenticatable
         ];
     }
 
-public function isSuperAdmin(): bool
+    public function isSuperAdmin(): bool
     {
         return $this->role === 'super-admin';
     }
@@ -37,21 +38,33 @@ public function isSuperAdmin(): bool
 
     public function isAdmin(): bool
     {
-        return in_array($this->role, ['admin', 'super-admin']);
+        return $this->role === 'admin';
+    }
+
+    public function isRegionalOffice(): bool
+    {
+        return in_array($this->role, ['super-admin', 'ro-office', 'ro office'], true);
     }
 
 
     public function isUser(): bool
     {
-        return $this->role === 'user';
+        return in_array($this->role, ['user', 'penro', 'cenro'], true);
+    }
+
+    public function office()
+    {
+        return $this->belongsTo(Office::class);
     }
 
     public function getRoleNameAttribute(): string
     {
         return match ($this->role) {
-            'super-admin' => 'Super Administrator',
+            'super-admin' => 'Region',
+            'ro-office', 'ro office' => 'RO Office',
             'admin' => 'Administrator',
-            'staff' => 'Staff',
+            'penro' => 'PENRO',
+            'cenro' => 'CENRO',
             'user' => 'User',
             default => 'Unknown',
         };

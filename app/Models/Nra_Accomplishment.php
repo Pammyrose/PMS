@@ -11,6 +11,8 @@ class Nra_Accomplishment extends Model
     protected $fillable = [
         'user_id',
         'office_ids',
+        'program_id',
+        'indicator_id',
         'values',
         'remarks',
         'years',
@@ -28,11 +30,6 @@ class Nra_Accomplishment extends Model
         'jul' => 'float', 'aug' => 'float', 'sep' => 'float', 'q3' => 'float',
         'oct' => 'float', 'nov' => 'float', 'dec' => 'float', 'q4' => 'float',
         'annual_total' => 'float',
+        'remarks' => 'string',
     ];
 }
-
-
-
-
-
-

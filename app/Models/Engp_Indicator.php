@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Engp_Indicator extends Model
 {
-    protected $table = 'engp_indicators';
+    protected $table = 'indicators';
 
     protected $fillable = [
         'name',
-        'indicator_type',
+        'indicator_type_id',
         'user_id',
         'program_id',
         'office_id',
@@ -20,6 +20,3 @@ class Engp_Indicator extends Model
         'office_id' => 'array',
     ];
 }
-
-
-

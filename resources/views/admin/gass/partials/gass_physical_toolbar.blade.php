@@ -6,6 +6,8 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
+        @include('admin.gass.partials.gass_physical_excel_upload')
+
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
             {{-- Preserve important filters --}}
@@ -30,23 +32,61 @@
 
     <!-- Right side -->
     <div class="flex items-center gap-2 ">
-        <button onclick="toggleTargetColumns()" class="btn btn-danger btn-sm" id="targetBtn">
-            <i class="fa fa-plus me-1"></i> Targets
-        </button>
-        <button onclick="toggleMonthInputs()" class="btn btn-outline-secondary btn-sm" id="monthBtn"
-            disabled style="display:none;">
-            <i class="fa fa-calendar-days me-1"></i> Months
-        </button>
-        <button onclick="toggleAccompColumns()" class="btn btn-success btn-sm" id="accompBtn">
-            <i class="fa fa-plus me-1"></i> Accomplishments
-        </button>
-        <button onclick="toggleRemarksColumn()" class="btn btn-warning btn-sm" id="remarksBtn"
-            style="display:none;">
-            <i class="fa fa-plus me-1"></i> Remarks
-        </button>
-        <button onclick="toggleSummaryColumns()" class="btn btn-info btn-sm" id="summaryBtn">
-            <i class="fa fa-chart-bar me-1"></i> Summary
-        </button>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                id="columnOptionsDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                <i class="fa fa-table-columns me-1"></i> Columns
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="columnOptionsDropdown">
+                <li class="dropend">
+                    <button class="dropdown-item dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                        <i class="fa fa-bullseye me-1"></i> Target
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <button onclick="toggleTargetColumns()" class="dropdown-item" id="targetBtn" type="button">
+                                <i class="fa fa-plus me-1"></i> Targets
+                            </button>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <button onclick="toggleMonthInputs()" class="dropdown-item" id="monthBtn" type="button"
+                        disabled style="display:none;">
+                        <i class="fa fa-calendar-days me-1"></i> Show Months
+                    </button>
+                </li>
+                <li class="dropend">
+                    <button class="dropdown-item dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                        <i class="fa fa-list-check me-1"></i> Accomplishment
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <button onclick="toggleAccompColumns()" class="dropdown-item" id="accompBtn" type="button">
+                                <i class="fa fa-plus me-1"></i> Accomplishments
+                            </button>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <button onclick="toggleSummaryColumns()" class="dropdown-item" id="summaryBtn" type="button">
+                        <i class="fa fa-chart-bar me-1"></i> Summary
+                    </button>
+                </li>
+                <li>
+                    <button onclick="togglePendingColumns()" class="dropdown-item" id="pendingBtn" type="button">
+                        <i class="fa fa-hourglass-half me-1"></i> Pending
+                    </button>
+                </li>
+                <li>
+                    <button onclick="toggleRemarksColumn()" class="dropdown-item" id="remarksBtn" type="button">
+                        <i class="fa fa-plus me-1"></i> Remarks
+                    </button>
+                </li>
+            </ul>
+        </div>
         <button onclick="saveAllSectionEntries()" class="btn btn-primary btn-sm" id="saveAllBtn">
             <i class="fa fa-floppy-disk me-1"></i> Save
         </button>

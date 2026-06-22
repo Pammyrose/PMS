@@ -20,6 +20,11 @@ class Enf_Pap extends Model
         'level_8',
     ];
 
+    public function physicals()
+    {
+        return $this->hasMany(Gass_Physical::class, 'programs_id');
+    }
+
     public function indicator()
     {
         return $this->hasOne(Enf_Indicator::class, 'program_id');
@@ -30,4 +35,3 @@ class Enf_Pap extends Model
         return $this->hasMany(Enf_Indicator::class, 'program_id');
     }
 }
-

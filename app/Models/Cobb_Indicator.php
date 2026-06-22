@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Cobb_Indicator extends Model
 {
-    protected $table = 'cobb_indicators';
+    protected $table = 'indicators';
 
     protected $fillable = [
         'name',
-        'indicator_type',
+        'indicator_type_id',
         'user_id',
         'program_id',
         'office_id',
@@ -20,6 +20,3 @@ class Cobb_Indicator extends Model
         'office_id' => 'array',
     ];
 }
-
-
-
