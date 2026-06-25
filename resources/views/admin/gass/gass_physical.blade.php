@@ -39,7 +39,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.gass.partials.gass_physical_tabs')
-                @include('admin.gass.partials.gass_physical_summary')
                 @include('admin.gass.partials.gass_physical_toolbar')
 
                     @include('admin.gass.partials.gass_physical_table')
@@ -50,6 +49,8 @@
 
 
     @include('admin.gass.partials.gass_physical_main_scripts')
+
+    @include('admin.gass.partials.gass_physical_main_scripts2')
 
     @include('admin.gass.partials.gass_physical_modals')
 

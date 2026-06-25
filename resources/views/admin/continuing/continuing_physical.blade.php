@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.continuing.partials.continuing_physical_tabs')
-                @include('admin.continuing.partials.continuing_physical_summary')
                 @include('admin.continuing.partials.continuing_physical_toolbar')
 
                     @include('admin.continuing.partials.continuing_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.continuing.partials.continuing_physical_main_scripts')
+
+    @include('admin.continuing.partials.continuing_physical_main_scripts2')
 
     @include('admin.continuing.partials.continuing_physical_modals')
 

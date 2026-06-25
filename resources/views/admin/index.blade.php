@@ -229,19 +229,17 @@
 
           <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
             <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Physical Targets</p>
-            <div class="flex items-center justify-center mt-4">
-              <div class="relative w-28 h-28">
-                <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="44" stroke="#e5e7eb" stroke-width="12" fill="none" />
-                  <circle cx="50" cy="50" r="44" stroke="#10b981" stroke-width="12" stroke-dasharray="276.46" stroke-dashoffset="{{ 276.46 * (1 - ((float) ($physicalTargetsProgress ?? 0) / 100)) }}" stroke-linecap="round" fill="none" />
-                </svg>
-                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                  <span class="text-4xl font-extrabold text-emerald-600">{{ number_format((float) ($physicalTargetsProgress ?? 0), 0) }}%</span>
-                </div>
-              </div>
+            <div class="flex items-center justify-center mt-2">
+              <p class="text-7xl font-extrabold text-emerald-600">{{ number_format((float) ($overallTarget ?? 0), 0) }}</p>
             </div>
           </div>
-       
+
+          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
+            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-8">Total Accomplishments</p>
+            <div class="flex items-center justify-center mt-2">
+              <p class="text-7xl font-extrabold text-blue-700">{{ number_format((float) ($overallAccomp ?? 0), 0) }}</p>
+            </div>
+          </div>
 
           <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
             <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Financial Utilization</p>
@@ -255,13 +253,6 @@
                   <span class="text-4xl font-extrabold text-amber-500">{{ is_numeric($financialUtilization ?? null) ? number_format((float) $financialUtilization, 0) . '%' : 'N/A' }}</span>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
-            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-8">Total Accomplishments</p>
-            <div class="flex items-center justify-center mt-2">
-              <p class="text-7xl font-extrabold text-blue-700">{{ number_format((float) ($overallAccomp ?? 0), 0) }}</p>
             </div>
           </div>
         </div>

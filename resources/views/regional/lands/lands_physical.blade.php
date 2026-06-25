@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.lands.partials.lands_physical_header')
+            @include('regional.lands.partials.lands_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.lands.partials.lands_physical_tabs')
-                @include('users.lands.partials.lands_physical_summary')
-                @include('users.lands.partials.lands_physical_toolbar')
+                @include('regional.lands.partials.lands_physical_tabs')
+                @include('regional.lands.partials.lands_physical_toolbar')
 
-                    @include('users.lands.partials.lands_physical_table')
+                    @include('regional.lands.partials.lands_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.lands.partials.lands_physical_main_scripts')
+    @include('regional.lands.partials.lands_physical_main_scripts')
 
-    @include('users.lands.partials.lands_physical_modals')
+    @include('regional.lands.partials.lands_physical_main_scripts2')
 
-    @include('users.lands.partials.lands_physical_modal_scripts')
+    @include('regional.lands.partials.lands_physical_modals')
+
+    @include('regional.lands.partials.lands_physical_modal_scripts')
 
 </body>
 

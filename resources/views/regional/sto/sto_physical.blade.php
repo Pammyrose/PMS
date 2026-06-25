@@ -21,7 +21,7 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.sto.partials.sto_physical_header')
+            @include('regional.sto.partials.sto_physical_header')
 
             @if(session('success'))
                 <div class="alert alert-success alert-dismissible fade show js-timed-alert" role="alert" data-dismiss-after="4000">
@@ -38,22 +38,23 @@
             @endif
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.sto.partials.sto_physical_tabs')
-                @include('users.sto.partials.sto_physical_summary')
-                @include('users.sto.partials.sto_physical_toolbar')
+                @include('regional.sto.partials.sto_physical_tabs')
+                @include('regional.sto.partials.sto_physical_toolbar')
 
-                    @include('users.sto.partials.sto_physical_table')
+                    @include('regional.sto.partials.sto_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.sto.partials.sto_physical_main_scripts')
+    @include('regional.sto.partials.sto_physical_main_scripts')
 
-    @include('users.sto.partials.sto_physical_modals')
+    @include('regional.sto.partials.sto_physical_main_scripts2')
 
-    @include('users.sto.partials.sto_physical_modal_scripts')
+    @include('regional.sto.partials.sto_physical_modals')
+
+    @include('regional.sto.partials.sto_physical_modal_scripts')
 
 </body>
 

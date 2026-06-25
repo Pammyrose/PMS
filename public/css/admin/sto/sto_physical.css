@@ -394,20 +394,6 @@ td[data-dynamic-section="summary"] .month-box {
     line-height: 1.1;
 }
 
-#performanceSummaryCards {
-    --bs-gutter-x: 0.9rem;
-    --bs-gutter-y: 0.9rem;
-    margin-bottom: 0.45rem !important;
-}
-
-#performanceSummaryCards .card-body {
-    padding: 0.75rem 1rem;
-}
-
-#performanceSummaryCards .fs-3 {
-    font-size: 1.55rem !important;
-    line-height: 1.1;
-}
 
 #papSearchInput {
     min-height: 32px;

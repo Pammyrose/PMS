@@ -8,9 +8,6 @@
                                         Programs/Activities/Projects (P/A/Ps)
                                     </th>
                                     <th class="px-4 py-3"
-                                        style="min-width:240px; background: linear-gradient(to right, #2563eb, #1e40af); color: #fff; border-bottom: 3px solid #3b82f6;">
-                                        Performance Indicators</th>
-                                    <th class="px-4 py-3"
                                         style="min-width:180px; background: linear-gradient(to right, #2563eb, #1e40af); color: #fff; border-bottom: 3px solid #3b82f6;">
                                         Office / Unit</th>
                                     <!-- month headers added dynamically -->
@@ -20,6 +17,6 @@
 
                             <tbody class="text-gray-800">
                                 @include('admin.gass.partials.gass_physical_table_rows')
-</tbody>
+                            </tbody>
                         </table>
                     </div>

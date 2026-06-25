@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.pa.partials.pa_physical_tabs')
-                @include('admin.pa.partials.pa_physical_summary')
                 @include('admin.pa.partials.pa_physical_toolbar')
 
                     @include('admin.pa.partials.pa_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.pa.partials.pa_physical_main_scripts')
+
+    @include('admin.pa.partials.pa_physical_main_scripts2')
 
     @include('admin.pa.partials.pa_physical_modals')
 

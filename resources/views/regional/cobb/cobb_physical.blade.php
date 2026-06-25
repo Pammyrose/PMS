@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.cobb.partials.cobb_physical_header')
+            @include('regional.cobb.partials.cobb_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.cobb.partials.cobb_physical_tabs')
-                @include('users.cobb.partials.cobb_physical_summary')
-                @include('users.cobb.partials.cobb_physical_toolbar')
+                @include('regional.cobb.partials.cobb_physical_tabs')
+                @include('regional.cobb.partials.cobb_physical_toolbar')
 
-                    @include('users.cobb.partials.cobb_physical_table')
+                    @include('regional.cobb.partials.cobb_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.cobb.partials.cobb_physical_main_scripts')
+    @include('regional.cobb.partials.cobb_physical_main_scripts')
 
-    @include('users.cobb.partials.cobb_physical_modals')
+    @include('regional.cobb.partials.cobb_physical_main_scripts2')
 
-    @include('users.cobb.partials.cobb_physical_modal_scripts')
+    @include('regional.cobb.partials.cobb_physical_modals')
+
+    @include('regional.cobb.partials.cobb_physical_modal_scripts')
 
 </body>
 

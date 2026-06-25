@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.cobb.partials.cobb_physical_tabs')
-                @include('admin.cobb.partials.cobb_physical_summary')
                 @include('admin.cobb.partials.cobb_physical_toolbar')
 
                     @include('admin.cobb.partials.cobb_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.cobb.partials.cobb_physical_main_scripts')
+
+    @include('admin.cobb.partials.cobb_physical_main_scripts2')
 
     @include('admin.cobb.partials.cobb_physical_modals')
 

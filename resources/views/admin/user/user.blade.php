@@ -161,7 +161,6 @@
                                 <select name="role" id="userRole" class="form-select" required>
                                     <option value="">— Select Role —</option>
                                     <option value="super-admin" {{ old('role') == 'super-admin' ? 'selected' : '' }}>Region</option>
-                                    <option value="ro-office" {{ old('role') == 'ro-office' ? 'selected' : '' }}>RO Office</option>
                                     <option value="admin" {{ old('role') == 'admin' ? 'selected' : '' }}>Admin</option>
                                     <option value="penro" {{ old('role') == 'penro' ? 'selected' : '' }}>PENRO</option>
                                     <option value="cenro" {{ old('role') == 'cenro' ? 'selected' : '' }}>CENRO</option>
@@ -334,12 +333,11 @@
 
                 const roleToOfficeType = {
                     'super-admin': '1',
-                    'ro-office': '1',
                     'penro': '2',
                     'cenro': '3',
                 };
                 const allowedType = roleToOfficeType[roleInput.value] || '';
-                const isRegion = ['super-admin', 'ro-office'].includes(roleInput.value);
+                const isRegion = roleInput.value === 'super-admin';
 
                 Array.from(officeInput.options).forEach(option => {
                     if (!option.value) {
@@ -417,7 +415,7 @@
                 if (userIdField) userIdField.value = String(user.id);
                 if (nameInput) nameInput.value = user.name || '';
                 if (emailInput) emailInput.value = user.email || '';
-                if (roleInput) roleInput.value = user.role === 'ro office' ? 'ro-office' : (user.role || '');
+                if (roleInput) roleInput.value = ['ro-office', 'ro office'].includes(user.role) ? 'super-admin' : (user.role || '');
                 if (officeInput) officeInput.value = user.office_id || '';
                 if (passwordInput) {
                     passwordInput.required = false;

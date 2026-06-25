@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    private array $tableExistsCache = [];
+    private array $columnExistsCache = [];
+
     public function index(\Illuminate\Http\Request $request)
     {
         $currentYear = (int) now()->year;
@@ -48,44 +51,20 @@ class DashboardController extends Controller
             ->when($selectedSector !== 'all', fn ($configs) => $configs->where('key', $selectedSector))
             ->values();
 
-        $fieldStats = $visibleFieldConfigs->map(function (array $config) use ($year, $officeId) {
-            $totals = $this->physicalTotalsForYear($config['targets'], $config['accomp'], $year, $officeId);
-            $targetTotal = $totals['target_total'];
-            $accompTotal = $totals['accomp_total'];
+        $dashboardSummary = Cache::remember(
+            'dashboard.summary.' . $year . '.sector.' . $selectedSector . '.office.' . ($officeId ?? 'all'),
+            now()->addMinutes(2),
+            fn () => $this->buildDashboardSummary($visibleFieldConfigs->all(), $year, $officeId)
+        );
 
-            $progress = $targetTotal > 0
-                ? round(min(100, ($accompTotal / $targetTotal) * 100), 2)
-                : 0.0;
-
-            return [
-                'key' => $config['key'],
-                'label' => $config['label'],
-                'target_total' => $targetTotal,
-                'accomp_total' => $accompTotal,
-                'progress' => $progress,
-                'status' => $this->statusLabel($progress),
-            ];
-        })
-            ->sortByDesc('progress')
-            ->values();
-
-        $overallTarget = (float) $fieldStats->sum('target_total');
-        $overallAccomp = (float) $fieldStats->sum('accomp_total');
-        $overallProgress = $overallTarget > 0
-            ? round(min(100, ($overallAccomp / $overallTarget) * 100), 2)
-            : 0.0;
-
-        $progressTrend = $this->progressTrend($visibleFieldConfigs->all(), $year, $officeId);
-
-        $fieldsWithTargets = $fieldStats->filter(fn ($row) => (float) ($row['target_total'] ?? 0) > 0)->count();
-        $physicalTargetsProgress = $fieldStats->count() > 0
-            ? round(($fieldsWithTargets / $fieldStats->count()) * 100, 2)
-            : 0.0;
-
-        $activeFields = $fieldStats->filter(fn ($row) => $row['target_total'] > 0 || $row['accomp_total'] > 0)->count();
-        $activeFieldsProgress = $fieldStats->count() > 0
-            ? round(($activeFields / $fieldStats->count()) * 100, 2)
-            : 0.0;
+        $fieldStats = $dashboardSummary['fieldStats'];
+        $overallTarget = $dashboardSummary['overallTarget'];
+        $overallAccomp = $dashboardSummary['overallAccomp'];
+        $overallProgress = $dashboardSummary['overallProgress'];
+        $progressTrend = $dashboardSummary['progressTrend'];
+        $physicalTargetsProgress = $dashboardSummary['physicalTargetsProgress'];
+        $activeFields = $dashboardSummary['activeFields'];
+        $activeFieldsProgress = $dashboardSummary['activeFieldsProgress'];
 
         $yearOptions = Cache::remember(
             'dashboard.year_options.' . $currentYear . '.office.' . ($officeId ?? 'all'),
@@ -124,21 +103,70 @@ class DashboardController extends Controller
         return 'Delayed';
     }
 
+    private function buildDashboardSummary(array $fieldConfigs, int $year, ?int $officeId = null): array
+    {
+        $fieldStats = collect($fieldConfigs)->map(function (array $config) use ($year, $officeId) {
+            $totals = $this->physicalTotalsForYear($config['targets'], $config['accomp'], $year, $officeId);
+            $targetTotal = $totals['target_total'];
+            $accompTotal = $totals['accomp_total'];
+
+            $progress = $targetTotal > 0
+                ? round(min(100, ($accompTotal / $targetTotal) * 100), 2)
+                : 0.0;
+
+            return [
+                'key' => $config['key'],
+                'label' => $config['label'],
+                'target_total' => $targetTotal,
+                'accomp_total' => $accompTotal,
+                'progress' => $progress,
+                'status' => $this->statusLabel($progress),
+            ];
+        })
+            ->sortByDesc('progress')
+            ->values();
+
+        $overallTarget = (float) $fieldStats->sum('target_total');
+        $overallAccomp = (float) $fieldStats->sum('accomp_total');
+        $overallProgress = $overallTarget > 0
+            ? round(min(100, ($overallAccomp / $overallTarget) * 100), 2)
+            : 0.0;
+
+        $fieldsWithTargets = $fieldStats->filter(fn ($row) => (float) ($row['target_total'] ?? 0) > 0)->count();
+        $physicalTargetsProgress = $fieldStats->count() > 0
+            ? round(($fieldsWithTargets / $fieldStats->count()) * 100, 2)
+            : 0.0;
+
+        $activeFields = $fieldStats->filter(fn ($row) => $row['target_total'] > 0 || $row['accomp_total'] > 0)->count();
+        $activeFieldsProgress = $fieldStats->count() > 0
+            ? round(($activeFields / $fieldStats->count()) * 100, 2)
+            : 0.0;
+
+        return [
+            'fieldStats' => $fieldStats,
+            'overallTarget' => $overallTarget,
+            'overallAccomp' => $overallAccomp,
+            'overallProgress' => $overallProgress,
+            'progressTrend' => $this->progressTrend($fieldConfigs, $year, $officeId),
+            'physicalTargetsProgress' => $physicalTargetsProgress,
+            'activeFields' => $activeFields,
+            'activeFieldsProgress' => $activeFieldsProgress,
+        ];
+    }
+
     private function physicalTotalsForYear(string $targetTable, string $accompTable, int $year, ?int $officeId = null): array
     {
-        $targetRows = $this->physicalRowsForYear($targetTable, $year, $officeId);
-        $accompRows = $this->physicalRowsForYear($accompTable, $year, $officeId);
-        $targetMap = $this->monthlyMap($targetRows);
-        $accompMap = $this->monthlyMap($accompRows);
+        $targetMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($targetTable, $year, $officeId));
+        $accompMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($accompTable, $year, $officeId));
         $targetTotal = 0.0;
         $accompTotal = 0.0;
 
-        foreach ($targetMap as $key => $targetValue) {
-            $safeTarget = max((float) $targetValue, 0.0);
-            $safeAccomp = max((float) ($accompMap[$key] ?? 0), 0.0);
+        foreach ($targetMap as $targetValue) {
+            $targetTotal += max((float) $targetValue, 0.0);
+        }
 
-            $targetTotal += $safeTarget;
-            $accompTotal += min($safeAccomp, $safeTarget);
+        foreach ($accompMap as $accompValue) {
+            $accompTotal += max((float) $accompValue, 0.0);
         }
 
         return [
@@ -207,18 +235,45 @@ class DashboardController extends Controller
 
     private function physicalAccomplishmentTrendForYear(string $accompTable, int $year, ?int $officeId = null): array
     {
-        $accompRows = $this->physicalRowsForYear($accompTable, $year, $officeId);
-        $accompMap = $this->monthlyMap($accompRows);
         $accomplishments = array_fill_keys($this->monthColumns(), 0.0);
 
-        foreach ($accompMap as $key => $accompValue) {
-            $monthColumn = substr((string) $key, strrpos((string) $key, '|') + 1);
+        if (!$this->hasTable($accompTable)) {
+            return [
+                'accomplishments' => $accomplishments,
+            ];
+        }
 
-            if (!array_key_exists($monthColumn, $accomplishments)) {
-                continue;
-            }
+        $yearColumn = $this->resolveYearColumn($accompTable);
 
-            $accomplishments[$monthColumn] += max((float) $accompValue, 0.0);
+        if ($yearColumn === null) {
+            return [
+                'accomplishments' => $accomplishments,
+            ];
+        }
+
+        $selects = collect($this->monthColumns())
+            ->filter(fn (string $column) => $this->hasColumn($accompTable, $column))
+            ->map(fn (string $column) => DB::raw("COALESCE(SUM(`{$column}`), 0) as `{$column}`"))
+            ->values()
+            ->all();
+
+        if (empty($selects)) {
+            return [
+                'accomplishments' => $accomplishments,
+            ];
+        }
+
+        $query = DB::table($accompTable)->select($selects);
+        $this->applyYearFilter($query, $yearColumn, $year);
+
+        if ($officeId !== null && $this->hasColumn($accompTable, 'office_ids')) {
+            $query->where('office_ids', $officeId);
+        }
+
+        $row = $query->first();
+
+        foreach ($this->monthColumns() as $monthColumn) {
+            $accomplishments[$monthColumn] = max((float) ($row->{$monthColumn} ?? 0), 0.0);
         }
 
         return [
@@ -228,7 +283,7 @@ class DashboardController extends Controller
 
     private function physicalRowsForYear(string $table, int $year, ?int $officeId = null)
     {
-        if (!Schema::hasTable($table)) {
+        if (!$this->hasTable($table)) {
             return collect();
         }
 
@@ -240,14 +295,73 @@ class DashboardController extends Controller
 
         $columns = collect(['office_ids', 'program_id', 'indicator_id', 'values', 'annual_total'])
             ->merge($this->monthColumns())
-            ->filter(fn (string $column) => Schema::hasColumn($table, $column))
+            ->filter(fn (string $column) => $this->hasColumn($table, $column))
             ->values()
             ->all();
 
         $query = DB::table($table)->select($columns);
         $this->applyYearFilter($query, $yearColumn, $year);
 
-        if ($officeId !== null && Schema::hasColumn($table, 'office_ids')) {
+        if ($officeId !== null && $this->hasColumn($table, 'office_ids')) {
+            $query->where('office_ids', $officeId);
+        }
+
+        return $query->get();
+    }
+
+    private function physicalMonthlySumsForYear(string $table, int $year, ?int $officeId = null)
+    {
+        if (!$this->hasTable($table)) {
+            return collect();
+        }
+
+        $yearColumn = $this->resolveYearColumn($table);
+
+        if ($yearColumn === null || !$this->hasColumn($table, 'office_ids')) {
+            return collect();
+        }
+
+        $monthColumns = collect($this->monthColumns())
+            ->filter(fn (string $column) => $this->hasColumn($table, $column))
+            ->values();
+
+        if ($monthColumns->isEmpty()) {
+            return collect();
+        }
+
+        $programExpression = $this->dashboardProgramIdExpression($table);
+        $indicatorExpression = $this->dashboardIndicatorIdExpression($table);
+
+        $selects = [
+            DB::raw("{$programExpression} as dashboard_program_id"),
+            DB::raw("{$indicatorExpression} as dashboard_indicator_id"),
+            'office_ids',
+        ];
+
+        foreach ($monthColumns as $column) {
+            $selects[] = DB::raw("COALESCE(SUM(`{$column}`), 0) as `{$column}`");
+        }
+
+        $query = DB::table($table)
+            ->select($selects)
+            ->whereNotNull('office_ids')
+            ->groupBy(DB::raw($programExpression), DB::raw($indicatorExpression), 'office_ids');
+
+        if ($this->hasColumn($table, 'program_id')) {
+            $query->groupBy('program_id');
+        }
+
+        if ($this->hasColumn($table, 'indicator_id')) {
+            $query->groupBy('indicator_id');
+        }
+
+        if ($this->hasColumn($table, 'values')) {
+            $query->groupBy('values');
+        }
+
+        $this->applyYearFilter($query, $yearColumn, $year);
+
+        if ($officeId !== null) {
             $query->where('office_ids', $officeId);
         }
 
@@ -288,6 +402,46 @@ class DashboardController extends Controller
         return $map;
     }
 
+    private function monthlyMapFromAggregateRows($rows): array
+    {
+        $map = [];
+
+        foreach ($rows as $row) {
+            $rowId = (int) ($row->dashboard_program_id ?? 0);
+            $indicatorId = (int) ($row->dashboard_indicator_id ?? 0);
+            $officeId = (int) ($row->office_ids ?? 0);
+
+            if ($rowId <= 0 || $indicatorId <= 0 || $officeId <= 0) {
+                continue;
+            }
+
+            foreach ($this->monthColumns() as $monthColumn) {
+                $key = "{$rowId}|{$indicatorId}|{$officeId}|{$monthColumn}";
+                $map[$key] = (float) ($row->{$monthColumn} ?? 0);
+            }
+        }
+
+        return $map;
+    }
+
+    private function dashboardProgramIdExpression(string $table): string
+    {
+        if ($this->hasColumn($table, 'program_id')) {
+            return "COALESCE(NULLIF(`program_id`, 0), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.row_id')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.program_id')), ''), 0)";
+        }
+
+        return "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.row_id')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.program_id')), ''), 0)";
+    }
+
+    private function dashboardIndicatorIdExpression(string $table): string
+    {
+        if ($this->hasColumn($table, 'indicator_id')) {
+            return "COALESCE(NULLIF(`indicator_id`, 0), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.indicator_id')), ''), 0)";
+        }
+
+        return "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(`values`, '$.indicator_id')), ''), 0)";
+    }
+
     private function monthColumns(): array
     {
         return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -323,7 +477,7 @@ class DashboardController extends Controller
         $years = collect();
 
         foreach ($tables as $table) {
-            if (!Schema::hasTable($table)) {
+            if (!$this->hasTable($table)) {
                 continue;
             }
 
@@ -335,7 +489,7 @@ class DashboardController extends Controller
             $query = DB::table($table)
                 ->whereNotNull($yearColumn);
 
-            if ($officeId !== null && Schema::hasColumn($table, 'office_ids')) {
+            if ($officeId !== null && $this->hasColumn($table, 'office_ids')) {
                 $query->where('office_ids', $officeId);
             }
 
@@ -378,14 +532,26 @@ class DashboardController extends Controller
 
     private function resolveYearColumn(string $table): ?string
     {
-        if (Schema::hasColumn($table, 'years')) {
+        if ($this->hasColumn($table, 'years')) {
             return 'years';
         }
 
-        if (Schema::hasColumn($table, 'year')) {
+        if ($this->hasColumn($table, 'year')) {
             return 'year';
         }
 
         return null;
+    }
+
+    private function hasTable(string $table): bool
+    {
+        return $this->tableExistsCache[$table] ??= Schema::hasTable($table);
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        $key = "{$table}.{$column}";
+
+        return $this->columnExistsCache[$key] ??= Schema::hasColumn($table, $column);
     }
 }

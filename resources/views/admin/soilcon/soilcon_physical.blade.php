@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.soilcon.partials.soilcon_physical_tabs')
-                @include('admin.soilcon.partials.soilcon_physical_summary')
                 @include('admin.soilcon.partials.soilcon_physical_toolbar')
 
                     @include('admin.soilcon.partials.soilcon_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.soilcon.partials.soilcon_physical_main_scripts')
+
+    @include('admin.soilcon.partials.soilcon_physical_main_scripts2')
 
     @include('admin.soilcon.partials.soilcon_physical_modals')
 

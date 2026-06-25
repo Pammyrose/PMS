@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.paria.partials.paria_physical_tabs')
-                @include('admin.paria.partials.paria_physical_summary')
                 @include('admin.paria.partials.paria_physical_toolbar')
 
                     @include('admin.paria.partials.paria_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.paria.partials.paria_physical_main_scripts')
+
+    @include('admin.paria.partials.paria_physical_main_scripts2')
 
     @include('admin.paria.partials.paria_physical_modals')
 

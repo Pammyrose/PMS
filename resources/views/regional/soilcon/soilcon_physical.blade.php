@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.soilcon.partials.soilcon_physical_header')
+            @include('regional.soilcon.partials.soilcon_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.soilcon.partials.soilcon_physical_tabs')
-                @include('users.soilcon.partials.soilcon_physical_summary')
-                @include('users.soilcon.partials.soilcon_physical_toolbar')
+                @include('regional.soilcon.partials.soilcon_physical_tabs')
+                @include('regional.soilcon.partials.soilcon_physical_toolbar')
 
-                    @include('users.soilcon.partials.soilcon_physical_table')
+                    @include('regional.soilcon.partials.soilcon_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.soilcon.partials.soilcon_physical_main_scripts')
+    @include('regional.soilcon.partials.soilcon_physical_main_scripts')
 
-    @include('users.soilcon.partials.soilcon_physical_modals')
+    @include('regional.soilcon.partials.soilcon_physical_main_scripts2')
 
-    @include('users.soilcon.partials.soilcon_physical_modal_scripts')
+    @include('regional.soilcon.partials.soilcon_physical_modals')
+
+    @include('regional.soilcon.partials.soilcon_physical_modal_scripts')
 
 </body>
 

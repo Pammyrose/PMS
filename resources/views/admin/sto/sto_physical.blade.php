@@ -39,7 +39,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.sto.partials.sto_physical_tabs')
-                @include('admin.sto.partials.sto_physical_summary')
                 @include('admin.sto.partials.sto_physical_toolbar')
 
                     @include('admin.sto.partials.sto_physical_table')
@@ -50,6 +49,8 @@
 
 
     @include('admin.sto.partials.sto_physical_main_scripts')
+
+    @include('admin.sto.partials.sto_physical_main_scripts2')
 
     @include('admin.sto.partials.sto_physical_modals')
 

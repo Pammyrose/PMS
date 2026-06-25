@@ -21,7 +21,7 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.gass.partials.gass_physical_header')
+            @include('regional.gass.partials.gass_physical_header')
 
             @if(session('success'))
                 <div class="alert alert-success alert-dismissible fade show js-timed-alert" role="alert" data-dismiss-after="4000">
@@ -38,22 +38,23 @@
             @endif
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.gass.partials.gass_physical_tabs')
-                @include('users.gass.partials.gass_physical_summary')
-                @include('users.gass.partials.gass_physical_toolbar')
+                @include('regional.gass.partials.gass_physical_tabs')
+                @include('regional.gass.partials.gass_physical_toolbar')
 
-                    @include('users.gass.partials.gass_physical_table')
+                    @include('regional.gass.partials.gass_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.gass.partials.gass_physical_main_scripts')
+    @include('regional.gass.partials.gass_physical_main_scripts')
 
-    @include('users.gass.partials.gass_physical_modals')
+    @include('regional.gass.partials.gass_physical_main_scripts2')
 
-    @include('users.gass.partials.gass_physical_modal_scripts')
+    @include('regional.gass.partials.gass_physical_modals')
+
+    @include('regional.gass.partials.gass_physical_modal_scripts')
 
 </body>
 

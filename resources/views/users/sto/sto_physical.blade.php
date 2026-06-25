@@ -10,6 +10,12 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('css/admin/sto/sto_physical.css') }}">
+    <style>
+        tr.data-row > td:nth-child(3),
+        tr.data-row > td[data-dynamic-section] {
+            vertical-align: top;
+        }
+    </style>
 </head>
 
 <body class="bg-light">
@@ -39,7 +45,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('users.sto.partials.sto_physical_tabs')
-                @include('users.sto.partials.sto_physical_summary')
                 @include('users.sto.partials.sto_physical_toolbar')
 
                     @include('users.sto.partials.sto_physical_table')
@@ -50,6 +55,8 @@
 
 
     @include('users.sto.partials.sto_physical_main_scripts')
+
+    @include('users.sto.partials.sto_physical_main_scripts2')
 
     @include('users.sto.partials.sto_physical_modals')
 

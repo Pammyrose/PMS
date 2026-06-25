@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.continuing.partials.continuing_physical_header')
+            @include('regional.continuing.partials.continuing_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.continuing.partials.continuing_physical_tabs')
-                @include('users.continuing.partials.continuing_physical_summary')
-                @include('users.continuing.partials.continuing_physical_toolbar')
+                @include('regional.continuing.partials.continuing_physical_tabs')
+                @include('regional.continuing.partials.continuing_physical_toolbar')
 
-                    @include('users.continuing.partials.continuing_physical_table')
+                    @include('regional.continuing.partials.continuing_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.continuing.partials.continuing_physical_main_scripts')
+    @include('regional.continuing.partials.continuing_physical_main_scripts')
 
-    @include('users.continuing.partials.continuing_physical_modals')
+    @include('regional.continuing.partials.continuing_physical_main_scripts2')
 
-    @include('users.continuing.partials.continuing_physical_modal_scripts')
+    @include('regional.continuing.partials.continuing_physical_modals')
+
+    @include('regional.continuing.partials.continuing_physical_modal_scripts')
 
 </body>
 

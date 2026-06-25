@@ -32,6 +32,8 @@
 
     <!-- Right side -->
     <div class="flex items-center gap-2 ">
+        @include('components.physical_font_size_control')
+
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                 id="columnOptionsDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">

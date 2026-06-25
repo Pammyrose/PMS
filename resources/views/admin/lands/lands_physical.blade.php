@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.lands.partials.lands_physical_tabs')
-                @include('admin.lands.partials.lands_physical_summary')
                 @include('admin.lands.partials.lands_physical_toolbar')
 
                     @include('admin.lands.partials.lands_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.lands.partials.lands_physical_main_scripts')
+
+    @include('admin.lands.partials.lands_physical_main_scripts2')
 
     @include('admin.lands.partials.lands_physical_modals')
 

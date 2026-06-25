@@ -318,6 +318,7 @@
 
     (() => {
       const prefetchedPages = new Set();
+      const prefetchTimers = new WeakMap();
 
       const prefetchPage = (href) => {
         if (!href || href.startsWith('#') || prefetchedPages.has(href)) return;
@@ -338,29 +339,50 @@
         link.as = 'document';
         link.href = url.href;
         document.head.appendChild(link);
-
-        try {
-          fetch(url.href, {
-            credentials: 'same-origin',
-            cache: 'force-cache',
-            priority: 'low',
-          }).catch(() => {});
-        } catch (error) {
-          // Browsers without fetch priority still keep the <link rel="prefetch"> hint above.
-        }
       };
 
-      const prepareLink = (event) => {
+      const schedulePrefetch = (event) => {
         const link = event.currentTarget;
-        prefetchPage(link?.getAttribute('href'));
+        if (!link || prefetchTimers.has(link)) return;
+
+        const timer = window.setTimeout(() => {
+          prefetchTimers.delete(link);
+
+          const run = () => prefetchPage(link.getAttribute('href'));
+          if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(run, { timeout: 1200 });
+          } else {
+            run();
+          }
+        }, 160);
+
+        prefetchTimers.set(link, timer);
+      };
+
+      const cancelPrefetch = (event) => {
+        const link = event.currentTarget;
+        const timer = prefetchTimers.get(link);
+        if (!timer) return;
+
+        window.clearTimeout(timer);
+        prefetchTimers.delete(link);
+      };
+
+      const showNavigationPending = (event) => {
+        const href = event.currentTarget?.getAttribute('href') || '';
+        if (!href || href.startsWith('#')) return;
+
+        document.body.classList.add('is-navigating');
       };
 
       document.querySelectorAll('#sidebar a[href]').forEach((link) => {
         if (link.getAttribute('href') === '#') return;
 
-        link.addEventListener('pointerenter', prepareLink, { passive: true, once: true });
-        link.addEventListener('focus', prepareLink, { passive: true, once: true });
-        link.addEventListener('touchstart', prepareLink, { passive: true, once: true });
+        link.addEventListener('pointerenter', schedulePrefetch, { passive: true });
+        link.addEventListener('pointerleave', cancelPrefetch, { passive: true });
+        link.addEventListener('focus', schedulePrefetch, { passive: true });
+        link.addEventListener('blur', cancelPrefetch, { passive: true });
+        link.addEventListener('click', showNavigationPending, { passive: true });
       });
     })();
   </script>
@@ -378,9 +400,36 @@
       }
     }
 
-    .animate-fade-in {
-      animation: fadeInUp 0.6s ease-out forwards;
+  .animate-fade-in {
+    animation: fadeInUp 0.6s ease-out forwards;
+  }
+
+  body.is-navigating {
+    cursor: progress;
+  }
+
+  body.is-navigating::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    height: 3px;
+    width: 35%;
+    background: #60a5fa;
+    box-shadow: 0 0 12px rgba(96, 165, 250, 0.8);
+    animation: sidebarPageLoading 1s ease-in-out infinite;
+  }
+
+  @keyframes sidebarPageLoading {
+    0% {
+      transform: translateX(-100%);
     }
+
+    100% {
+      transform: translateX(300%);
+    }
+  }
   </style>
 
 </body>

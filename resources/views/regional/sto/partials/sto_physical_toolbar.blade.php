@@ -6,7 +6,7 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
-        @include('users.sto.partials.sto_physical_excel_upload')
+        @include('regional.sto.partials.sto_physical_excel_upload')
 
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
@@ -32,6 +32,8 @@
 
     <!-- Right side -->
     <div class="flex items-center gap-2 ">
+        @include('components.physical_font_size_control')
+
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                 id="columnOptionsDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">

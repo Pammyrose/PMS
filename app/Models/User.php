@@ -60,8 +60,7 @@ class User extends Authenticatable
     public function getRoleNameAttribute(): string
     {
         return match ($this->role) {
-            'super-admin' => 'Region',
-            'ro-office', 'ro office' => 'RO Office',
+            'super-admin', 'ro-office', 'ro office' => 'Region',
             'admin' => 'Administrator',
             'penro' => 'PENRO',
             'cenro' => 'CENRO',

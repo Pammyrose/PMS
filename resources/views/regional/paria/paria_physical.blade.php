@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.paria.partials.paria_physical_header')
+            @include('regional.paria.partials.paria_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.paria.partials.paria_physical_tabs')
-                @include('users.paria.partials.paria_physical_summary')
-                @include('users.paria.partials.paria_physical_toolbar')
+                @include('regional.paria.partials.paria_physical_tabs')
+                @include('regional.paria.partials.paria_physical_toolbar')
 
-                    @include('users.paria.partials.paria_physical_table')
+                    @include('regional.paria.partials.paria_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.paria.partials.paria_physical_main_scripts')
+    @include('regional.paria.partials.paria_physical_main_scripts')
 
-    @include('users.paria.partials.paria_physical_modals')
+    @include('regional.paria.partials.paria_physical_main_scripts2')
 
-    @include('users.paria.partials.paria_physical_modal_scripts')
+    @include('regional.paria.partials.paria_physical_modals')
+
+    @include('regional.paria.partials.paria_physical_modal_scripts')
 
 </body>
 

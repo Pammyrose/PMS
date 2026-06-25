@@ -25,7 +25,6 @@
 
             <div class="bg-white rounded shadow p-3">
                 @include('admin.engp.partials.engp_physical_tabs')
-                @include('admin.engp.partials.engp_physical_summary')
                 @include('admin.engp.partials.engp_physical_toolbar')
 
                     @include('admin.engp.partials.engp_physical_table')
@@ -36,6 +35,8 @@
 
 
     @include('admin.engp.partials.engp_physical_main_scripts')
+
+    @include('admin.engp.partials.engp_physical_main_scripts2')
 
     @include('admin.engp.partials.engp_physical_modals')
 

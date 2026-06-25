@@ -21,25 +21,26 @@
 
         <main class="flex-grow-1 p-3">
 
-            @include('users.engp.partials.engp_physical_header')
+            @include('regional.engp.partials.engp_physical_header')
 
             <div class="bg-white rounded shadow p-3">
-                @include('users.engp.partials.engp_physical_tabs')
-                @include('users.engp.partials.engp_physical_summary')
-                @include('users.engp.partials.engp_physical_toolbar')
+                @include('regional.engp.partials.engp_physical_tabs')
+                @include('regional.engp.partials.engp_physical_toolbar')
 
-                    @include('users.engp.partials.engp_physical_table')
+                    @include('regional.engp.partials.engp_physical_table')
                 </div>
 
         </main>
     </div>
 
 
-    @include('users.engp.partials.engp_physical_main_scripts')
+    @include('regional.engp.partials.engp_physical_main_scripts')
 
-    @include('users.engp.partials.engp_physical_modals')
+    @include('regional.engp.partials.engp_physical_main_scripts2')
 
-    @include('users.engp.partials.engp_physical_modal_scripts')
+    @include('regional.engp.partials.engp_physical_modals')
+
+    @include('regional.engp.partials.engp_physical_modal_scripts')
 
 </body>
 

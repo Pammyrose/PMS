@@ -11,7 +11,7 @@ use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
-    private const USER_ROLES = ['super-admin', 'admin', 'ro-office', 'ro office', 'penro', 'cenro'];
+    private const USER_ROLES = ['super-admin', 'admin', 'penro', 'cenro'];
 
     public function index()
     {
