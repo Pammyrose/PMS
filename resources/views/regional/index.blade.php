@@ -206,58 +206,10 @@
 </form>
       </div>
 
+      @include('components.dashboard_overall_cards')
+
       <div class="mb-12">
-        <h3 class="text-xl font-bold text-gray-800 mb-5 flex items-center gap-3">
-          <i class="fa-solid fa-chart-pie text-accent"></i> Overall Performance Snapshot
-        </h3>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
-            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Overall Progress</p>
-            <div class="flex items-center justify-center mt-4">
-              <div class="relative w-28 h-28">
-                <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="44" stroke="#e5e7eb" stroke-width="12" fill="none" />
-                  <circle cx="50" cy="50" r="44" stroke="#3b82f6" stroke-width="12" stroke-dasharray="276.46" stroke-dashoffset="{{ 276.46 * (1 - ((float) ($overallProgress ?? 0) / 100)) }}" stroke-linecap="round" fill="none" />
-                </svg>
-                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                  <span class="text-4xl font-extrabold text-blue-600">{{ number_format((float) ($overallProgress ?? 0), 0) }}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
-            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Physical Targets</p>
-            <div class="flex items-center justify-center mt-2">
-              <p class="text-7xl font-extrabold text-emerald-600">{{ number_format((float) ($overallTarget ?? 0), 0) }}</p>
-            </div>
-
-          </div>
-       
-
-          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
-            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-8">Total Accomplishments</p>
-            <div class="flex items-center justify-center mt-2">
-              <p class="text-7xl font-extrabold text-blue-700">{{ number_format((float) ($overallAccomp ?? 0), 0) }}</p>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-center items-center text-center">
-            <p class="text-sm text-gray-600 font-medium uppercase tracking-wide mb-1">Financial Utilization</p>
-            <div class="flex items-center justify-center mt-4">
-              <div class="relative w-28 h-28">
-                <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="44" stroke="#e5e7eb" stroke-width="12" fill="none" />
-                  <circle cx="50" cy="50" r="44" stroke="#f59e0b" stroke-width="12" stroke-dasharray="276.46" stroke-dashoffset="{{ is_numeric($financialUtilization ?? null) ? 276.46 * (1 - ((float) $financialUtilization / 100)) : 276.46 }}" stroke-linecap="round" fill="none" />
-                </svg>
-                <div class="absolute inset-0 flex flex-col items-center justify-center">
-                  <span class="text-4xl font-extrabold text-amber-500">{{ is_numeric($financialUtilization ?? null) ? number_format((float) $financialUtilization, 0) . '%' : 'N/A' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        @include('components.dashboard_performance_rankings')
       </div>
 
       <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 animate-fade-in mb-12">
@@ -282,53 +234,6 @@
             <span><span class="d-inline-block rounded me-2" style="width: 12px; height: 12px; background: #2563eb;"></span>Accomplishments</span>
             <span>Bars compare accomplished physical outputs by period.</span>
           </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 animate-fade-in">
-        <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-xl font-bold text-gray-900 flex items-center gap-3">
-            <i class="fa-solid fa-chart-bar text-accent"></i> Sectors Performance Ranking
-          </h3>
-          <span class="text-sm text-gray-500">Sorted by progress (highest first)</span>
-        </div>
-
-        <div class="p-6 space-y-8">
-          @forelse(($fieldStats ?? []) as $field)
-            @php
-              $progress = (float) ($field['progress'] ?? 0);
-              $isOnTrack = $progress >= 80;
-              $isNeedsAttention = $progress >= 60 && $progress < 80;
-              $textClass = $isOnTrack ? 'text-emerald-600' : ($isNeedsAttention ? 'text-amber-600' : 'text-red-600');
-              $barClass = $isOnTrack
-                ? 'bg-gradient-to-r from-emerald-400 to-emerald-600'
-                : ($isNeedsAttention
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-500'
-                    : 'bg-gradient-to-r from-red-400 to-red-500');
-            @endphp
-            <a
-              href="{{ route($field['key'] . '_physical') }}"
-              class="block space-y-2 rounded-xl p-3 -m-3 text-decoration-none hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
-              aria-label="Open {{ $field['label'] }} sector page"
-            >
-              <div class="flex justify-between items-center text-sm font-medium">
-                <span class="text-gray-800">{{ $field['label'] }}</span>
-                <span class="d-flex align-items-center gap-2 {{ $textClass }}">
-                  {{ number_format($progress, 0) }}%
-                  <i class="fa-solid fa-arrow-right text-xs"></i>
-                </span>
-              </div>
-              <div class="h-4 bg-gray-200 rounded-full overflow-hidden">
-                <div class="h-full {{ $barClass }} rounded-full" style="width: {{ $progress }}%"></div>
-              </div>
-              <div class="flex justify-between text-xs text-gray-500">
-                <span>Target: {{ number_format((float) ($field['target_total'] ?? 0), 0) }} | Accomplished: {{ number_format((float) ($field['accomp_total'] ?? 0), 0) }}</span>
-                <span class="font-medium {{ $textClass }}">{{ $field['status'] }}</span>
-              </div>
-            </a>
-          @empty
-            <div class="text-sm text-gray-500">No field data available yet.</div>
-          @endforelse
         </div>
       </div>
 

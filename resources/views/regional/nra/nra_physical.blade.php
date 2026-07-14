@@ -23,6 +23,20 @@
 
             @include('regional.nra.partials.nra_physical_header')
 
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible fade show js-timed-alert" role="alert" data-dismiss-after="4000">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            @if(session('error'))
+                <div class="alert alert-danger alert-dismissible fade show js-timed-alert" role="alert" data-dismiss-after="6000">
+                    {{ session('error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
             <div class="bg-white rounded shadow p-3">
                 @include('regional.nra.partials.nra_physical_tabs')
                 @include('regional.nra.partials.nra_physical_toolbar')
@@ -37,6 +51,8 @@
     @include('regional.nra.partials.nra_physical_main_scripts')
 
     @include('regional.nra.partials.nra_physical_main_scripts2')
+
+    @include('components.physical_highlight_script')
 
     @include('regional.nra.partials.nra_physical_modals')
 

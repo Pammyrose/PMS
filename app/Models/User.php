@@ -59,7 +59,7 @@ class User extends Authenticatable
 
     public function getRoleNameAttribute(): string
     {
-        return match ($this->role) {
+        $roleName = match ($this->role) {
             'super-admin', 'ro-office', 'ro office' => 'Region',
             'admin' => 'Administrator',
             'penro' => 'PENRO',
@@ -67,5 +67,11 @@ class User extends Authenticatable
             'user' => 'User',
             default => 'Unknown',
         };
+
+        if (in_array($this->role, ['penro', 'cenro'], true) && $this->office?->name) {
+            return $roleName . ' - ' . $this->office->name;
+        }
+
+        return $roleName;
     }
 }

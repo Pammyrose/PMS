@@ -88,26 +88,27 @@
                                 </datalist>
                             </div>
 
+
                             <div class="col-12 col-md-6">
                                 <label for="pap_program" class="form-label fw-bold small">Program <label class="text-red-500 text-[10px]">(N/A if not applicable)</label></label>
                                 <input type="text" id="pap_program" class="form-control form-control-sm py-2"
-                                    list="pap_program_options" style="font-size: 0.875rem;" maxlength="150" autocomplete="off" required>
+                                    list="pap_program_options" style="font-size: 0.875rem;" autocomplete="off" required>
                                 <datalist id="pap_program_options"></datalist>
                             </div>
 
                             <div class="col-12">
                                 <label for="pap_project" class="form-label fw-bold small">Project <label class="text-red-500 text-[10px]">(N/A if not applicable)</label></label>
                                 <input type="text" id="pap_project" class="form-control form-control-sm py-2"
-                                    list="pap_project_options" style="font-size: 0.875rem;" maxlength="150" required autocomplete="off">
+                                    list="pap_project_options" style="font-size: 0.875rem;" required autocomplete="off">
                                 <datalist id="pap_project_options"></datalist>
                             </div>
 
                             <div class="col-12 col-md-6">
                                 <label for="pap_activities" class="form-label fw-bold small">Activity</label>
                                 <input type="text" id="pap_activities" class="form-control form-control-sm py-2"
-                                    style="font-size: 0.875rem;" list="pap_activity_options" maxlength="255" autocomplete="off">
+                                    style="font-size: 0.875rem;" list="pap_activity_options" autocomplete="off">
                                 <datalist id="pap_activity_options"></datalist>
-                            </div>
+                            </div> 
 
                             <div class="col-12 col-md-6">
                                 <label for="pap_subactivities" class="form-label fw-bold small">Sub-activity</label>
@@ -162,7 +163,7 @@
                                         <i class="bi bi-plus-lg"></i>
                                     </button>
                                 </div>
-                            </div>
+            </div>
 
                             <!-- Level 8: Sub-Sub-Sub-Sub-Sub-activity -->
                             <div class="col-12 col-md-6" id="pap_level_8_container" style="display: none;">

@@ -43,6 +43,7 @@ class HistoryController extends Controller
         }
 
         $historyQuery = EditHistory::query()
+            ->with('user.office')
             ->when(!empty($filters['module']), function ($query) use ($filters) {
                 $query->where('module', $filters['module']);
             })

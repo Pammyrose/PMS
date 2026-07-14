@@ -6,6 +6,7 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
+
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
             {{-- Preserve important filters --}}
@@ -18,15 +19,13 @@
 
             <div class="position-relative flex-grow-1" style="min-width: 320px; max-width: 480px;">
                 <input type="search" name="search" id="papSearchInput"
-                    class="form-control form-control pe-5 ps-4 shadow-sm" placeholder="Search..."
+                    class="form-control form-control pe-5 ps-4 shadow-sm" placeholder="Search…"
                     value="{{ old('search', $search ?? '') }}" autocomplete="off"
                     aria-label="Search programs, projects and activities" required>
-                <!-- Search icon inside input (very common pattern) -->
                 <span class="position-absolute top-50 end-0 translate-middle-y pe-3 text-muted">
                     <i class="bi bi-search"></i>
                 </span>
             </div>
-
         </form>
     </div>
 
@@ -43,7 +42,7 @@
                 <li class="dropend">
                     <button class="dropdown-item dropdown-toggle" type="button" data-bs-toggle="dropdown"
                         aria-expanded="false">
-                        <i class="fa fa-bullseye me-1"></i> Target
+                        <i class="fa fa-layer-group me-1"></i> Physical
                     </button>
                     <ul class="dropdown-menu">
                         <li>
@@ -51,26 +50,38 @@
                                 <i class="fa fa-plus me-1"></i> Targets
                             </button>
                         </li>
-                    </ul>
-                </li>
-                <li>
-                    <button onclick="toggleMonthInputs()" class="dropdown-item" id="monthBtn" type="button"
-                        disabled style="display:none;">
-                        <i class="fa fa-calendar-days me-1"></i> Show Months
-                    </button>
-                </li>
-                <li class="dropend">
-                    <button class="dropdown-item dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                        aria-expanded="false">
-                        <i class="fa fa-list-check me-1"></i> Accomplishment
-                    </button>
-                    <ul class="dropdown-menu">
                         <li>
                             <button onclick="toggleAccompColumns()" class="dropdown-item" id="accompBtn" type="button">
                                 <i class="fa fa-plus me-1"></i> Accomplishments
                             </button>
                         </li>
                     </ul>
+                </li>
+                <li class="dropend">
+                    <button class="dropdown-item dropdown-toggle" id="financialMenuBtn" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fa fa-peso-sign me-1"></i> Financial
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <button onclick="toggleFinancialColumns()" class="dropdown-item" id="financialBtn"
+                                type="button">
+                                <i class="fa fa-bullseye me-1"></i> Target
+                            </button>
+                        </li>
+                        <li>
+                            <button onclick="toggleFinancialAccomplishmentColumns()" class="dropdown-item"
+                                id="financialAccompBtn" type="button">
+                                <i class="fa fa-list-check me-1"></i> Accomplishment
+                            </button>
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <button onclick="toggleMonthInputs()" class="dropdown-item" id="monthBtn" type="button"
+                        disabled>
+                        <i class="fa fa-calendar-days me-1"></i> Show Months
+                    </button>
                 </li>
                 <li>
                     <button onclick="toggleSummaryColumns()" class="dropdown-item" id="summaryBtn" type="button">

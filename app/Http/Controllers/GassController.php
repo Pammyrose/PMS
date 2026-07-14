@@ -707,8 +707,8 @@ class GassController extends Controller
 
         // Redirect back to the physical page with the program ID if available
         $redirectRoute = $firstProgramId 
-            ? route('admin.gass.physical', $firstProgramId)
-            : route('admin.gass.physical');
+            ? route('admin.gass_physical.physical', $firstProgramId)
+            : route('admin.gass_physical.physical');
 
         return redirect($redirectRoute)
             ->with(

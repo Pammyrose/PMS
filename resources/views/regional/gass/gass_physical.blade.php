@@ -52,6 +52,8 @@
 
     @include('regional.gass.partials.gass_physical_main_scripts2')
 
+    @include('components.physical_highlight_script')
+
     @include('regional.gass.partials.gass_physical_modals')
 
     @include('regional.gass.partials.gass_physical_modal_scripts')

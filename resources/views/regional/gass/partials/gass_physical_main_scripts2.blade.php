@@ -115,6 +115,7 @@
                     if (p.type === "annual") th.classList.add("annual");
 
                     let label = p.label;
+                    if (type === "financial" && p.type === "annual") label = "Grand";
                     if (p.type === "quarter") label += '<div class="tiny-period">Quarter</div>';
                     if (p.type === "annual") label += '<div class="tiny-period">Total</div>';
                     th.innerHTML = label;
@@ -1259,18 +1260,14 @@
                 return;
             }
 
-            // Group by section
-            const targetInputs = Array.from(allInputs).filter(i => i.dataset.section === 'target' && String(i.dataset.officeId || '') === officeId && PERIODS[Number(i.dataset.col)]?.type === 'month');
-            const accompInputs = Array.from(allInputs).filter(i => i.dataset.section === 'accomp' && String(i.dataset.officeId || '') === officeId && PERIODS[Number(i.dataset.col)]?.type === 'month');
+            const sectionInputs = Array.from(allInputs).filter(i =>
+                i.dataset.section === sectionType
+                && String(i.dataset.officeId || '') === officeId
+                && PERIODS[Number(i.dataset.col)]?.type === 'month'
+            );
 
-            // Update targets if present
-            if (targetInputs.length === 12) {
-                updateSection(targetInputs, allInputs, 'target', indicatorType, officeId, false);
-            }
-
-            // Update accomplishments if present
-            if (accompInputs.length === 12) {
-                updateSection(accompInputs, allInputs, 'accomp', indicatorType, officeId, false);
+            if (sectionInputs.length === 12) {
+                updateSection(sectionInputs, allInputs, sectionType, indicatorType, officeId, false);
             }
 
             syncedRows.forEach(syncedRow => {
@@ -1388,7 +1385,7 @@
             const aggregateValues = (values) => {
                 if (values.length === 0) return 0;
 
-                if (indicatorType === 'non-cumulative') {
+                if (sectionType !== 'financial' && indicatorType === 'non-cumulative') {
                     return Math.max(...values);
                 }
 
@@ -1409,7 +1406,7 @@
                     return totals;
                 }
 
-                if (indicatorType === 'semi-cumulative') {
+                if (sectionType !== 'financial' && indicatorType === 'semi-cumulative') {
                     totals[3] = (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
                     totals[7] = (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
                     totals[11] = (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
@@ -1418,19 +1415,19 @@
                     return totals;
                 }
 
-                const q1 = indicatorType === 'non-cumulative'
+                const q1 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[0] || 0, totals[1] || 0, totals[2] || 0)
                     : (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
 
-                const q2 = indicatorType === 'non-cumulative'
+                const q2 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[4] || 0, totals[5] || 0, totals[6] || 0)
                     : (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
 
-                const q3 = indicatorType === 'non-cumulative'
+                const q3 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[8] || 0, totals[9] || 0, totals[10] || 0)
                     : (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
 
-                const q4 = indicatorType === 'non-cumulative'
+                const q4 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[12] || 0, totals[13] || 0, totals[14] || 0)
                     : (totals[12] || 0) + (totals[13] || 0) + (totals[14] || 0);
 
@@ -1438,7 +1435,7 @@
                 totals[7] = q2;
                 totals[11] = q3;
                 totals[15] = q4;
-                totals[16] = indicatorType === 'non-cumulative'
+                totals[16] = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(q1, q2, q3, q4)
                     : q1 + q2 + q3 + q4;
 
@@ -1502,7 +1499,10 @@
 
                     const source = sectionType === 'target'
                         ? existingTargetGroupTotalsByRow
-                        : existingAccompGroupTotalsByRow;
+                        : sectionType === 'accomp'
+                            ? existingAccompGroupTotalsByRow
+                            : null;
+                    if (!source) return null;
 
                     const totals = {};
                     PERIOD_KEYS.forEach((periodKey, index) => {
@@ -1561,7 +1561,10 @@
 
                 const source = sectionType === 'target'
                     ? existingTargetCarTotalsByRow
-                    : existingAccompCarTotalsByRow;
+                    : sectionType === 'accomp'
+                        ? existingAccompCarTotalsByRow
+                        : null;
+                if (!source) return null;
 
                 const totals = {};
                 PERIOD_KEYS.forEach((periodKey, index) => {
@@ -1661,7 +1664,9 @@
 
             const sourceByIndicator = section === 'target'
                 ? existingTargetsByIndicator
-                : existingAccompByIndicator;
+                : section === 'accomp'
+                    ? existingAccompByIndicator
+                    : {};
             const officeData = sourceByIndicator?.[programId]?.[indicatorId]?.[officeKey] || null;
 
             if (!officeData || typeof officeData !== 'object') return false;
@@ -1692,7 +1697,13 @@
             let q4 = 0;
             let annual = 0;
 
-            if (indicatorType === 'non-cumulative') {
+            if (section === 'financial') {
+                q1 = values[0] + values[1] + values[2];
+                q2 = values[3] + values[4] + values[5];
+                q3 = values[6] + values[7] + values[8];
+                q4 = values[9] + values[10] + values[11];
+                annual = q1 + q2 + q3 + q4;
+            } else if (indicatorType === 'non-cumulative') {
                 q1 = Math.max(values[0] || 0, values[1] || 0, values[2] || 0);
                 q2 = Math.max(values[3] || 0, values[4] || 0, values[5] || 0);
                 q3 = Math.max(values[6] || 0, values[7] || 0, values[8] || 0);
@@ -2206,3 +2217,5 @@
         const indicatorsData = {!! json_encode($indicatorsForJs ?? []) !!};
         const papPrefillData = {!! json_encode($papPrefillData ?? []) !!};
     </script>
+
+

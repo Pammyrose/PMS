@@ -52,6 +52,8 @@
 
     @include('admin.sto.partials.sto_physical_main_scripts2')
 
+    @include('components.physical_highlight_script')
+
     @include('admin.sto.partials.sto_physical_modals')
 
     @include('admin.sto.partials.sto_physical_modal_scripts')

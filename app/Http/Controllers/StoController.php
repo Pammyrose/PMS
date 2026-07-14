@@ -17,9 +17,6 @@ use Illuminate\Validation\Rule;
 
 class StoController extends Controller
 {
-    private const EXCEL_SHEET_NAME = 'STO';
-    private const DEFAULT_STO_TITLE = 'SUPPORT TO OPERATIONS';
-    private const STO_START_MARKER = 'SUPPORT TO OPERATIONS (STO)';
     /**
      * Display the physical accomplishments list
      * - If a specific program is provided → show only entries for that program
@@ -195,7 +192,6 @@ class StoController extends Controller
                 . '|' . $this->hierarchySortValue($row->project ?? '')
                 . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . (filled($row->subactivities ?? null) ? '1' : '0')
                 . '|' . $this->hierarchySortValue($row->subactivities ?? '')
                 . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
                 . '|' . $this->hierarchySortValue($row->level_6 ?? '')
@@ -309,7 +305,6 @@ class StoController extends Controller
                 . '|' . $this->hierarchySortValue($row->project ?? '')
                 . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . (filled($row->subactivities ?? null) ? '1' : '0')
                 . '|' . $this->hierarchySortValue($row->subactivities ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
@@ -330,7 +325,6 @@ class StoController extends Controller
                 . '|' . $this->hierarchySortValue($row->project ?? '')
                 . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . (filled($row->subactivities ?? null) ? '1' : '0')
                 . '|' . $this->hierarchySortValue($row->subactivities ?? '')
                 . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
                 . '|' . $this->hierarchySortValue($row->level_6 ?? '')
@@ -442,6 +436,7 @@ class StoController extends Controller
 
         $targets = $this->filterSectionDataForOffice($targets, $office_id);
         $accomplishments = $this->filterSectionDataForOffice($accomplishments, $office_id);
+        $pendingTotalsByRow = $this->buildPendingTotalsByRow($targets, $accomplishments);
 
         $papTitles = $programs->pluck('title')
             ->filter(fn ($value) => filled($value))
@@ -554,6 +549,7 @@ class StoController extends Controller
             'indicatorsForJs',
             'targets',
             'accomplishments',
+            'pendingTotalsByRow',
             'offices',
             'papTitles',
             'papProjects',
@@ -1054,7 +1050,7 @@ class StoController extends Controller
             ]);
         }
 
-        return redirect()->route('sto_physical')
+        return redirect()->route('gass_physical')
             ->with('success', $message);
     }
 
@@ -1738,6 +1734,46 @@ private function formatSectionRecordForJs($row, array $meta = []): array
         'group_totals' => is_array($meta['group_totals'] ?? null) ? $meta['group_totals'] : [],
         'remarks' => $this->decodeRemarksFromStorage($row->remarks ?? null),
     ];
+}
+
+private function buildPendingTotalsByRow(array $targets, array $accomplishments): array
+{
+    $periodKeys = [
+        'jan', 'feb', 'mar', 'q1',
+        'apr', 'may', 'jun', 'q2',
+        'jul', 'aug', 'sep', 'q3',
+        'oct', 'nov', 'dec', 'q4', 'annual_total',
+    ];
+
+    $pending = [];
+
+    foreach ($targets as $rowId => $indicators) {
+        foreach ($indicators as $indicatorId => $offices) {
+            foreach ($periodKeys as $periodKey) {
+                $targetTotal = $this->sectionPeriodTotal($offices, $periodKey);
+                $accompTotal = $this->sectionPeriodTotal($accomplishments[$rowId][$indicatorId] ?? [], $periodKey);
+
+                $pending[(string) $rowId][(string) $indicatorId][$periodKey] = max($targetTotal - $accompTotal, 0);
+            }
+        }
+    }
+
+    return $pending;
+}
+
+private function sectionPeriodTotal(array $offices, string $periodKey): float
+{
+    foreach ($offices as $entry) {
+        $carValue = $entry['car_totals'][$periodKey] ?? null;
+        if (is_numeric($carValue)) {
+            return (float) $carValue;
+        }
+    }
+
+    return (float) collect($offices)->sum(function ($entry) use ($periodKey) {
+        $value = $entry[$periodKey] ?? 0;
+        return is_numeric($value) ? (float) $value : 0;
+    });
 }
 
 private function encodeRemarksForStorage($remarks): ?string

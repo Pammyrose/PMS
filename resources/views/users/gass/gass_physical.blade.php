@@ -58,6 +58,8 @@
 
     @include('users.gass.partials.gass_physical_main_scripts2')
 
+    @include('components.physical_highlight_script')
+
     @include('users.gass.partials.gass_physical_modals')
 
     @include('users.gass.partials.gass_physical_modal_scripts')

@@ -129,7 +129,6 @@
                             class="font-extrabold text-2xl bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent pb-1 border-b-2 border-blue-200 inline-block">
                             P/A/P
                         </h4>
-                        <div class="small text-muted mt-1 mb-2">Suggested based on existing STO data.</div>
                         <div class="row g-3 mb-2">
                             <div class="col-12 col-md-6">
                                 <label for="pap_title" class="form-label fw-bold small">Title</label>

@@ -9,6 +9,11 @@
         return preg_replace('/\s+/', ' ', $normalized);
     };
 
+    $isEmptyOrNaHierarchyValue = function ($value) use ($normalizeGroupValue) {
+        $normalized = $normalizeGroupValue($value);
+        return $normalized === '' || in_array($normalized, ['n/a', 'na', 'not applicable'], true);
+    };
+
     $hierarchySortValue = function ($value, bool $singleIAsRoman = false) use ($normalizeGroupValue) {
         $raw = trim((string) ($value ?? ''));
         $normalized = $normalizeGroupValue($value);
@@ -186,9 +191,15 @@
     @php
         $program = $groupPrograms->first();
         $programCoreKey = $normalizeGroupValue($program->title ?? '') . '|' . $normalizeGroupValue($program->program ?? '') . '|' . $normalizeGroupValue($program->project ?? '');
+        $programSearchText = collect([
+            $program->title ?? '',
+            $program->program ?? '',
+            $program->project ?? '',
+        ])->filter()->implode(' ');
     @endphp
     <tr class="program-header group" data-program-id="{{ $program->id }}"
         data-core-key="{{ $programCoreKey }}"
+        data-search-text="{{ e($programSearchText) }}"
         onclick='toggleRowsByCoreKey(@json($programCoreKey))'>
         <td class="px-6 py-4" colspan="2">
             <div class="flex items-center justify-between">
@@ -258,7 +269,8 @@
             $showAsGroup = filled($subActivityName);
         @endphp
         @if($showAsGroup)
-            <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
+            <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}"
+                data-search-text="{{ e($programSearchText . ' ' . $subActivityName) }}" style="display:none;">
                 <td colspan="2" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
                     <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $subActivityName }}
                 </td>
@@ -269,8 +281,7 @@
             $subSubActivityGroups = $subActivityGroup
                 ->sortBy(function($row) use ($hierarchySortValue, $subactivitiesUseRomanSequence) {
                     $priority = $row->_sort_priority ?? 1;
-                    $parentFirstPriority = filled($row->subactivities ?? null) ? 1 : 0;
-                    return $priority . '|' . $parentFirstPriority . '|' . $hierarchySortValue($row->subactivities ?? '', $subactivitiesUseRomanSequence);
+                    return $priority . '|' . $hierarchySortValue($row->subactivities ?? '', $subactivitiesUseRomanSequence);
                 }, SORT_NATURAL | SORT_FLAG_CASE)
                 ->groupBy(function($row) {
                     return strtolower(trim((string)($row->subactivities ?? ''))) . '|'
@@ -371,7 +382,8 @@
                 }
             @endphp
             @if($shouldRenderPromotedHierarchyGroup)
-                <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}" style="display:none;">
+                <tr class="data-row sub-activity-label-row" data-core-key="{{ $programCoreKey }}"
+                    data-search-text="{{ e($programSearchText . ' ' . $promotedHierarchyGroupLabel) }}" style="display:none;">
                     <td colspan="2" class="px-4 py-2 fw-bold" style="background: linear-gradient(to right, #428882, #5caaa4); color:#ffffff; border-left:5px solid #134e4a; letter-spacing:0.03em; font-size:0.85rem; text-transform:uppercase;">
                         <i class="fa-solid fa-layer-group me-2" style="opacity:0.85;"></i>{{ $promotedHierarchyGroupLabel }}
                     </td>
@@ -380,6 +392,7 @@
             @foreach($subSubActivityGroup as $subProgram)
                 @php
                     $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
+                    $allowParentActivityIndicator = $isEmptyOrNaHierarchyValue($subProgram->subactivities ?? null);
                     $subProgramIndicatorCollection = $indicators[$subProgramRowKey] ?? collect();
                     if ($subProgramIndicatorCollection->isEmpty()) {
                         $subProgramIndicatorCollection = $indicators[(int) (isset($subProgram->level_9_row_id) ? $subProgram->level_9_row_id : 0)] ?? collect();
@@ -399,16 +412,16 @@
                     if ($subProgramIndicatorCollection->isEmpty()) {
                         $subProgramIndicatorCollection = $indicators[(int) ($subProgram->subactivities_row_id ?? 0)] ?? collect();
                     }
-                    if ($subProgramIndicatorCollection->isEmpty()) {
+                    if ($subProgramIndicatorCollection->isEmpty() && $allowParentActivityIndicator) {
                         $subProgramIndicatorCollection = $indicators[(int) ($subProgram->activities_row_id ?? 0)] ?? collect();
                     }
-                    if ($subProgramIndicatorCollection->isEmpty()) {
+                    if ($subProgramIndicatorCollection->isEmpty() && $allowParentActivityIndicator) {
                         $subProgramIndicatorCollection = $indicators[(int) ($subProgram->project_row_id ?? 0)] ?? collect();
                     }
-                    if ($subProgramIndicatorCollection->isEmpty()) {
+                    if ($subProgramIndicatorCollection->isEmpty() && $allowParentActivityIndicator) {
                         $subProgramIndicatorCollection = $indicators[(int) ($subProgram->program_row_id ?? 0)] ?? collect();
                     }
-                    if ($subProgramIndicatorCollection->isEmpty()) {
+                    if ($subProgramIndicatorCollection->isEmpty() && $allowParentActivityIndicator) {
                         $subProgramIndicatorCollection = $indicators[(int) $subProgram->id] ?? collect();
                     }
                     $hasIndicatorData = $subProgramIndicatorCollection->count() > 0;
@@ -475,10 +488,24 @@
                             ];
                             $selectedParentGroups = collect($officeMeta['selected_parent_groups'] ?? []);
                             $inputOffices = collect($officeMeta['input_offices'] ?? []);
+                            $rowSearchText = collect([
+                                $programSearchText,
+                                $subProgram->activities ?? '',
+                                $subProgram->subactivities ?? '',
+                                $subProgram->subsubactivities ?? '',
+                                $subProgram->level_6 ?? '',
+                                $subProgram->level_7 ?? '',
+                                $subProgram->level_8 ?? '',
+                                $indicator->name ?? '',
+                                $resolvedIndicatorType,
+                                $officeMeta['office_names_csv'] ?? '',
+                                $officeMeta['input_office_names_csv'] ?? '',
+                            ])->filter()->implode(' ');
                         @endphp
-                        <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
+                        <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif @if($allowParentActivityIndicator) sub-hierarchy-na-row @endif"
                             data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}" data-program-id="{{ $subProgram->id }}" data-indicator-id="{{ $indicator->id }}"
                             data-core-key="{{ $programCoreKey }}" data-sync-key="{{ $indicatorSyncKey }}"
+                            data-search-text="{{ e($rowSearchText) }}"
                             data-indicator-type="{{ $resolvedIndicatorType }}"
                             data-office-ids="{{ implode(',', $officeIds) }}"
                             data-office-names="{{ $officeMeta['office_names_csv'] ?? '' }}"
@@ -598,13 +625,23 @@
                             if (!$isPapCellRendered) {
                                 $renderedEmptyIndicatorPlaceholder = true;
                             }
+                            $rowSearchText = collect([
+                                $programSearchText,
+                                $subProgram->activities ?? '',
+                                $subProgram->subactivities ?? '',
+                                $subProgram->subsubactivities ?? '',
+                                $subProgram->level_6 ?? '',
+                                $subProgram->level_7 ?? '',
+                                $subProgram->level_8 ?? '',
+                            ])->filter()->implode(' ');
                         @endphp
-                        <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif"
+                        <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif @if($allowParentActivityIndicator) sub-hierarchy-na-row @endif"
                             data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
                             data-program-id="{{ $subProgram->id }}"
                             data-indicator-id=""
                             data-core-key="{{ $programCoreKey }}"
                             data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
+                            data-search-text="{{ e($rowSearchText) }}"
                             data-indicator-type=""
                             data-office-ids=""
                             data-office-names=""

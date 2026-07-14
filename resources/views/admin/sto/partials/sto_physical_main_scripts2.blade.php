@@ -86,7 +86,8 @@
                 const currentCol = getCurrentMonthPeriodIndex();
                 ['Target', 'Accomplishment'].forEach((label, index) => {
                     const th = document.createElement("th");
-                    th.classList.add("month-header", "text-center", "accomp-month", "quarter");
+                    th.classList.add("month-header", "text-center", "accomp-month");
+                    th.classList.add("quarter");
                     th.classList.add(`dynamic-header-${type}`);
                     th.dataset.dynamicSection = type;
                     th.dataset.pendingKind = index === 0 ? 'target' : 'accomp';
@@ -100,7 +101,8 @@
                     } else {
                         mainHeader.appendChild(th);
                     }
-                });            } else {
+                });
+            } else {
                 PERIODS.forEach((p, idx) => {
                     const th = document.createElement("th");
                     th.classList.add("month-header", "text-center");
@@ -113,6 +115,7 @@
                     if (p.type === "annual") th.classList.add("annual");
 
                     let label = p.label;
+                    if (type === "financial" && p.type === "annual") label = "Grand";
                     if (p.type === "quarter") label += '<div class="tiny-period">Quarter</div>';
                     if (p.type === "annual") label += '<div class="tiny-period">Total</div>';
                     th.innerHTML = label;
@@ -434,6 +437,82 @@
                     ? assignedOffices
                     : [{ id: currentOfficeId || null, name: 'Office' }];
 
+                const buildPendingValueInput = ({ sourceSection, officeId, isCarTotal = false, isGroupTotal = false, groupOfficeIds = [] }) => {
+                    const input = document.createElement("input");
+                    configurePeriodInput(input);
+                    input.className = `month-box ${sectionType}-box`;
+                    input.style.width = "70px";
+                    input.style.maxWidth = "150px";
+                    input.value = "0";
+                    input.min = "0";
+                    input.step = "any";
+                    input.dataset.section = sectionType;
+                    input.dataset.pendingKind = sourceSection;
+                    input.dataset.sourceSection = sourceSection;
+                    input.dataset.col = currentCol;
+                    input.dataset.officeId = officeId ? String(officeId) : '';
+
+            if (isCarTotal) {
+                input.classList.add('car-total-box');
+                input.dataset.carTotal = '1';
+                input.dataset.officeId = 'car-total';
+                const sectionTotal = officeEntries.reduce((sum, office) => {
+                    const officeIdForTotal = String(office?.id || '').trim();
+                    const value = officeIdForTotal ? getLivePeriodValue(row, sourceSection, officeIdForTotal, currentCol) : 0;
+                    return sum + (Number.isFinite(value) ? value : 0);
+                }, 0);
+                input.value = sourceSection === 'target' && sectionTotal <= 0
+                    ? getStoredPendingTotal(row, currentCol)
+                    : sectionTotal;
+                return input;
+            }
+
+                    if (isGroupTotal) {
+                        input.classList.add('group-total-box');
+                        input.dataset.groupTotal = '1';
+                        input.dataset.groupOfficeIds = groupOfficeIds.join(',');
+                        input.value = groupOfficeIds.reduce((sum, groupOfficeId) => {
+                            const value = getLivePeriodValue(row, sourceSection, groupOfficeId, currentCol);
+                            return sum + (Number.isFinite(value) ? value : 0);
+                        }, 0);
+                        return input;
+                    }
+
+                    const liveValue = getLivePeriodValue(row, sourceSection, officeId, currentCol);
+                    input.value = sourceSection === 'target' && liveValue <= 0
+                        ? getStoredPendingTotal(row, currentCol)
+                        : liveValue;
+                    return input;
+                };
+
+                const appendInputLine = (wrapper, input) => {
+                    const inputLine = document.createElement('div');
+                    inputLine.className = 'input-line';
+                    inputLine.appendChild(input);
+                    wrapper.appendChild(inputLine);
+                };
+
+                const appendPendingPairLine = (wrapper, targetInput, accompInput) => {
+                    const inputLine = document.createElement('div');
+                    inputLine.className = 'input-line';
+                    inputLine.style.display = 'flex';
+                    inputLine.style.justifyContent = 'center';
+                    inputLine.style.gap = '4px';
+
+                    targetInput.title = 'Target';
+                    targetInput.placeholder = 'Target';
+                    targetInput.setAttribute('aria-label', 'Target');
+                    accompInput.title = 'Accomplishment';
+                    accompInput.placeholder = 'Accom';
+                    accompInput.setAttribute('aria-label', 'Accomplishment');
+                    targetInput.style.width = '64px';
+                    accompInput.style.width = '64px';
+
+                    inputLine.appendChild(targetInput);
+                    inputLine.appendChild(accompInput);
+                    wrapper.appendChild(inputLine);
+                };
+
                 const groupRanges = [];
                 let rangeStart = 0;
                 const sortedBreaks = [...groupBreakIndices]
@@ -456,79 +535,6 @@
                 groupRanges.forEach((range, rangeIndex) => {
                     groupStartToIndex.set(range.start, rangeIndex);
                 });
-
-                const buildPendingValueInput = ({ sourceSection, officeId, isCarTotal = false, isGroupTotal = false, groupOfficeIds = [] }) => {
-                    const input = document.createElement("input");
-                    input.type = "number";
-                    input.className = `month-box ${sectionType}-box`;
-                    input.style.width = "70px";
-                    input.style.maxWidth = "150px";
-                    input.value = "0";
-                    input.min = "0";
-                    input.step = "any";
-                    input.dataset.section = sectionType;
-                    input.dataset.pendingKind = sourceSection;
-                    input.dataset.sourceSection = sourceSection;
-                    input.dataset.col = currentCol;
-                    input.dataset.officeId = officeId ? String(officeId) : '';
-
-                    if (isCarTotal) {
-
-
-                        input.classList.add('car-total-box');
-
-
-                        input.dataset.carTotal = '1';
-
-
-                        input.dataset.officeId = 'car-total';
-
-
-                        const sectionTotal = officeEntries.reduce((sum, office) => {
-
-
-                            const officeIdForTotal = String(office?.id || '').trim();
-
-
-                            const value = officeIdForTotal ? getLivePeriodValue(row, sourceSection, officeIdForTotal, currentCol) : 0;
-
-
-                            return sum + (Number.isFinite(value) ? value : 0);
-
-
-                        }, 0);
-
-
-                        input.value = Number.isFinite(sectionTotal) ? sectionTotal : 0;
-
-
-                        return input;
-
-
-                    }
-
-                    if (isGroupTotal) {
-                        input.classList.add('group-total-box');
-                        input.dataset.groupTotal = '1';
-                        input.dataset.groupOfficeIds = groupOfficeIds.join(',');
-                        input.value = groupOfficeIds.reduce((sum, groupOfficeId) => {
-                            const value = getLivePeriodValue(row, sourceSection, groupOfficeId, currentCol);
-                            return sum + (Number.isFinite(value) ? value : 0);
-                        }, 0);
-                        return input;
-                    }
-
-                    const liveValue = officeId ? getLivePeriodValue(row, sourceSection, officeId, currentCol) : 0;
-                    input.value = Number.isFinite(liveValue) ? liveValue : 0;
-                    return input;
-                };
-
-                const appendInputLine = (wrapper, input) => {
-                    const inputLine = document.createElement('div');
-                    inputLine.className = 'input-line';
-                    inputLine.appendChild(input);
-                    wrapper.appendChild(inputLine);
-                };
 
                 ['target', 'accomp'].forEach(sourceSection => {
                     const td = document.createElement("td");
@@ -577,7 +583,8 @@
                     } else {
                         row.appendChild(td);
                     }
-                });            } else {
+                });
+            } else {
                 PERIODS.forEach((period, idx) => {
                     const td = document.createElement("td");
                     td.classList.add("p-1", "text-center");
@@ -1253,18 +1260,14 @@
                 return;
             }
 
-            // Group by section
-            const targetInputs = Array.from(allInputs).filter(i => i.dataset.section === 'target' && String(i.dataset.officeId || '') === officeId && PERIODS[Number(i.dataset.col)]?.type === 'month');
-            const accompInputs = Array.from(allInputs).filter(i => i.dataset.section === 'accomp' && String(i.dataset.officeId || '') === officeId && PERIODS[Number(i.dataset.col)]?.type === 'month');
+            const sectionInputs = Array.from(allInputs).filter(i =>
+                i.dataset.section === sectionType
+                && String(i.dataset.officeId || '') === officeId
+                && PERIODS[Number(i.dataset.col)]?.type === 'month'
+            );
 
-            // Update targets if present
-            if (targetInputs.length === 12) {
-                updateSection(targetInputs, allInputs, 'target', indicatorType, officeId, false);
-            }
-
-            // Update accomplishments if present
-            if (accompInputs.length === 12) {
-                updateSection(accompInputs, allInputs, 'accomp', indicatorType, officeId, false);
+            if (sectionInputs.length === 12) {
+                updateSection(sectionInputs, allInputs, sectionType, indicatorType, officeId, false);
             }
 
             syncedRows.forEach(syncedRow => {
@@ -1276,6 +1279,7 @@
 
             refreshSummaryCards();
         }
+
         function refreshEditablePendingTotals(row, sourceSection) {
             if (!row || !sourceSection) return;
 
@@ -1292,7 +1296,10 @@
                         .filter(Boolean);
                     groupInput.value = officeInputs
                         .filter(input => groupOfficeIds.includes(String(input.dataset.officeId || '')))
-                        .reduce((sum, input) => sum + getPendingInputNumber(input.value), 0);
+                        .reduce((sum, input) => {
+                            const value = parsePeriodInputValue(input.value);
+                            return sum + (Number.isFinite(value) ? value : 0);
+                        }, 0);
                 });
 
             const carInput = sourceInputs.find(input => input.dataset.carTotal === '1');
@@ -1310,14 +1317,21 @@
 
                 const directOfficeTotal = officeInputs
                     .filter(input => !groupedOfficeIds.has(String(input.dataset.officeId || '')))
-                    .reduce((sum, input) => sum + getPendingInputNumber(input.value), 0);
+                    .reduce((sum, input) => {
+                        const value = parsePeriodInputValue(input.value);
+                        return sum + (Number.isFinite(value) ? value : 0);
+                    }, 0);
                 const groupTotal = sourceInputs
                     .filter(input => input.dataset.groupTotal === '1')
-                    .reduce((sum, input) => sum + getPendingInputNumber(input.value), 0);
+                    .reduce((sum, input) => {
+                        const value = parsePeriodInputValue(input.value);
+                        return sum + (Number.isFinite(value) ? value : 0);
+                    }, 0);
 
                 carInput.value = directOfficeTotal + groupTotal;
             }
         }
+
         function recalculateRowOfficeSection(row, sectionType, officeId) {
             if (!row || !sectionType || !officeId) return;
 
@@ -1371,7 +1385,7 @@
             const aggregateValues = (values) => {
                 if (values.length === 0) return 0;
 
-                if (indicatorType === 'non-cumulative') {
+                if (sectionType !== 'financial' && indicatorType === 'semi-cumulative') {
                     return Math.max(...values);
                 }
 
@@ -1392,7 +1406,7 @@
                     return totals;
                 }
 
-                if (indicatorType === 'semi-cumulative') {
+                if (sectionType !== 'financial' && indicatorType === 'semi-cumulative') {
                     totals[3] = (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
                     totals[7] = (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
                     totals[11] = (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
@@ -1401,19 +1415,19 @@
                     return totals;
                 }
 
-                const q1 = indicatorType === 'non-cumulative'
+                const q1 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[0] || 0, totals[1] || 0, totals[2] || 0)
                     : (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
 
-                const q2 = indicatorType === 'non-cumulative'
+                const q2 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[4] || 0, totals[5] || 0, totals[6] || 0)
                     : (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
 
-                const q3 = indicatorType === 'non-cumulative'
+                const q3 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[8] || 0, totals[9] || 0, totals[10] || 0)
                     : (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
 
-                const q4 = indicatorType === 'non-cumulative'
+                const q4 = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(totals[12] || 0, totals[13] || 0, totals[14] || 0)
                     : (totals[12] || 0) + (totals[13] || 0) + (totals[14] || 0);
 
@@ -1421,7 +1435,7 @@
                 totals[7] = q2;
                 totals[11] = q3;
                 totals[15] = q4;
-                totals[16] = indicatorType === 'non-cumulative'
+                totals[16] = sectionType !== 'financial' && indicatorType === 'non-cumulative'
                     ? Math.max(q1, q2, q3, q4)
                     : q1 + q2 + q3 + q4;
 
@@ -1485,7 +1499,10 @@
 
                     const source = sectionType === 'target'
                         ? existingTargetGroupTotalsByRow
-                        : existingAccompGroupTotalsByRow;
+                        : sectionType === 'accomp'
+                            ? existingAccompGroupTotalsByRow
+                            : null;
+                    if (!source) return null;
 
                     const totals = {};
                     PERIOD_KEYS.forEach((periodKey, index) => {
@@ -1516,22 +1533,24 @@
                 const totals = {};
 
                 PERIOD_KEYS.forEach((periodKey, colIndex) => {
-                    const ungroupedTotal = sourceInputs
+                    const displayedValues = [];
+
+                    sourceInputs
                         .filter(input => Number(input.dataset.col) === colIndex)
                         .filter(input => !groupedOfficeIds.has(String(input.dataset.officeId || '')))
-                        .reduce((sum, input) => {
+                        .forEach(input => {
                             const value = parsePeriodInputValue(input.value);
-                            return sum + (Number.isFinite(value) ? value : 0);
-                        }, 0);
+                            displayedValues.push(Number.isFinite(value) ? value : 0);
+                        });
 
-                    const groupTotal = groupInputs
+                    groupInputs
                         .filter(input => Number(input.dataset.col) === colIndex)
-                        .reduce((sum, input) => {
+                        .forEach(input => {
                             const value = parsePeriodInputValue(input.value);
-                            return sum + (Number.isFinite(value) ? value : 0);
-                        }, 0);
+                            displayedValues.push(Number.isFinite(value) ? value : 0);
+                        });
 
-                    totals[colIndex] = ungroupedTotal + groupTotal;
+                    totals[colIndex] = displayedValues.reduce((sum, value) => sum + value, 0);
                 });
 
                 return totals;
@@ -1542,7 +1561,10 @@
 
                 const source = sectionType === 'target'
                     ? existingTargetCarTotalsByRow
-                    : existingAccompCarTotalsByRow;
+                    : sectionType === 'accomp'
+                        ? existingAccompCarTotalsByRow
+                        : null;
+                if (!source) return null;
 
                 const totals = {};
                 PERIOD_KEYS.forEach((periodKey, index) => {
@@ -1555,10 +1577,8 @@
                 return Object.keys(totals).length > 0 ? totals : null;
             })();
 
-            const computedCarTotals = groupInputs.length > 0
-                ? buildCarTotalsFromDisplayedRows()
-                : buildComputedTotals(null);
-            const carTotals = computedCarTotals;
+            const computedCarTotals = buildCarTotalsFromDisplayedRows();
+            const carTotals = mergeStoredTotalsWithComputedFallback(storedCarTotals, computedCarTotals, true);
             applyTotalsToInputs(carInputs, carTotals);
         }
 
@@ -1597,12 +1617,27 @@
                 .toLowerCase()
                 .replace(/[_\s]+/g, '-')
                 .replace(/-+/g, '-');
+            const compactType = rawType.replace(/[^a-z]/g, '');
 
-            if (rawType === 'semi-cumulative' || rawType === 'semi-comulative' || rawType === 'semicumulative') {
+            if (
+                rawType === 'semi-cumulative'
+                || rawType === 'semi-comulative'
+                || rawType === 'semicumulative'
+                || compactType === 'semicumulative'
+                || compactType === 'semicomulative'
+                || compactType === 'semicummulative'
+            ) {
                 return 'semi-cumulative';
             }
 
-            if (rawType === 'non-cumulative' || rawType === 'non-comulative' || rawType === 'noncumulative') {
+            if (
+                rawType === 'non-cumulative'
+                || rawType === 'non-comulative'
+                || rawType === 'noncumulative'
+                || compactType === 'noncumulative'
+                || compactType === 'noncomulative'
+                || compactType === 'noncummulative'
+            ) {
                 return 'non-cumulative';
             }
 
@@ -1627,7 +1662,9 @@
 
             const sourceByIndicator = section === 'target'
                 ? existingTargetsByIndicator
-                : existingAccompByIndicator;
+                : section === 'accomp'
+                    ? existingAccompByIndicator
+                    : {};
             const officeData = sourceByIndicator?.[programId]?.[indicatorId]?.[officeKey] || null;
 
             if (!officeData || typeof officeData !== 'object') return false;
@@ -1658,18 +1695,24 @@
             let q4 = 0;
             let annual = 0;
 
-            if (indicatorType === 'non-cumulative') {
-                q1 = Math.max(values[0] || 0, values[1] || 0, values[2] || 0);
-                q2 = Math.max(values[3] || 0, values[4] || 0, values[5] || 0);
-                q3 = Math.max(values[6] || 0, values[7] || 0, values[8] || 0);
-                q4 = Math.max(values[9] || 0, values[10] || 0, values[11] || 0);
-                annual = Math.max(q1, q2, q3, q4);
-            } else if (indicatorType === 'semi-cumulative') {
+            if (section === 'financial') {
                 q1 = values[0] + values[1] + values[2];
                 q2 = values[3] + values[4] + values[5];
                 q3 = values[6] + values[7] + values[8];
                 q4 = values[9] + values[10] + values[11];
                 annual = q1 + q2 + q3 + q4;
+            } else if (indicatorType === 'non-cumulative') {
+                q1 = Math.max(values[0] || 0, values[1] || 0, values[2] || 0);
+                q2 = Math.max(values[3] || 0, values[4] || 0, values[5] || 0);
+                q3 = Math.max(values[6] || 0, values[7] || 0, values[8] || 0);
+                q4 = Math.max(values[9] || 0, values[10] || 0, values[11] || 0);
+                annual = q1 + q2 + q3 + q4;
+            } else if (indicatorType === 'semi-cumulative') {
+                q1 = values[0] + values[1] + values[2];
+                q2 = values[3] + values[4] + values[5];
+                q3 = values[6] + values[7] + values[8];
+                q4 = values[9] + values[10] + values[11];
+                annual = Math.max(q1, q2, q3, q4);
             } else {
                 q1 = values[0] + values[1] + values[2];
                 q2 = values[3] + values[4] + values[5];
@@ -2167,8 +2210,10 @@
         });
     </script>
 
-    <script>
+<script>
         // Make indicators data available to JavaScript
         const indicatorsData = {!! json_encode($indicatorsForJs ?? []) !!};
         const papPrefillData = {!! json_encode($papPrefillData ?? []) !!};
     </script>
+
+

@@ -76,13 +76,22 @@
                                             'admin' => 'Administrator',
                                             'staff' => 'Staff',
                                             'user' => 'User',
+                                            'penro' => 'PENRO',
+                                            'cenro' => 'CENRO',
                                             default => ($row->user_role ? ucfirst(str_replace('-', ' ', (string) $row->user_role)) : 'No role'),
                                         };
+                                        $officeName = in_array($roleKey, ['penro', 'cenro'], true)
+                                            ? ($row->user?->office?->name ?? null)
+                                            : null;
+                                        if ($officeName) {
+                                            $roleLabel .= ' - ' . $officeName;
+                                        }
                                         $roleBadge = match ($roleKey) {
                                             'super-admin' => 'text-bg-danger',
                                             'admin' => 'text-bg-primary',
                                             'staff' => 'text-bg-info',
                                             'user' => 'text-bg-secondary',
+                                            'penro', 'cenro' => 'text-bg-secondary',
                                             default => 'text-bg-light',
                                         };
                                     @endphp

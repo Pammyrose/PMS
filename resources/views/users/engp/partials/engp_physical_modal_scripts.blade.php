@@ -1,5 +1,4 @@
     <script>
-        // Function to show next PAP hierarchy level dynamically
         function showNextPapLevel(level) {
             const container = document.getElementById(`pap_level_${level}_container`);
             const button = document.getElementById(`add_level_${level}_btn`);
@@ -76,6 +75,7 @@
                 let programId = matchedPap?.id ? String(matchedPap.id) : '';
                 let rowId = selectedIndicatorRowId || (matchedPap?.row_id ? String(matchedPap.row_id) : '');
 
+                // Always create/update PAP (including year) when PAP fields are filled
                 if (papTitle) {
                     const papFormData = new FormData();
                     papFormData.append('_token', token);
@@ -302,7 +302,7 @@
             refreshSummaryCards();
         }
 
-        // Delete confirmation - runs immediately, outside any conditional block
+        // Delete confirmation – runs immediately, outside any conditional block
         (function () {
             const deleteModalElement = document.getElementById('deleteProgramConfirmModal');
             const confirmDeleteBtn = document.getElementById('confirmDeleteProgramBtn');

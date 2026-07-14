@@ -279,6 +279,7 @@
         const COL_COUNT = PERIODS.length; // 17
 
         let targetsVisible = false;
+        let financialVisible = false;
         let summaryVisible = false;
         let accompVisible = false;
         let pendingVisible = false;
@@ -289,7 +290,7 @@
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = summaryVisible || targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = summaryVisible || targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!summaryVisible) {
                 summaryVisible = true;
@@ -995,7 +996,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
             const groupRow = document.getElementById('groupHeaders');
             if (!groupRow) return;
 
-            ['target', 'accomp', 'pending', 'remarks'].forEach(sectionType => {
+            ['target', 'financial', 'accomp', 'pending', 'remarks'].forEach(sectionType => {
                 const groupCell = groupRow.querySelector(`.group-${sectionType}`);
                 if (!groupCell) return;
 
@@ -1011,10 +1012,10 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
             const monthBtn = document.getElementById('monthBtn');
             if (!monthBtn) return;
 
-            const canToggleMonths = targetsVisible || accompVisible || pendingVisible;
+            const canToggleMonths = targetsVisible || financialVisible || accompVisible || pendingVisible;
             if (!canToggleMonths) {
                 monthInputsVisible = false;
-                monthBtn.style.display = 'none';
+                monthBtn.style.display = '';
             } else {
                 monthBtn.style.display = '';
             }
@@ -1028,7 +1029,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
         }
 
         function toggleMonthInputs() {
-            if (!targetsVisible && !accompVisible && !pendingVisible) return;
+            if (!targetsVisible && !financialVisible && !accompVisible && !pendingVisible) return;
             monthInputsVisible = !monthInputsVisible;
             refreshMonthButtonState();
         }
@@ -1037,7 +1038,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!targetsVisible) {
                 targetsVisible = true;
@@ -1047,7 +1048,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
                 document.getElementById("targetBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Targets';
                 document.getElementById("targetBtn").classList.replace("btn-primary", "btn-outline-primary");
 
-                addColumns(headerRow, groupRow, "Targets", "target");
+                addColumns(headerRow, groupRow, "Physical Target", "target");
                 addInputCells("target");
                 refreshMonthButtonState();
                 refreshSummaryCards();
@@ -1062,11 +1063,37 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
             }
         }
 
+        function toggleFinancialColumns() {
+            const table = document.getElementById("performanceTable");
+            const headerRow = table.querySelector("thead tr:not(.group-row)");
+            const groupRow = document.getElementById("groupHeaders");
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
+
+            if (!financialVisible) {
+                financialVisible = true;
+                if (!hadVisibleSection) {
+                    monthInputsVisible = false;
+                }
+                document.getElementById("financialBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Financial';
+
+                addColumns(headerRow, groupRow, "Financial", "financial");
+                addInputCells("financial");
+                refreshMonthButtonState();
+                refreshSummaryCards();
+            } else {
+                financialVisible = false;
+                document.getElementById("financialBtn").innerHTML = '<i class="fa fa-peso-sign me-1"></i> Financial';
+
+                removeSectionColumns(groupRow, headerRow, 'financial');
+                refreshMonthButtonState();
+                refreshSummaryCards();
+            }
+        }
         function toggleAccompColumns() {
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!accompVisible) {
                 accompVisible = true;
@@ -1076,7 +1103,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
                 document.getElementById("accompBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Accomplishments';
                 document.getElementById("accompBtn").classList.replace("btn-success", "btn-outline-success");
 
-                addColumns(headerRow, groupRow, "Accomplishments", "accomp");
+                addColumns(headerRow, groupRow, "Physical Accomplishment", "accomp");
                 addInputCells("accomp");
                 refreshMonthButtonState();
                 refreshSummaryCards();
@@ -1095,7 +1122,7 @@ const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][da
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!pendingVisible) {
                 pendingVisible = true;

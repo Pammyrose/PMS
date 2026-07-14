@@ -1,7 +1,7 @@
 <?php
 namespace App\Http\Controllers;
 use App\Models\Gass_Indicator;
-use App\Models\Gass_Target;
+use App\Models\PhysicalTarget;
 use App\Models\Office;
 use App\Support\SimpleXlsxReader;
 use Illuminate\Http\Request;
@@ -85,6 +85,8 @@ class GassExcelUploadController extends GassController
                 $currentBlock = null;
                 return;
             }
+
+            $currentBlock = $this->normalizeImportedOfficeRowsForExcelBlock($currentBlock);
 
             $indicatorName = $this->joinExcelFragments($currentBlock['indicator_parts']);
             if ($indicatorName === '') {
@@ -273,6 +275,7 @@ class GassExcelUploadController extends GassController
 
                     $currentBlock['office_rows'][] = [
                         'office_id' => $officeId,
+                        'office_name' => $locationName,
                         'targets' => $targetValues,
                     ];
 
@@ -305,6 +308,7 @@ class GassExcelUploadController extends GassController
                 if ($officeId !== null && ($hasTargets || $this->isParentOfficeRow($locationName) || $isRoRow)) {
                     $currentBlock['office_rows'][] = [
                         'office_id' => $officeId,
+                        'office_name' => $locationName,
                         'targets' => $targetValues,
                     ];
 
@@ -373,6 +377,7 @@ class GassExcelUploadController extends GassController
 
                     $currentBlock['office_rows'][] = [
                         'office_id' => $officeId,
+                        'office_name' => $locationName,
                         'targets' => $targetValues,
                     ];
 
@@ -402,6 +407,7 @@ class GassExcelUploadController extends GassController
                 if ($hasTargets || $this->isParentOfficeRow($locationName) || $isRoRow) {
                     $currentBlock['office_rows'][] = [
                         'office_id' => $officeId,
+                        'office_name' => $locationName,
                         'targets' => $targetValues,
                     ];
 
@@ -432,6 +438,7 @@ class GassExcelUploadController extends GassController
                 if ($hasTargets || $this->isParentOfficeRow($locationName) || $isRoRow) {
                     $currentBlock['office_rows'][] = [
                         'office_id' => $officeId,
+                        'office_name' => $locationName,
                         'targets' => $targetValues,
                     ];
 
@@ -520,6 +527,7 @@ class GassExcelUploadController extends GassController
 
                         $currentBlock['office_rows'][] = [
                             'office_id' => $officeId,
+                            'office_name' => $locationName,
                             'targets' => $targetValues,
                         ];
 
@@ -573,6 +581,7 @@ class GassExcelUploadController extends GassController
 
                         $currentBlock['office_rows'][] = [
                             'office_id' => $officeId,
+                            'office_name' => $locationName,
                             'targets' => $targetValues,
                         ];
 
@@ -613,6 +622,7 @@ class GassExcelUploadController extends GassController
 
                 $currentBlock['office_rows'][] = [
                     'office_id' => $officeId,
+                    'office_name' => $locationName,
                     'targets' => $targetValues,
                 ];
 
@@ -672,6 +682,8 @@ class GassExcelUploadController extends GassController
                 $currentBlock = null;
                 return;
             }
+
+            $currentBlock = $this->normalizeImportedOfficeRowsForExcelBlock($currentBlock);
 
             $indicatorName = $this->joinExcelFragments($currentBlock['indicator_parts']);
             if ($indicatorName === '') {
@@ -1416,34 +1428,23 @@ class GassExcelUploadController extends GassController
 
     private function upsertImportedGassTarget(int $programId, int $rowId, int $indicatorId, ?int $officeId, int $year, array $values, array $carTotals = [], array $groupTotals = []): void
     {
-        $existing = Gass_Target::query()
-            ->where('years', $year)
-            ->where('office_ids', $officeId)
-            ->get()
-            ->first(function ($target) use ($rowId, $indicatorId) {
-                $meta = $this->parseSectionValues($target->values ?? null);
-
-                return (int) ($meta['row_id'] ?? 0) === $rowId
-                    && (int) ($meta['indicator_id'] ?? 0) === $indicatorId;
-            });
-
-        $target = $existing ?? new Gass_Target();
-        $target->office_ids = $officeId;
-        $target->years = $year;
+        $target = PhysicalTarget::firstOrNew([
+            'sector' => 'gass',
+            'year' => $year,
+            'office_id' => $officeId,
+            'row_id' => $rowId,
+            'indicator_id' => $indicatorId,
+        ]);
+        $target->user_id = Auth::id();
+        $target->program_id = $programId;
 
         foreach ($values as $key => $value) {
             $target->{$key} = $value;
         }
 
-        $target->values = json_encode([
-            'user_id' => Auth::id(),
-            'program_id' => $programId,
-            'row_id' => $rowId,
-            'indicator_id' => $indicatorId,
-            'car_totals' => $carTotals,
-            'group_totals' => $groupTotals,
-            'imported_from' => 'excel',
-        ]);
+        $target->car_totals = $carTotals;
+        $target->group_totals = $groupTotals;
+        $target->imported_from = 'excel';
         $target->save();
     }
 
@@ -1485,6 +1486,54 @@ class GassExcelUploadController extends GassController
         }
 
         return $totals;
+    }
+
+    private function normalizeImportedOfficeRowsForExcelBlock(array $block): array
+    {
+        $rowsByOffice = [];
+
+        foreach ($block['office_rows'] ?? [] as $officeRow) {
+            $officeId = (int) ($officeRow['office_id'] ?? 0);
+            if ($officeId <= 0) {
+                continue;
+            }
+
+            $officeName = (string) ($officeRow['office_name'] ?? '');
+            $normalizedOfficeName = $this->normalizeImportedOfficeName($officeName);
+            $isPenroRow = $normalizedOfficeName === 'PENRO';
+            if (!$isPenroRow && $this->isParentOfficeRow($officeName)) {
+                continue;
+            }
+
+            $hasTargets = $this->hasAnyTargetValue($officeRow['targets'] ?? []);
+            $existing = $rowsByOffice[$officeId] ?? null;
+
+            if ($existing === null) {
+                $rowsByOffice[$officeId] = $officeRow;
+                continue;
+            }
+
+            $existingName = $this->normalizeImportedOfficeName((string) ($existing['office_name'] ?? ''));
+            $existingIsPenroRow = $existingName === 'PENRO';
+            $existingHasTargets = $this->hasAnyTargetValue($existing['targets'] ?? []);
+
+            if ($isPenroRow && !$existingIsPenroRow) {
+                $rowsByOffice[$officeId] = $officeRow;
+                continue;
+            }
+
+            if ($existingIsPenroRow && !$isPenroRow) {
+                continue;
+            }
+
+            if (!$existingHasTargets && $hasTargets) {
+                $rowsByOffice[$officeId] = $officeRow;
+            }
+        }
+
+        $block['office_rows'] = array_values($rowsByOffice);
+
+        return $block;
     }
 
     private function papDataFromExcelBlock(array $block, int $year): array
@@ -1555,7 +1604,11 @@ class GassExcelUploadController extends GassController
             ->first();
 
         if ($indicator) {
-            if ($indicatorTypeId !== null && $this->hasIndicatorColumn('indicator_type_id') && empty($indicator->indicator_type_id)) {
+            if (
+                $indicatorTypeId !== null
+                && $this->hasIndicatorColumn('indicator_type_id')
+                && (empty($indicator->indicator_type_id) || (int) $indicator->indicator_type_id !== $indicatorTypeId)
+            ) {
                 $indicator->indicator_type_id = $indicatorTypeId;
                 $indicator->save();
             }
@@ -1578,14 +1631,18 @@ class GassExcelUploadController extends GassController
 
     private function inferIndicatorTypeIdFromExcelBlock(array $block): ?int
     {
-        $typeName = $this->inferIndicatorTypeNameFromOfficeHierarchy($block['office_rows'] ?? [])
-            ?? $this->inferIndicatorTypeNameFromExcelRows(
-            collect($block['office_rows'] ?? [])
-                ->pluck('targets')
-                ->filter(fn ($values) => is_array($values) && $this->hasAnyTargetValue($values))
-                ->values()
-                ->all()
-        );
+        $targetRows = collect($block['office_rows'] ?? [])
+            ->pluck('targets')
+            ->filter(fn ($values) => is_array($values) && $this->hasAnyTargetValue($values))
+            ->values()
+            ->all();
+
+        if (isset($block['car_totals']) && is_array($block['car_totals']) && $this->hasAnyTargetValue($block['car_totals'])) {
+            array_unshift($targetRows, $block['car_totals']);
+        }
+
+        $typeName = $this->inferIndicatorTypeNameFromExcelRows($targetRows)
+            ?? $this->inferIndicatorTypeNameFromOfficeHierarchy($block['office_rows'] ?? []);
 
         return $typeName ? $this->indicatorTypeIdByName($typeName) : null;
     }
@@ -1694,6 +1751,8 @@ class GassExcelUploadController extends GassController
     {
         $sumMatches = 0;
         $maxMatches = 0;
+        $semiMatches = 0;
+        $multiQuarterMatches = 0;
         $quarterGroups = [
             [['jan', 'feb', 'mar'], 'q1'],
             [['apr', 'may', 'jun'], 'q2'],
@@ -1702,6 +1761,30 @@ class GassExcelUploadController extends GassController
         ];
 
         foreach ($targetRows as $values) {
+            $quarterValues = array_map(
+                fn ($quarterKey) => $this->excelNumber($values[$quarterKey] ?? 0),
+                ['q1', 'q2', 'q3', 'q4']
+            );
+            $annualTotal = $this->excelNumber($values['annual_total'] ?? 0);
+            $maxQuarter = empty($quarterValues) ? 0.0 : max($quarterValues);
+            $activeQuarterCount = collect($quarterGroups)
+                ->filter(function ($group) use ($values) {
+                    [$monthKeys, $quarterKey] = $group;
+                    $quarter = $this->excelNumber($values[$quarterKey] ?? 0);
+                    $monthTotal = array_sum(array_map(fn ($key) => $this->excelNumber($values[$key] ?? 0), $monthKeys));
+
+                    return abs($quarter) >= 0.00001 || abs($monthTotal) >= 0.00001;
+                })
+                ->count();
+
+            if ($activeQuarterCount === 1 && $annualTotal !== 0.0 && $maxQuarter !== 0.0 && abs($annualTotal - $maxQuarter) < 0.00001) {
+                $semiMatches++;
+            }
+
+            if ($activeQuarterCount > 1) {
+                $multiQuarterMatches++;
+            }
+
             foreach ($quarterGroups as [$monthKeys, $quarterKey]) {
                 $months = array_map(fn ($key) => $this->excelNumber($values[$key] ?? 0), $monthKeys);
                 $quarter = $this->excelNumber($values[$quarterKey] ?? 0);
@@ -1732,6 +1815,14 @@ class GassExcelUploadController extends GassController
 
         if ($sumMatches > 0) {
             return 'cumulative';
+        }
+
+        if ($multiQuarterMatches > 0) {
+            return 'cumulative';
+        }
+
+        if ($semiMatches > 0) {
+            return 'semi-cumulative';
         }
 
         return null;

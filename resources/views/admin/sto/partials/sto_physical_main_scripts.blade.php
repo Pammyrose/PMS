@@ -256,7 +256,6 @@
                 });
             }
         });
-
         const PERIODS = [
             { label: "JAN", type: "month" },
             { label: "FEB", type: "month" },
@@ -280,6 +279,7 @@
         const COL_COUNT = PERIODS.length; // 17
 
         let targetsVisible = false;
+        let financialVisible = false;
         let summaryVisible = false;
         let accompVisible = false;
         let pendingVisible = false;
@@ -290,7 +290,7 @@
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = summaryVisible || targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = summaryVisible || targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!summaryVisible) {
                 summaryVisible = true;
@@ -322,6 +322,7 @@
         const deletePhysicalRowUrl = @json(route('admin.sto_physical.rows.destroy'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);
+        const pendingTotalsByRow = @json($pendingTotalsByRow ?? []);
         const PERIOD_KEYS = [
             "jan", "feb", "mar", "q1",
             "apr", "may", "jun", "q2",
@@ -670,7 +671,7 @@
 
             const carInput = row.querySelector(`.month-box[data-section="${sectionType}"][data-col="${colIndex}"][data-car-total="1"]`);
             if (carInput) {
-                const carValue = Number(carInput.value);
+                const carValue = parsePeriodInputValue(carInput.value);
                 return Number.isFinite(carValue) ? carValue : 0;
             }
 
@@ -679,26 +680,12 @@
 
             if (liveInputs.length > 0) {
                 return liveInputs.reduce((sum, input) => {
-                    const value = Number(input.value);
+                    const value = parsePeriodInputValue(input.value);
                     return sum + (Number.isFinite(value) ? value : 0);
                 }, 0);
             }
 
             return getStoredCurrentMonthSectionTotal(row, sectionType, colIndex);
-        }
-        function getPendingInputNumber(value) {
-            const number = Number(value);
-            return Number.isFinite(number) ? number : 0;
-        }
-
-        function getStoredPendingTotal(row, colIndex) {
-            const targetTotal = getCurrentMonthSectionTotal(row, 'target', colIndex);
-            const accompTotal = getCurrentMonthSectionTotal(row, 'accomp', colIndex);
-            return targetTotal > accompTotal ? targetTotal - accompTotal : 0;
-        }
-
-        function getPendingComparisonTotal(row, sourceSection, colIndex) {
-            return getPendingSourceSectionTotal(row, sourceSection, colIndex);
         }
 
         function getPendingSourceSectionTotal(row, sourceSection, colIndex) {
@@ -735,9 +722,40 @@
         }
 
         function getCurrentMonthPendingTotal(row, colIndex) {
+            if (!row || !Number.isInteger(colIndex)) return 0;
+
             const targetTotal = getPendingComparisonTotal(row, 'target', colIndex);
             const accompTotal = getPendingComparisonTotal(row, 'accomp', colIndex);
-            return targetTotal > accompTotal ? targetTotal - accompTotal : 0;
+            const computedPending = targetTotal > 0 && targetTotal > accompTotal
+                ? targetTotal - accompTotal
+                : 0;
+
+            if (computedPending > 0) {
+                return computedPending;
+            }
+
+            return getStoredPendingTotal(row, colIndex);
+        }
+
+        function getStoredPendingTotal(row, colIndex) {
+            const periodKey = PERIOD_KEYS[colIndex] || null;
+            if (!row || !periodKey) return 0;
+
+            const value = Number(
+                pendingTotalsByRow?.[String(row.dataset.rowId || '')]?.[String(row.dataset.indicatorId || '')]?.[periodKey] ?? 0
+            );
+
+            return Number.isFinite(value) ? value : 0;
+        }
+
+        function getPendingComparisonTotal(row, sourceSection, colIndex) {
+            const pendingCarInput = row?.querySelector(`.month-box[data-section="pending"][data-source-section="${sourceSection}"][data-col="${colIndex}"][data-car-total="1"]`);
+            if (pendingCarInput) {
+                const value = parsePeriodInputValue(pendingCarInput.value);
+                return Number.isFinite(value) ? value : 0;
+            }
+
+            return getPendingSourceSectionTotal(row, sourceSection, colIndex);
         }
 
         function rowHasCurrentMonthPending(row) {
@@ -748,7 +766,10 @@
             const targetTotal = getPendingComparisonTotal(row, 'target', colIndex);
             const accompTotal = getPendingComparisonTotal(row, 'accomp', colIndex);
 
-            if (Math.abs(targetTotal - accompTotal) < 0.000001) return false;
+
+            if (Math.abs(targetTotal - accompTotal) < 0.000001) {
+                return false;
+            }
 
             return targetTotal > accompTotal;
         }
@@ -891,45 +912,58 @@
 
             return blocks;
         }
+
         function refreshPendingInputs() {
             if (!pendingVisible) return;
 
             document.querySelectorAll('tbody tr[data-row-id]').forEach(row => {
+                const pendingInputs = Array.from(row.querySelectorAll('.month-box[data-section="pending"]'))
+                    .filter(input => input.dataset.carTotal !== '1' && input.dataset.groupTotal !== '1');
+
+                pendingInputs.forEach(input => {
+                    const officeId = String(input.dataset.officeId || '').trim();
+                    const colIndex = Number(input.dataset.col);
+                    if (!officeId || !Number.isInteger(colIndex)) return;
+
+                    const pendingTotal = getCurrentMonthPendingTotal(row, colIndex);
+                    if (pendingTotal <= 0) {
+                        input.value = 0;
+                        return;
+                    }
+
+                    const sourceSection = String(input.dataset.sourceSection || input.dataset.pendingKind || 'accomp');
+                    const value = getLivePeriodValue(row, sourceSection, officeId, colIndex);
+                    input.value = Number.isFinite(value) ? value : 0;
+                });
+
                 const colIndex = getCurrentMonthPeriodIndex();
                 const pendingTotal = getCurrentMonthPendingTotal(row, colIndex);
-
                 ['target', 'accomp'].forEach(sourceSection => {
-const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="pending"][data-source-section="${sourceSection}"][data-col="${colIndex}"]`));
+const pendingCarInput = row.querySelector(`.month-box[data-section="pending"][data-source-section="${sourceSection}"][data-col="${colIndex}"][data-car-total="1"]`);
+                    if (pendingCarInput) {
+                        pendingCarInput.value = pendingTotal > 0
+                            ? getPendingSourceSectionTotal(row, sourceSection, colIndex)
+                            : 0;
+                    }
 
-                    pendingInputs.forEach(input => {
-                                    if (pendingTotal <= 0) {
-                            input.value = 0;
+                    row.querySelectorAll(`.month-box[data-section="pending"][data-source-section="${sourceSection}"][data-col="${colIndex}"][data-group-total="1"]`).forEach(groupInput => {
+                        if (pendingTotal <= 0) {
+                            groupInput.value = 0;
                             return;
                         }
 
-                        if (input.dataset.carTotal === '1') {
-                            input.value = getPendingSourceSectionTotal(row, sourceSection, colIndex);
-                            return;
-                        }
-
-                        if (input.dataset.groupTotal === '1') {
-                            const groupOfficeIds = String(input.dataset.groupOfficeIds || '')
-                                .split(',')
-                                .map(value => value.trim())
-                                .filter(Boolean);
-                            input.value = groupOfficeIds.reduce((sum, groupOfficeId) => {
-                                const value = getLivePeriodValue(row, sourceSection, groupOfficeId, colIndex);
-                                return sum + (Number.isFinite(value) ? value : 0);
-                            }, 0);
-                            return;
-                        }
-
-                        const officeId = String(input.dataset.officeId || '').trim();
-                        const value = officeId ? getLivePeriodValue(row, sourceSection, officeId, colIndex) : 0;
-                        input.value = Number.isFinite(value) ? value : 0;
+                        const groupOfficeIds = String(groupInput.dataset.groupOfficeIds || '')
+                            .split(',')
+                            .map(value => value.trim())
+                            .filter(Boolean);
+                        groupInput.value = groupOfficeIds.reduce((sum, groupOfficeId) => {
+                            const value = getLivePeriodValue(row, sourceSection, groupOfficeId, colIndex);
+                            return sum + (Number.isFinite(value) ? value : 0);
+                        }, 0);
                     });
                 });
             });
+
         }
 
         function applyMonthInputVisibility() {
@@ -962,7 +996,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
             const groupRow = document.getElementById('groupHeaders');
             if (!groupRow) return;
 
-            ['target', 'accomp', 'pending', 'remarks'].forEach(sectionType => {
+            ['target', 'financial', 'accomp', 'pending', 'remarks'].forEach(sectionType => {
                 const groupCell = groupRow.querySelector(`.group-${sectionType}`);
                 if (!groupCell) return;
 
@@ -978,10 +1012,10 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
             const monthBtn = document.getElementById('monthBtn');
             if (!monthBtn) return;
 
-            const canToggleMonths = targetsVisible || accompVisible || pendingVisible;
+            const canToggleMonths = targetsVisible || financialVisible || accompVisible || pendingVisible;
             if (!canToggleMonths) {
                 monthInputsVisible = false;
-                monthBtn.style.display = 'none';
+                monthBtn.style.display = '';
             } else {
                 monthBtn.style.display = '';
             }
@@ -995,7 +1029,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
         }
 
         function toggleMonthInputs() {
-            if (!targetsVisible && !accompVisible && !pendingVisible) return;
+            if (!targetsVisible && !financialVisible && !accompVisible && !pendingVisible) return;
             monthInputsVisible = !monthInputsVisible;
             refreshMonthButtonState();
         }
@@ -1004,7 +1038,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!targetsVisible) {
                 targetsVisible = true;
@@ -1014,7 +1048,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
                 document.getElementById("targetBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Targets';
                 document.getElementById("targetBtn").classList.replace("btn-primary", "btn-outline-primary");
 
-                addColumns(headerRow, groupRow, "Targets", "target");
+                addColumns(headerRow, groupRow, "Physical Target", "target");
                 addInputCells("target");
                 refreshMonthButtonState();
                 refreshSummaryCards();
@@ -1029,11 +1063,37 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
             }
         }
 
+        function toggleFinancialColumns() {
+            const table = document.getElementById("performanceTable");
+            const headerRow = table.querySelector("thead tr:not(.group-row)");
+            const groupRow = document.getElementById("groupHeaders");
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
+
+            if (!financialVisible) {
+                financialVisible = true;
+                if (!hadVisibleSection) {
+                    monthInputsVisible = false;
+                }
+                document.getElementById("financialBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Financial';
+
+                addColumns(headerRow, groupRow, "Financial", "financial");
+                addInputCells("financial");
+                refreshMonthButtonState();
+                refreshSummaryCards();
+            } else {
+                financialVisible = false;
+                document.getElementById("financialBtn").innerHTML = '<i class="fa fa-peso-sign me-1"></i> Financial';
+
+                removeSectionColumns(groupRow, headerRow, 'financial');
+                refreshMonthButtonState();
+                refreshSummaryCards();
+            }
+        }
         function toggleAccompColumns() {
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!accompVisible) {
                 accompVisible = true;
@@ -1043,7 +1103,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
                 document.getElementById("accompBtn").innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Accomplishments';
                 document.getElementById("accompBtn").classList.replace("btn-success", "btn-outline-success");
 
-                addColumns(headerRow, groupRow, "Accomplishments", "accomp");
+                addColumns(headerRow, groupRow, "Physical Accomplishment", "accomp");
                 addInputCells("accomp");
                 refreshMonthButtonState();
                 refreshSummaryCards();
@@ -1062,7 +1122,7 @@ const pendingInputs = Array.from(row.querySelectorAll(`.month-box[data-section="
             const table = document.getElementById("performanceTable");
             const headerRow = table.querySelector("thead tr:not(.group-row)");
             const groupRow = document.getElementById("groupHeaders");
-            const hadVisibleSection = targetsVisible || accompVisible || pendingVisible;
+            const hadVisibleSection = targetsVisible || financialVisible || accompVisible || pendingVisible;
 
             if (!pendingVisible) {
                 pendingVisible = true;

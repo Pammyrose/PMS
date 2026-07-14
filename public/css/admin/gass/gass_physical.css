@@ -4,6 +4,11 @@
     --accomp-quarter-bg: #ef4444;
     --annual-bg: #cacaca;
     --header-blue: #1e40af;
+    --financial-group-bg: #e5e7eb;
+    --financial-group-text: #374151;
+    --financial-header-bg: #64748b;
+    --financial-quarter-bg: #94a3b8;
+    --financial-annual-bg: #475569;
     --border: #cbd5e1;
 }
 
@@ -49,6 +54,11 @@
     color: #1e40af;
 }
 
+.group-financial {
+    background: var(--financial-group-bg);
+    color: var(--financial-group-text);
+}
+
 .month-header {
     background: #496cce;
     color: white;
@@ -86,6 +96,21 @@ th.month-header.accomp-month:not(.quarter):not(.annual) {
 
 th.month-header.quarter[data-dynamic-section="accomp"] {
     background: var(--accomp-quarter-bg) !important;
+    color: white !important;
+}
+th.month-header[data-dynamic-section="financial"] {
+    background: var(--financial-header-bg) !important;
+    border-color: var(--financial-annual-bg) !important;
+    color: #000 !important;
+}
+
+th.month-header.quarter[data-dynamic-section="financial"] {
+    background: var(--financial-quarter-bg) !important;
+    color: #000 !important;
+}
+
+th.month-header.annual[data-dynamic-section="financial"] {
+    background: var(--financial-annual-bg) !important;
     color: white !important;
 }
 
@@ -577,11 +602,8 @@ td[data-dynamic-section="summary"] .month-box {
     background: transparent;
 }
 
-#columnOptionsDropdown + .dropdown-menu .dropend:hover > .dropdown-menu,
-#columnOptionsDropdown + .dropdown-menu .dropend:focus-within > .dropdown-menu {
-    display: block;
-}
-
 #columnOptionsDropdown + .dropdown-menu .dropdown-toggle::after {
     margin-left: auto;
 }
+
+

@@ -4,18 +4,37 @@
     --accomp-quarter-bg: #ef4444;
     --annual-bg: #cacaca;
     --header-blue: #1e40af;
+    --financial-group-bg: #e5e7eb;
+    --financial-group-text: #374151;
+    --financial-header-bg: #64748b;
+    --financial-quarter-bg: #94a3b8;
+    --financial-annual-bg: #475569;
     --border: #cbd5e1;
 }
 
 .year-header {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--header-blue);
-    text-align: center;
-    padding: 14px 0;
+    padding: 12px 16px;
     background: linear-gradient(to right, #eff6ff, #dbeafe);
     border-bottom: 3px solid #3b82f6;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
+    border-radius: 4px 4px 0 0;
+}
+
+.year-header .d-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.year-header span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .group-header {
@@ -33,6 +52,11 @@
 .group-accomp {
     background: #dbeafe;
     color: #1e40af;
+}
+
+.group-financial {
+    background: var(--financial-group-bg);
+    color: var(--financial-group-text);
 }
 
 .month-header {
@@ -72,6 +96,21 @@ th.month-header.accomp-month:not(.quarter):not(.annual) {
 
 th.month-header.quarter[data-dynamic-section="accomp"] {
     background: var(--accomp-quarter-bg) !important;
+    color: white !important;
+}
+th.month-header[data-dynamic-section="financial"] {
+    background: var(--financial-header-bg) !important;
+    border-color: var(--financial-annual-bg) !important;
+    color: #000 !important;
+}
+
+th.month-header.quarter[data-dynamic-section="financial"] {
+    background: var(--financial-quarter-bg) !important;
+    color: #000 !important;
+}
+
+th.month-header.annual[data-dynamic-section="financial"] {
+    background: var(--financial-annual-bg) !important;
     color: white !important;
 }
 
@@ -183,8 +222,8 @@ th.month-header.quarter[data-dynamic-section="accomp"] {
     position: relative;
     overflow-x: auto;
     overflow-y: auto;
-    max-height: calc(100vh - 230px);
-    margin: 1rem 0;
+    max-height: calc(100vh - 205px);
+    margin: 0.6rem 0;
     border: 1px solid var(--border);
     border-radius: 6px;
 }
@@ -231,7 +270,7 @@ tr.program-header:hover {
 
 tr.program-header td {
     user-select: none;
-    padding: 16px !important;
+    padding: 10px 12px !important;
 }
 
 .program-toggle-icon {
@@ -249,6 +288,66 @@ tr.program-header .program-toggle-icon {
 
 .program-toggle-icon.rotate-180 {
     transform: rotate(-180deg);
+}
+
+.engp-preview-stat {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    min-height: 66px;
+    background: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+}
+
+.engp-preview-stat .badge {
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+}
+
+.engp-preview-table-wrap {
+    max-height: 58vh;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.engp-preview-table {
+    min-width: 980px;
+}
+
+.engp-preview-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f1f5f9;
+    color: #0f172a;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+}
+
+.engp-preview-table td {
+    font-size: 0.82rem;
+    vertical-align: top;
+}
+
+.engp-preview-level {
+    line-height: 1.25;
+    margin-bottom: 4px;
+}
+
+.engp-preview-level.level-1 {
+    padding-left: 14px;
+}
+
+.engp-preview-level.level-2 {
+    padding-left: 28px;
+}
+
+.engp-preview-level.level-3,
+.engp-preview-level.level-4 {
+    padding-left: 42px;
 }
 
 .data-row:hover {
@@ -318,6 +417,115 @@ td[data-dynamic-section="summary"] .month-box {
     max-height: 28px;
     text-align: center;
     line-height: 1.1;
+}
+
+
+#papSearchInput {
+    min-height: 32px;
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+}
+
+#performanceTable {
+    font-size: 0.76rem;
+    line-height: 1.15;
+}
+
+#performanceTable thead th {
+    padding: 8px 14px !important;
+}
+
+#performanceTable tbody td {
+    padding: 5px 10px !important;
+    line-height: 1.15;
+}
+
+#performanceTable tbody tr.data-row > td:first-child,
+#performanceTable tbody tr.data-row > td:nth-child(2) {
+    padding-top: 10px !important;
+    vertical-align: top !important;
+}
+
+#performanceTable tbody tr.data-row > td:first-child {
+    padding-left: 3.25rem !important;
+}
+
+#performanceTable tbody tr.sub-hierarchy-na-row > td {
+    border-top: 0 !important;
+}
+
+#performanceTable tbody tr.sub-hierarchy-na-row .pap-inline-performance-indicator {
+    border-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+#performanceTable .pap-inline-performance-indicator {
+    display: block;
+    margin-left: 0.75rem !important;
+    margin-top: 8px !important;
+    padding-top: 6px !important;
+    text-align: left;
+}
+
+#performanceTable tr.program-header td {
+    padding: 7px 10px !important;
+}
+
+#performanceTable tr.program-header strong {
+    font-size: 0.78rem;
+}
+
+#performanceTable tr.program-header .text-sm,
+#performanceTable .data-row .text-sm,
+#performanceTable .data-row .small {
+    font-size: 0.72rem !important;
+}
+
+#performanceTable tr.program-header .mt-1,
+#performanceTable tr.program-header .mt-2,
+#performanceTable .data-row .mt-2 {
+    margin-top: 0.2rem !important;
+}
+
+#performanceTable tr.program-header .ml-6 {
+    margin-left: 1rem !important;
+}
+
+#performanceTable tr.program-header .ml-10 {
+    margin-left: 1.5rem !important;
+}
+
+#performanceTable .data-row td[style*="padding-left: 3.75rem"] {
+    padding-left: 2.6rem !important;
+}
+
+#performanceTable .delete-physical-row-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0 !important;
+    font-size: 0.7rem;
+    top: 0.25rem !important;
+    left: 0.5rem !important;
+}
+
+#performanceTable .office-lines {
+    gap: 4px;
+}
+
+#performanceTable .office-line,
+#performanceTable .input-line {
+    min-height: 28px;
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
+#performanceTable .d-flex.flex-column.gap-1 {
+    gap: 0.15rem !important;
+}
+
+#performanceTable .sub-activity-label-row td {
+    padding: 5px 10px !important;
+    font-size: 0.72rem !important;
 }
 
 /* Column options dropdown */
@@ -394,11 +602,8 @@ td[data-dynamic-section="summary"] .month-box {
     background: transparent;
 }
 
-#columnOptionsDropdown + .dropdown-menu .dropend:hover > .dropdown-menu,
-#columnOptionsDropdown + .dropdown-menu .dropend:focus-within > .dropdown-menu {
-    display: block;
-}
-
 #columnOptionsDropdown + .dropdown-menu .dropdown-toggle::after {
     margin-left: auto;
 }
+
+

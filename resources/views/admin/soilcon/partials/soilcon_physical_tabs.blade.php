@@ -1,4 +1,3 @@
-<!-- TABS -->
 <div class="flex items-center mt-4">
     <div class="flex gap-6">
         <a href="{{ route('soilcon_physical') }}"
@@ -12,7 +11,7 @@
 </div>
 
 <div class="d-flex justify-content-end align-items-center mt-3 mb-1">
-    <form method="GET" action="{{ url()->current() }}" class="d-flex align-items-center gap-2">
+    <form method="GET" action="{{ url()->current() }}" class="d-flex align-items-center gap-2" id="yearFilterForm">
         @if(request()->filled('office_id'))
             <input type="hidden" name="office_id" value="{{ request('office_id') }}">
         @endif

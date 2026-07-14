@@ -31,15 +31,15 @@ class ContinuingController extends Controller
         $programId = $program !== null ? (int) $program : null;
 
         $sortProgramHierarchy = function ($row) {
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         };
 
         $programsRaw = $this->getContinuingPrograms($programId, $search, (int) $year)
@@ -57,11 +57,6 @@ class ContinuingController extends Controller
                     (int) ($row->id ?? 0),
                     (int) ($row->row_id ?? $row->id ?? 0),
                     (int) ($row->sub_activity_row_id ?? 0),
-                    (int) ($row->sub_sub_activity_row_id ?? 0),
-                    (int) ($row->sub_sub_sub_activity_row_id ?? 0),
-                    (int) ($row->level_7_row_id ?? 0),
-                    (int) ($row->level_8_row_id ?? 0),
-                    (int) ($row->level_9_row_id ?? 0),
                 ];
             })
             ->filter(fn ($id) => $id > 0)
@@ -84,10 +79,21 @@ class ContinuingController extends Controller
             : collect();
 
         // Fetch indicators grouped by program from section metadata.
-        $indicators = $this->getIndicatorsGroupedByProgram($programIds);
+        $indicators = $this->getIndicatorsGroupedByProgram($programIds, (int) $year);
         $indicators = $this->filterIndicatorsForOffice($indicators, $office_id);
         $programsRaw = $this->filterProgramRowsForOffice($programsRaw, $indicators, $office_id);
         $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
+
+        $targets = Continuing_Target::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->get();
+        $accomplishments = Continuing_Accomplishment::where('years', $year)
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->get();
+
+        $programs = $programsRaw
+            ->unique($sortProgramHierarchy)
+            ->values();
 
         // Expand programs to include separate activity rows when they have indicators
         $programs = $programs->flatMap(function ($row) use ($indicators) {
@@ -181,16 +187,16 @@ class ContinuingController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -221,7 +227,7 @@ class ContinuingController extends Controller
             }
 
             // Check level 7 to level 8
-            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row->level_7_row_id ?? 0) > 0) {
+            if (filled($row->level_6 ?? null) && filled($row->level_7 ?? null) && (int) ($row-> level_7_row_id ?? 0) > 0) {
                 $level7RowId = (int) $row->level_7_row_id;
                 $hasLevel7Indicators = isset($indicators[$level7RowId]) && $indicators[$level7RowId]->count() > 0;
                 
@@ -294,16 +300,36 @@ class ContinuingController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return strtolower(trim((string) ($row->title ?? '')))
-                . '|' . strtolower(trim((string) ($row->program ?? '')))
-                . '|' . strtolower(trim((string) ($row->project ?? '')))
-                . '|' . strtolower(trim((string) ($row->activities ?? '')))
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
                 . '|' . $priority
-                . '|' . strtolower(trim((string) ($row->subactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->subsubactivities ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_6 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_7 ?? '')))
-                . '|' . strtolower(trim((string) ($row->level_8 ?? '')));
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '');
+        }, SORT_NATURAL | SORT_FLAG_CASE)
+        ->unique(function ($row) {
+            return strtolower(trim((string) ($row->title ?? ''))) . '|'
+                . strtolower(trim((string) ($row->program ?? ''))) . '|'
+                . strtolower(trim((string) ($row->project ?? ''))) . '|'
+                . strtolower(trim((string) ($row->activities ?? ''))) . '|'
+                . strtolower(trim((string) ($row->subactivities ?? ''))) . '|'
+                . (int) ($row->row_id ?? 0);
+        })
+        ->values();
+
+        // Also expand programsRaw for consistency (already expanded above)
+        $programsRaw = $programsRaw->sortBy(function ($row) {
+            $priority = $row->_sort_priority ?? 5;
+            return $this->hierarchySortValue($row->title ?? '')
+                . '|' . $this->hierarchySortValue($row->program ?? '')
+                . '|' . $this->hierarchySortValue($row->project ?? '')
+                . '|' . $this->hierarchySortValue($row->activities ?? '')
+                . '|' . $priority
+                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
+                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
+                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -376,81 +402,95 @@ class ContinuingController extends Controller
         
         $existing = $entries->keyBy('programs_id');
 
-        $targets = Continuing_Target::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
-            ->get()
+        // Transform targets into keyed structure
+        $targets = $targets
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
-                $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+                $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
                 $indicatorId = (int) ($meta['indicator_id'] ?? 0);
-                if ($programId <= 0 || $indicatorId <= 0) {
+                if ($rowId <= 0 || $indicatorId <= 0) {
                     return $carry;
                 }
 
                 $officeKey = (string) ((int) ($row->office_ids ?? 0));
-                $carry[(string) $programId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
+                $carry[(string) $rowId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
 
                 return $carry;
             }, []);
 
-        $accomplishments = Continuing_Accomplishment::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
-            ->get()
+        // Transform accomplishments into keyed structure
+        $accomplishments = $accomplishments
             ->reduce(function (array $carry, $row) {
                 $meta = $this->parseSectionValues($row->values ?? null);
-                $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+                $rowId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
                 $indicatorId = (int) ($meta['indicator_id'] ?? 0);
-                if ($programId <= 0 || $indicatorId <= 0) {
+                if ($rowId <= 0 || $indicatorId <= 0) {
                     return $carry;
                 }
 
                 $officeKey = (string) ((int) ($row->office_ids ?? 0));
-                $carry[(string) $programId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
+                $carry[(string) $rowId][(string) $indicatorId][$officeKey] = $this->formatSectionRecordForJs($row, $meta);
 
                 return $carry;
             }, []);
 
         $targets = $this->filterSectionDataForOffice($targets, $office_id);
         $accomplishments = $this->filterSectionDataForOffice($accomplishments, $office_id);
+        $pendingTotalsByRow = $this->buildPendingTotalsByRow($targets, $accomplishments);
 
         $papTitles = $programs->pluck('title')
             ->filter(fn ($value) => filled($value))
             ->unique()
-            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->sort()
             ->values();
 
         $papProjects = $programs->pluck('project')
             ->filter(fn ($value) => filled($value))
             ->unique()
-            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->sort()
             ->values();
 
         $papActivities = $programs->pluck('activities')
             ->filter(fn ($value) => filled($value))
             ->unique()
-            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->sort()
             ->values();
 
         $papSubactivities = $programs->pluck('subactivities')
             ->filter(fn ($value) => filled($value))
             ->unique()
-            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->sort()
             ->values();
 
         $papSubSubactivities = $programs->pluck('subsubactivities')
             ->filter(fn ($value) => filled($value))
             ->unique()
-            ->sortBy(fn ($value) => (string) $value, SORT_NATURAL | SORT_FLAG_CASE)
+            ->sort()
             ->values();
+        
+        $papPrefillData = $programsRaw
+            ->groupBy($sortProgramHierarchy)
+            ->map(function ($groupPrograms) use ($indicators, $indicatorTypeMap) {
+                $pap = $groupPrograms->first();
 
-        $papPrefillData = $programs
-            ->map(function ($pap) use ($indicators, $indicatorTypeMap) {
-                $rowId = (int) ($pap->row_id ?? $pap->id);
-                $indicatorRows = $indicators[$rowId] ?? $indicators[(int) $pap->id] ?? collect();
+                $indicatorRows = $groupPrograms
+                    ->flatMap(function ($row) use ($indicators) {
+                        $rowId = (int) ($row->row_id ?? $row->id);
+                        $rootId = (int) ($row->id ?? 0);
+                        $indicatorCollection = $indicators[$rowId] ?? $indicators[$rootId] ?? collect();
+
+                        return $indicatorCollection->map(function ($indicator) use ($rowId, $rootId) {
+                            $indicatorClone = clone $indicator;
+                            $indicatorClone->row_id = $rowId > 0 ? $rowId : $rootId;
+                            return $indicatorClone;
+                        });
+                    })
+                    ->unique(fn ($indicator) => (int) ($indicator->id ?? 0))
+                    ->values();
 
                 return [
                     'id' => (int) $pap->id,
-                    'row_id' => $rowId,
+                    'row_id' => (int) ($pap->row_id ?? $pap->id),
                     'title' => (string) ($pap->title ?? ''),
                     'program' => (string) ($pap->program ?? ''),
                     'project' => (string) ($pap->project ?? ''),
@@ -464,6 +504,7 @@ class ContinuingController extends Controller
                         ->map(function ($indicator) use ($indicatorTypeMap) {
                             return [
                                 'id' => (int) $indicator->id,
+                                'row_id' => (int) ($indicator->row_id ?? 0) ?: null,
                                 'name' => (string) ($indicator->name ?? ''),
                                 'indicator_type_id' => (int) ($indicator->indicator_type_id ?? 0) ?: null,
                                 'indicator_type' => (string) ($indicatorTypeMap[(int) ($indicator->indicator_type_id ?? 0)] ?? ''),
@@ -484,6 +525,8 @@ class ContinuingController extends Controller
         // Get all offices organized by parent for the modal
         $offices = Office::groupedForUi();
 
+        // Build a clean descending list of years from the ppa database, always including the selected year.
+        $currentYear = (int) now()->year;
         $yearOptions = DB::table('ppa')
             ->whereNotNull('year')
             ->where('year', '>', 0)
@@ -506,6 +549,7 @@ class ContinuingController extends Controller
             'indicatorsForJs',
             'targets',
             'accomplishments',
+            'pendingTotalsByRow',
             'offices',
             'papTitles',
             'papProjects',
@@ -573,11 +617,11 @@ class ContinuingController extends Controller
         });
 
         $programs = $grouped;
-        return view('admin.continuing.sto', compact('programs', 'offices'));
+        return view('admin.continuing.continuing', compact('programs', 'offices'));
     }
 
     /**
-     * Continuingre or update physical accomplishment entries
+     * Store or update physical accomplishment entries
      */
     public function save(Request $request)
     {
@@ -613,24 +657,23 @@ class ContinuingController extends Controller
                 continue;
             }
 
-            // Check if exists first
-            $existing = Gass_Physical::where([
+            $indicatorName = trim((string) ($data['performance_indicator'] ?? ''));
+            $matchAttributes = [
                 'programs_id' => $data['programs_id'],
                 'year' => $data['year'],
                 'period_type' => $data['period_type'],
                 'office_id' => $officeId,
-            ])->first();
+                'performance_indicator' => $indicatorName !== '' ? $indicatorName : null,
+            ];
+
+            // Keep different indicators under the same hierarchy as separate rows.
+            $existing = Gass_Physical::where($matchAttributes)->first();
 
             $record = Gass_Physical::updateOrCreate(
-                [
-                    'programs_id' => $data['programs_id'],
-                    'year' => $data['year'],
-                    'period_type' => $data['period_type'],
-                    'office_id' => $officeId,
-                ],
+                $matchAttributes,
                 [
                     'user_id' => $userId,
-                    'performance_indicator' => $data['performance_indicator'] ?? null,
+                    'performance_indicator' => $indicatorName !== '' ? $indicatorName : null,
                     'target' => $data['target'] ?? 0,
                     'jan' => $data['jan'] ?? 0,
                     'feb' => $data['feb'] ?? 0,
@@ -664,8 +707,8 @@ class ContinuingController extends Controller
 
         // Redirect back to the physical page with the program ID if available
         $redirectRoute = $firstProgramId 
-            ? route('admin.continuing.physical', $firstProgramId)
-            : route('admin.continuing.physical');
+            ? route('admin.continuing_physical.physical', $firstProgramId)
+            : route('admin.continuing_physical.physical');
 
         return redirect($redirectRoute)
             ->with(
@@ -733,11 +776,12 @@ class ContinuingController extends Controller
         }
     }
 
-    private function storePapHierarchyInPpa(array $papData): object
+    protected function storePapHierarchyInPpa(array $papData): object
     {
         $typeId = $this->getContinuingTypeId();
         $recordTypeIds = $this->getContinuingRecordTypeIds();
         $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
+        $forceDuplicateLeaf = !empty($papData['duplicate_leaf']);
 
         $levels = [
             ['record_type' => 'PROGRAM', 'name' => trim((string) ($papData['title'] ?? ''))],
@@ -750,10 +794,15 @@ class ContinuingController extends Controller
             ['record_type' => 'LEVEL-8', 'name' => trim((string) ($papData['level_7'] ?? ''))],
             ['record_type' => 'LEVEL-9', 'name' => trim((string) ($papData['level_8'] ?? ''))],
         ];
+        $lastLevelIndex = collect($levels)
+            ->keys()
+            ->filter(fn ($index) => $levels[$index]['name'] !== '')
+            ->last();
 
         $parentDetailId = null;
         $rootPpaId = null;
         $leafPpaId = null;
+        $isNewHierarchy = true;
 
         foreach ($levels as $index => $level) {
             if ($level['name'] === '') {
@@ -766,28 +815,32 @@ class ContinuingController extends Controller
                 throw new \RuntimeException("Record type {$level['record_type']} is not configured.");
             }
 
-            $existingNode = DB::table('ppa_details as details')
-                ->join('ppa', 'ppa.ppa_details_id', '=', 'details.id')
-                ->where('ppa.types_id', $typeId)
-                ->where('ppa.record_type_id', $recordTypeId)
-                ->where('details.column_order', $index + 1)
-                ->when(
-                    $parentDetailId === null,
-                    fn ($query) => $query->whereNull('details.parent_id'),
-                    fn ($query) => $query->where('details.parent_id', $parentDetailId)
-                )
-                ->whereRaw('LOWER(TRIM(ppa.name)) = ?', [strtolower($level['name'])])
-                ->when($index === 0 && $papYear !== null, function ($query) use ($papYear) {
-                    $query->where('ppa.year', $papYear);
-                })
-                ->orderBy('ppa.id')
-                ->select('ppa.id', 'details.id as detail_id')
-                ->first();
+            $existingNode = null;
+            if (!$forceDuplicateLeaf || $index !== $lastLevelIndex) {
+                $existingNode = DB::table('ppa_details as details')
+                    ->join('ppa', 'ppa.ppa_details_id', '=', 'details.id')
+                    ->where('ppa.types_id', $typeId)
+                    ->where('ppa.record_type_id', $recordTypeId)
+                    ->where('details.column_order', $index + 1)
+                    ->when(
+                        $parentDetailId === null,
+                        fn ($query) => $query->whereNull('details.parent_id'),
+                        fn ($query) => $query->where('details.parent_id', $parentDetailId)
+                    )
+                    ->whereRaw('LOWER(TRIM(ppa.name)) = ?', [strtolower($level['name'])])
+                    ->when($index === 0 && $papYear !== null, function ($query) use ($papYear) {
+                        $query->where('ppa.year', $papYear);
+                    })
+                    ->orderBy('ppa.id')
+                    ->select('ppa.id', 'details.id as detail_id')
+                    ->first();
+            }
 
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
             } else {
+                $isNewHierarchy = false;
                 $detailId = DB::table('ppa_details')->insertGetId([
                     'parent_id' => $parentDetailId,
                     'column_order' => $index + 1,
@@ -806,6 +859,7 @@ class ContinuingController extends Controller
                     'updated_at' => now(),
                 ];
 
+                // Add year to the root (first level) PPA record
                 if ($index === 0 && $papYear !== null) {
                     $ppaInsertData['year'] = $papYear;
                 }
@@ -834,6 +888,58 @@ class ContinuingController extends Controller
             'activities' => (string) ($papData['activities'] ?? ''),
             'subactivities' => (string) ($papData['subactivities'] ?? ''),
         ];
+    }
+
+    private function hierarchySortValue($value, bool $singleIAsRoman = false): string
+    {
+        $raw = trim((string) ($value ?? ''));
+        $normalized = strtolower($raw);
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+
+        if ($normalized === '') {
+            return '4|999999.999999.999999.999999.999999|';
+        }
+
+        if (
+            preg_match('/^(\d+(?:\.\d+)*)([.)-]+)(?=\s|[A-Za-z(]|$)/u', $normalized, $matches)
+            || preg_match('/^(\d+(?:\.\d+)+)(?=\s|[A-Za-z(]|$)/u', $normalized, $matches)
+        ) {
+            if (($matches[2] ?? '') !== '' || str_contains($matches[1], '.')) {
+                $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
+                $segments = array_pad($segments, 5, 0);
+                $numericKey = collect(array_slice($segments, 0, 5))
+                    ->map(fn ($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                    ->implode('.');
+
+                return '0|' . $numericKey . '|' . $normalized;
+            }
+        }
+
+        if (preg_match('/^([VX]|[IVXLCDM]{2,})[.)-]\s*/', $raw, $matches) || ($singleIAsRoman && preg_match('/^(I)[.)-]\s*/', $raw, $matches))) {
+            return '1|' . str_pad((string) $this->romanToInteger($matches[1]), 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        if (preg_match('/^([A-Za-z])[.)-]\s*/', $raw, $matches)) {
+            return '2|' . str_pad((string) (ord(strtoupper($matches[1])) - 64), 6, '0', STR_PAD_LEFT) . '|' . $normalized;
+        }
+
+        return '3|' . $normalized;
+    }
+
+    private function romanToInteger(string $roman): int
+    {
+        $map = ['i' => 1, 'v' => 5, 'x' => 10, 'l' => 50, 'c' => 100, 'd' => 500, 'm' => 1000];
+        $roman = strtolower($roman);
+        $value = 0;
+        $length = strlen($roman);
+
+        for ($index = 0; $index < $length; $index++) {
+            $current = $map[$roman[$index]] ?? 0;
+            $next = $index + 1 < $length ? ($map[$roman[$index + 1]] ?? 0) : 0;
+            $value += $current < $next ? -$current : $current;
+        }
+
+        return $value;
     }
 
     public function destroyPap($program)
@@ -875,7 +981,7 @@ class ContinuingController extends Controller
     }
 
     /**
-     * Continuingre new indicator
+     * Store new indicator
      */
     public function storeIndicator(Request $request)
     {
@@ -901,22 +1007,21 @@ class ContinuingController extends Controller
         $targetRowId = (int) ($baseValidated['row_id'] ?? $baseValidated['program_id'] ?? 0);
 
         $indicator = new Continuing_Indicator();
-
-        $wasNew = true;
-
         $indicator->name = $indicatorName;
+
         if ($this->hasIndicatorColumn('user_id')) {
             $indicator->user_id = Auth::id();
         }
 
         if ($this->hasIndicatorColumn('indicator_type_id')) {
-            $indicator->indicator_type_id = isset($baseValidated['indicator_type_id'])
-                ? (int) $baseValidated['indicator_type_id']
+            $indicator->indicator_type_id = array_key_exists('indicator_type_id', $baseValidated)
+                ? ((int) ($baseValidated['indicator_type_id'] ?? 0) ?: null)
                 : null;
         }
 
         $selectedOfficeIds = collect($baseValidated['office_id'])
             ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
             ->unique()
             ->values()
             ->all();
@@ -926,12 +1031,12 @@ class ContinuingController extends Controller
         }
 
         $indicator->save();
-        
+
         $resolvedRowId = $this->resolveIndicatorTargetRowId($targetRowId, $indicatorName);
         $this->syncProgramIndicatorInPpa($resolvedRowId, (int) $indicator->id, $selectedOfficeIds);
 
-        $createdCount = $wasNew ? 1 : 0;
-        $updatedCount = $wasNew ? 0 : 1;
+        $createdCount = 1;
+        $updatedCount = 0;
         $message = "$createdCount created, $updatedCount updated successfully.";
 
         if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -940,11 +1045,12 @@ class ContinuingController extends Controller
                 'success' => true,
                 'created_count' => $createdCount,
                 'updated_count' => $updatedCount,
-                'indicator' => $indicator
+                'row_id' => $resolvedRowId,
+                'indicator' => $indicator,
             ]);
         }
 
-        return redirect()->route('continuing')
+        return redirect()->route('gass_physical')
             ->with('success', $message);
     }
 
@@ -982,10 +1088,10 @@ public function update(Request $request, Continuing_Indicator $indicator)
         'office_id.*' => 'required|exists:offices,id',
     ]);
 
-    $newName = isset($validated['indicator_name']) ? trim($validated['indicator_name']) : null;
-    $nameChanged = $newName !== null && $newName !== '' && $newName !== $indicator->name;
     $targetRowId = (int) ($validated['row_id'] ?? $validated['program_id'] ?? 0);
-    
+    $newName = array_key_exists('indicator_name', $validated) ? trim((string) ($validated['indicator_name'] ?? '')) : null;
+    $nameChanged = $newName !== null && $newName !== '' && $newName !== $indicator->name;
+
     $selectedOfficeIds = array_key_exists('office_id', $validated)
         ? collect($validated['office_id'])
             ->map(fn ($id) => (int) $id)
@@ -1064,10 +1170,11 @@ public function update(Request $request, Continuing_Indicator $indicator)
 
     if (!empty($updateData)) {
         $indicator->update($updateData);
+        $indicator->refresh();
     }
 
     if ($targetRowId > 0) {
-        $this->syncProgramIndicatorInPpa($targetRowId, (int) $indicator->id, $selectedOfficeIds ?? $currentOfficeIds);
+        $this->syncProgramIndicatorInPpa($targetRowId, (int) $indicator->id, $selectedOfficeIds ?? $this->parseJsonIdArray($indicator->office_id ?? []));
     }
 
     if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -1570,8 +1677,8 @@ public function storeAccomplishments(Request $request)
         $record->annual_total = array_key_exists('annual_total', $entry) ? ($entry['annual_total'] ?? 0) : ($record->annual_total ?? 0);
         $rawRemarks = array_key_exists('remarks', $entry)
             ? ($entry['remarks'] ?? null)
-            : $this->decodeRemarksFromContinuingrage($record->remarks ?? null);
-        $record->remarks = $this->encodeRemarksForContinuingrage($rawRemarks);
+            : $this->decodeRemarksFromStorage($record->remarks ?? null);
+        $record->remarks = $this->encodeRemarksForStorage($rawRemarks);
         $record->values = json_encode([
             'user_id' => $userId,
             'program_id' => $programId,
@@ -1622,13 +1729,54 @@ private function formatSectionRecordForJs($row, array $meta = []): array
         'dec' => (float) ($row->dec ?? 0),
         'q4' => (float) ($row->q4 ?? 0),
         'annual_total' => (float) ($row->annual_total ?? 0),
+        'imported_from' => (string) ($meta['imported_from'] ?? ''),
         'car_totals' => is_array($meta['car_totals'] ?? null) ? $meta['car_totals'] : [],
         'group_totals' => is_array($meta['group_totals'] ?? null) ? $meta['group_totals'] : [],
-        'remarks' => $this->decodeRemarksFromContinuingrage($row->remarks ?? null),
+        'remarks' => $this->decodeRemarksFromStorage($row->remarks ?? null),
     ];
 }
 
-private function encodeRemarksForContinuingrage($remarks): ?string
+private function buildPendingTotalsByRow(array $targets, array $accomplishments): array
+{
+    $periodKeys = [
+        'jan', 'feb', 'mar', 'q1',
+        'apr', 'may', 'jun', 'q2',
+        'jul', 'aug', 'sep', 'q3',
+        'oct', 'nov', 'dec', 'q4', 'annual_total',
+    ];
+
+    $pending = [];
+
+    foreach ($targets as $rowId => $indicators) {
+        foreach ($indicators as $indicatorId => $offices) {
+            foreach ($periodKeys as $periodKey) {
+                $targetTotal = $this->sectionPeriodTotal($offices, $periodKey);
+                $accompTotal = $this->sectionPeriodTotal($accomplishments[$rowId][$indicatorId] ?? [], $periodKey);
+
+                $pending[(string) $rowId][(string) $indicatorId][$periodKey] = max($targetTotal - $accompTotal, 0);
+            }
+        }
+    }
+
+    return $pending;
+}
+
+private function sectionPeriodTotal(array $offices, string $periodKey): float
+{
+    foreach ($offices as $entry) {
+        $carValue = $entry['car_totals'][$periodKey] ?? null;
+        if (is_numeric($carValue)) {
+            return (float) $carValue;
+        }
+    }
+
+    return (float) collect($offices)->sum(function ($entry) use ($periodKey) {
+        $value = $entry[$periodKey] ?? 0;
+        return is_numeric($value) ? (float) $value : 0;
+    });
+}
+
+private function encodeRemarksForStorage($remarks): ?string
 {
     if ($remarks === null) {
         return null;
@@ -1642,7 +1790,7 @@ private function encodeRemarksForContinuingrage($remarks): ?string
     return json_encode($normalized);
 }
 
-private function decodeRemarksFromContinuingrage($raw): string
+private function decodeRemarksFromStorage($raw): string
 {
     if ($raw === null) {
         return '';
@@ -1669,7 +1817,7 @@ private function decodeRemarksFromContinuingrage($raw): string
     return (string) $raw;
 }
 
-private function parseSectionValues($raw): array
+protected function parseSectionValues($raw): array
 {
     if (is_array($raw)) {
         return $raw;
@@ -1724,7 +1872,7 @@ private function resolveIndicatorTargetRowId(int $rowId, string $indicatorName =
     ]);
 }
 
-private function syncProgramIndicatorInPpa(int $programId, int $indicatorId, array $officeIds = []): void
+protected function syncProgramIndicatorInPpa(int $programId, int $indicatorId, array $officeIds = []): void
 {
     if ($programId <= 0 || $indicatorId <= 0) {
         return;
@@ -1760,7 +1908,7 @@ private function isIndicatorAssignedToOtherRows(int $indicatorId, ?int $exceptPp
         ->exists();
 }
 
-private function hasIndicatorColumn(string $column): bool
+protected function hasIndicatorColumn(string $column): bool
 {
     static $columnCache = [];
 
@@ -1771,7 +1919,7 @@ private function hasIndicatorColumn(string $column): bool
     return $columnCache[$column];
 }
 
-private function getIndicatorsGroupedByProgram(array $programIds): Collection
+private function getIndicatorsGroupedByProgram(array $programIds, ?int $year = null): Collection
 {
     $programIds = collect($programIds)
         ->map(fn ($id) => (int) $id)
@@ -1783,12 +1931,76 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         return $grouped;
     }
 
-    $programIndicatorRows = DB::table('ppa')
+    $programIdLookup = array_fill_keys($programIds->all(), true);
+
+    $indicatorAssignments = collect();
+
+    DB::table('ppa')
         ->whereIn('id', $programIds->all())
         ->whereNotNull('indicator_id')
-        ->get(['id', 'indicator_id', 'office_id']);
+        ->get(['id', 'indicator_id', 'office_id'])
+        ->each(function ($row) use (&$indicatorAssignments) {
+            $programId = (int) ($row->id ?? 0);
+            $indicatorId = (int) ($row->indicator_id ?? 0);
+            if ($programId <= 0 || $indicatorId <= 0) {
+                return;
+            }
 
-    $allIndicatorIds = $programIndicatorRows
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $this->parseJsonIdArray($row->office_id ?? null),
+                'sort_order' => PHP_INT_MAX,
+            ]);
+        });
+
+    Continuing_Target::query()
+        ->when($year !== null, fn ($query) => $query->where('years', $year))
+        ->orderBy('id')
+        ->get(['id', 'office_ids', 'values'])
+        ->each(function ($target) use (&$indicatorAssignments, $programIdLookup) {
+            $meta = $this->parseSectionValues($target->values ?? null);
+            $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+            $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+            if ($programId <= 0 || $indicatorId <= 0 || !isset($programIdLookup[$programId])) {
+                return;
+            }
+
+            $officeId = (int) ($target->office_ids ?? 0);
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $officeId > 0 ? [$officeId] : [],
+                'sort_order' => (int) ($target->id ?? PHP_INT_MAX),
+            ]);
+        });
+
+    $indicatorAssignments = $indicatorAssignments
+        ->groupBy(fn ($row) => (int) $row['program_id'] . '|' . (int) $row['indicator_id'])
+        ->map(function ($rows) {
+            $first = $rows->first();
+
+            return [
+                'program_id' => (int) ($first['program_id'] ?? 0),
+                'indicator_id' => (int) ($first['indicator_id'] ?? 0),
+                'office_ids' => $rows
+                    ->flatMap(fn ($row) => $row['office_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn ($id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all(),
+                'sort_order' => $rows
+                    ->pluck('sort_order')
+                    ->map(fn ($value) => (int) $value)
+                    ->min() ?? PHP_INT_MAX,
+            ];
+        })
+        ->sortBy('sort_order')
+        ->values();
+
+    $allIndicatorIds = $indicatorAssignments
         ->pluck('indicator_id')
         ->map(fn ($id) => (int) $id)
         ->filter(fn ($id) => $id > 0)
@@ -1804,10 +2016,9 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
         ->get()
         ->keyBy(fn ($row) => (int) $row->id);
 
-
-    foreach ($programIndicatorRows as $programIndicatorRow) {
-        $programId = (int) ($programIndicatorRow->id ?? 0);
-        $indicatorId = (int) ($programIndicatorRow->indicator_id ?? 0);
+    foreach ($indicatorAssignments as $assignment) {
+        $programId = (int) ($assignment['program_id'] ?? 0);
+        $indicatorId = (int) ($assignment['indicator_id'] ?? 0);
         if ($programId <= 0 || $indicatorId <= 0) {
             continue;
         }
@@ -1819,7 +2030,7 @@ private function getIndicatorsGroupedByProgram(array $programIds): Collection
 
         // Clone the indicator to avoid mutating the original object in the collection
         $indicatorClone = clone $indicator;
-        $indicatorClone->office_id = $this->parseJsonIdArray($programIndicatorRow->office_id ?? null);
+        $indicatorClone->office_id = $assignment['office_ids'] ?? [];
 
         // Append indicator to the program's collection
         if (!$grouped->has($programId)) {
@@ -2010,76 +2221,77 @@ private function getContinuingPrograms(?int $programId = null, string $search = 
         $query->where('program_ppa.id', $programId);
     }
 
-    $programs = $query->get()->map(function ($row) {
-        $row->id = (int) $row->id;
-        $row->program_row_id = (int) ($row->program_row_id ?? $row->id);
-        $row->project_row_id = (int) ($row->project_row_id ?? 0);
-        $row->main_activity_row_id = (int) ($row->main_activity_row_id ?? 0);
-        $row->sub_activity_row_id = (int) ($row->sub_activity_row_id ?? 0);
-        $row->sub_sub_activity_row_id = (int) ($row->sub_sub_activity_row_id ?? 0);
-        $row->sub_sub_sub_activity_row_id = (int) ($row->sub_sub_sub_activity_row_id ?? 0);
-        $row->level_7_row_id = (int) ($row->level_7_row_id ?? 0);
-        $row->level_8_row_id = (int) ($row->level_8_row_id ?? 0);
-        $row->level_9_row_id = (int) ($row->level_9_row_id ?? 0);
-        $row->row_id = (int) ($row->row_id ?? $row->id);
-        $row->ppa_details_id = (int) $row->ppa_details_id;
-        return $row;
-    })
-    ->groupBy(function ($row) {
-        $normalizeHierarchyValue = fn ($value) => mb_strtolower(trim((string) $value));
-        return $normalizeHierarchyValue($row->title ?? '') . '|'
-            . $normalizeHierarchyValue($row->program ?? '') . '|'
-            . $normalizeHierarchyValue($row->project ?? '') . '|'
-            . $normalizeHierarchyValue($row->activities ?? '') . '|'
-            . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
-            . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_8 ?? '');
-    })
-    ->flatMap(function ($group) {
-        $usedRowIds = [];
+    $normalizeHierarchyValue = static fn ($value) => mb_strtolower(trim((string) $value));
 
-        return $group->map(function ($row) use (&$usedRowIds) {
-            $candidateRowIds = [
-                (int) ($row->row_id ?? 0),
-                (int) ($row->level_9_row_id ?? 0),
-                (int) ($row->level_8_row_id ?? 0),
-                (int) ($row->level_7_row_id ?? 0),
-                (int) ($row->sub_sub_sub_activity_row_id ?? 0),
-                (int) ($row->sub_sub_activity_row_id ?? 0),
-                (int) ($row->sub_activity_row_id ?? 0),
-                (int) ($row->main_activity_row_id ?? 0),
-                (int) ($row->project_row_id ?? 0),
-                (int) ($row->program_row_id ?? 0),
-                (int) ($row->id ?? 0),
-            ];
-
-            foreach ($candidateRowIds as $candidateRowId) {
-                if ($candidateRowId > 0 && !in_array($candidateRowId, $usedRowIds, true)) {
-                    $row->row_id = $candidateRowId;
-                    $usedRowIds[] = $candidateRowId;
-                    break;
-                }
-            }
-
+    $programs = $query->get()
+        ->map(function ($row) {
+            $row->id = (int) $row->id;
+            $row->program_row_id = (int) ($row->program_row_id ?? $row->id);
+            $row->project_row_id = (int) ($row->project_row_id ?? 0);
+            $row->main_activity_row_id = (int) ($row->main_activity_row_id ?? 0);
+            $row->sub_activity_row_id = (int) ($row->sub_activity_row_id ?? 0);
+            $row->sub_sub_activity_row_id = (int) ($row->sub_sub_activity_row_id ?? 0);
+            $row->sub_sub_sub_activity_row_id = (int) ($row->sub_sub_sub_activity_row_id ?? 0);
+            $row->level_7_row_id = (int) ($row->level_7_row_id ?? 0);
+            $row->level_8_row_id = (int) ($row->level_8_row_id ?? 0);
+            $row->level_9_row_id = (int) ($row->level_9_row_id ?? 0);
+            $row->row_id = (int) ($row->row_id ?? $row->id);
+            $row->ppa_details_id = (int) $row->ppa_details_id;
             return $row;
-        });
-    })
-    ->unique(function ($row) {
-        $normalizeHierarchyValue = fn ($value) => mb_strtolower(trim((string) $value));
-        return $normalizeHierarchyValue($row->title ?? '') . '|'
-            . $normalizeHierarchyValue($row->program ?? '') . '|'
-            . $normalizeHierarchyValue($row->project ?? '') . '|'
-            . $normalizeHierarchyValue($row->activities ?? '') . '|'
-            . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
-            . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
-            . $normalizeHierarchyValue($row->level_8 ?? '') . '|'
-            . (int) ($row->row_id ?? 0);
-    })
-    ->values();
+        })
+        ->groupBy(function ($row) use ($normalizeHierarchyValue) {
+            return $normalizeHierarchyValue($row->title ?? '') . '|'
+                . $normalizeHierarchyValue($row->program ?? '') . '|'
+                . $normalizeHierarchyValue($row->project ?? '') . '|'
+                . $normalizeHierarchyValue($row->activities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_8 ?? '');
+        })
+        ->flatMap(function ($group) {
+            $usedRowIds = [];
+
+            return $group->map(function ($row) use (&$usedRowIds) {
+                $candidateRowIds = [
+                    (int) ($row->row_id ?? 0),
+                    (int) ($row->level_9_row_id ?? 0),
+                    (int) ($row->level_8_row_id ?? 0),
+                    (int) ($row->level_7_row_id ?? 0),
+                    (int) ($row->sub_sub_sub_activity_row_id ?? 0),
+                    (int) ($row->sub_sub_activity_row_id ?? 0),
+                    (int) ($row->sub_activity_row_id ?? 0),
+                    (int) ($row->main_activity_row_id ?? 0),
+                    (int) ($row->project_row_id ?? 0),
+                    (int) ($row->program_row_id ?? 0),
+                    (int) ($row->id ?? 0),
+                ];
+
+                foreach ($candidateRowIds as $candidateRowId) {
+                    if ($candidateRowId > 0 && !in_array($candidateRowId, $usedRowIds, true)) {
+                        $row->row_id = $candidateRowId;
+                        $usedRowIds[] = $candidateRowId;
+                        break;
+                    }
+                }
+
+                return $row;
+            });
+        })
+        ->unique(function ($row) use ($normalizeHierarchyValue) {
+            return $normalizeHierarchyValue($row->title ?? '') . '|'
+                . $normalizeHierarchyValue($row->program ?? '') . '|'
+                . $normalizeHierarchyValue($row->project ?? '') . '|'
+                . $normalizeHierarchyValue($row->activities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->subsubactivities ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_6 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_7 ?? '') . '|'
+                . $normalizeHierarchyValue($row->level_8 ?? '') . '|'
+                . (int) ($row->row_id ?? 0);
+        })
+        ->values();
 
     if ($search === '') {
         return $programs->values();

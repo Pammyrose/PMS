@@ -73,16 +73,12 @@ class LogFieldEdits
             return false;
         }
 
-        $routeName = (string) $route->getName();
-        $isFieldRoute = str_starts_with($routeName, 'admin.')
-            && preg_match('/\.(targets|accomplishments|indicators|pap)\./', $routeName);
-        $isUserRoleRoute = in_array($routeName, ['users.store', 'users.update', 'users.destroy'], true);
-
-        if (!$isFieldRoute && !$isUserRoleRoute) {
+        if (!in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
             return false;
         }
 
-        if (!in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+        $routeName = (string) $route->getName();
+        if (str_ends_with($routeName, '.import_excel.preview')) {
             return false;
         }
 
@@ -94,6 +90,14 @@ class LogFieldEdits
         $segments = array_values(array_filter(explode('.', $routeName)));
 
         if (($segments[0] ?? null) === 'admin') {
+            return [
+                $segments[1] ?? 'unknown',
+                $segments[2] ?? 'unknown',
+                $segments[3] ?? strtolower($request->method()),
+            ];
+        }
+
+        if (($segments[0] ?? null) === 'users' && count($segments) > 2) {
             return [
                 $segments[1] ?? 'unknown',
                 $segments[2] ?? 'unknown',
@@ -299,7 +303,7 @@ class LogFieldEdits
                 continue;
             }
 
-            $programId = $entry['program_id'] ?? null;
+            $programId = $entry['row_id'] ?? $entry['program_id'] ?? null;
             $indicatorId = $entry['indicator_id'] ?? null;
             $officeId = $entry['office_id'] ?? null;
             $year = $entry['year'] ?? null;
@@ -447,7 +451,7 @@ class LogFieldEdits
                 continue;
             }
 
-            $programId = $entry['program_id'] ?? null;
+            $programId = $entry['row_id'] ?? $entry['program_id'] ?? null;
             $indicatorId = $entry['indicator_id'] ?? null;
             $officeId = $entry['office_id'] ?? null;
             $year = $entry['year'] ?? null;
@@ -505,7 +509,7 @@ class LogFieldEdits
                 continue;
             }
 
-            $programId = $entry['program_id'] ?? null;
+            $programId = $entry['row_id'] ?? $entry['program_id'] ?? null;
             $indicatorId = $entry['indicator_id'] ?? null;
             $officeId = $entry['office_id'] ?? null;
             $year = $entry['year'] ?? null;
@@ -571,16 +575,11 @@ class LogFieldEdits
         }
 
         if ($editedPart === 'targets') {
-            return $normalizedModule . '_targets';
+            return 'physical_targets';
         }
 
         if ($editedPart === 'accomplishments') {
-            $pluralTable = $normalizedModule . '_accomplishments';
-            if (Schema::hasTable($pluralTable)) {
-                return $pluralTable;
-            }
-
-            return $normalizedModule . '_accomplishment';
+            return 'physical_accomplishments';
         }
 
         return null;
@@ -588,17 +587,24 @@ class LogFieldEdits
 
     private function findExistingEntryRow(string $tableName, mixed $programId, mixed $indicatorId, mixed $officeId, mixed $year): ?object
     {
-        $hasDirectProgramColumn = Schema::hasColumn($tableName, 'program_id');
+        $programColumn = Schema::hasColumn($tableName, 'row_id')
+            ? 'row_id'
+            : (Schema::hasColumn($tableName, 'program_id') ? 'program_id' : null);
         $hasDirectIndicatorColumn = Schema::hasColumn($tableName, 'indicator_id');
         $yearColumn = Schema::hasColumn($tableName, 'year') ? 'year' : (Schema::hasColumn($tableName, 'years') ? 'years' : null);
         $officeColumn = Schema::hasColumn($tableName, 'office_id') ? 'office_id' : (Schema::hasColumn($tableName, 'office_ids') ? 'office_ids' : null);
 
-        if ($hasDirectProgramColumn && $hasDirectIndicatorColumn && $yearColumn) {
+        if ($programColumn && $hasDirectIndicatorColumn && $yearColumn) {
             return DB::table($tableName)
-                ->where('program_id', $programId)
+                ->where($programColumn, $programId)
                 ->where('indicator_id', $indicatorId)
                 ->where($yearColumn, $year)
-                ->when($officeId && $officeColumn, fn ($query) => $query->where($officeColumn, $officeId))
+                ->when(
+                    $officeColumn,
+                    fn ($query) => filled($officeId)
+                        ? $query->where($officeColumn, $officeId)
+                        : $query->whereNull($officeColumn)
+                )
                 ->first();
         }
 
