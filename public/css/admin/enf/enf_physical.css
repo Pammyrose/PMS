@@ -240,13 +240,13 @@ td {
     vertical-align: middle;
 }
 
-thead tr:not(.group-row) th {
+.table-container thead tr:not(.group-row) th {
     position: sticky;
     top: var(--table-sticky-top, 0px);
     z-index: 12;
 }
 
-thead tr.group-row th {
+.table-container thead tr.group-row th {
     position: sticky;
     top: calc(var(--table-sticky-top, 0px) + var(--table-header-row-height, 46px));
     z-index: 11;
@@ -605,5 +605,4 @@ td[data-dynamic-section="summary"] .month-box {
 #columnOptionsDropdown + .dropdown-menu .dropdown-toggle::after {
     margin-left: auto;
 }
-
 

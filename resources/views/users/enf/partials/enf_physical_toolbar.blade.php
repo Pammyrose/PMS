@@ -6,7 +6,6 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
-
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
             {{-- Preserve important filters --}}

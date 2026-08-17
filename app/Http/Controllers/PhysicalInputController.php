@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PhysicalAccomplishment;
 use App\Models\PhysicalTarget;
+use App\Services\AccomplishmentSubmissionService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ class PhysicalInputController extends Controller
         'gass' => 'GASS',
         'sto' => 'STO',
         'enf' => 'ENF',
-        'pa' => 'PA',
+        'pa' => 'Biodiv',
         'engp' => 'ENGP',
         'lands' => 'Lands',
         'soilcon' => 'Soilcon',
@@ -43,6 +44,199 @@ class PhysicalInputController extends Controller
     public function storeAccomplishments(Request $request): JsonResponse
     {
         return $this->store($request, PhysicalAccomplishment::class, true);
+    }
+
+    public function updatePap(Request $request, string $sector, int $row): JsonResponse
+    {
+        $sector = strtolower(trim($sector));
+        abort_unless(array_key_exists($sector, self::SECTOR_TYPE_CODES), 404);
+
+        $typeId = (int) DB::table('types')
+            ->where('code', self::SECTOR_TYPE_CODES[$sector])
+            ->value('id');
+
+        abort_if($typeId <= 0, 422, 'The selected physical section is unavailable.');
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'program' => ['nullable', 'string', 'max:255'],
+            'project' => ['nullable', 'string', 'max:255'],
+            'activities' => ['nullable', 'string', 'max:255'],
+            'subactivities' => ['nullable', 'string', 'max:255'],
+            'subsubactivities' => ['nullable', 'string', 'max:255'],
+            'level_6' => ['nullable', 'string', 'max:255'],
+            'level_7' => ['nullable', 'string', 'max:255'],
+            'level_8' => ['nullable', 'string', 'max:255'],
+            'year' => ['nullable', 'integer', 'min:2000', 'max:2099'],
+        ]);
+
+        $selectedRow = DB::table('ppa')
+            ->where('id', $row)
+            ->where('types_id', $typeId)
+            ->first();
+
+        abort_unless($selectedRow, 404, 'The PAP row to edit was not found.');
+
+        $recordTypeIds = DB::table('record_types')
+            ->whereIn('name', [
+                'PROGRAM',
+                'PROJECT',
+                'MAIN ACTIVITY',
+                'SUB-ACTIVITY',
+                'SUB-SUB-ACTIVITY',
+                'SUB-SUB-SUB-ACTIVITY',
+                'LEVEL-7',
+                'LEVEL-8',
+                'LEVEL-9',
+            ])
+            ->pluck('id', 'name')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $levels = [
+            ['record_type' => 'PROGRAM', 'field' => 'title'],
+            ['record_type' => 'PROJECT', 'field' => 'program'],
+            ['record_type' => 'MAIN ACTIVITY', 'field' => 'project'],
+            ['record_type' => 'SUB-ACTIVITY', 'field' => 'activities'],
+            ['record_type' => 'SUB-SUB-ACTIVITY', 'field' => 'subactivities'],
+            ['record_type' => 'SUB-SUB-SUB-ACTIVITY', 'field' => 'subsubactivities'],
+            ['record_type' => 'LEVEL-7', 'field' => 'level_6'],
+            ['record_type' => 'LEVEL-8', 'field' => 'level_7'],
+            ['record_type' => 'LEVEL-9', 'field' => 'level_8'],
+        ];
+
+        $pap = DB::transaction(function () use (
+            $validated,
+            $levels,
+            $recordTypeIds,
+            $selectedRow,
+            $typeId,
+            $row
+        ) {
+            $detailsByOrder = [];
+            $detailId = (int) ($selectedRow->ppa_details_id ?? 0);
+            $visitedDetailIds = [];
+
+            while ($detailId > 0 && !isset($visitedDetailIds[$detailId])) {
+                $visitedDetailIds[$detailId] = true;
+                $detail = DB::table('ppa_details')->where('id', $detailId)->first();
+                if (! $detail) {
+                    break;
+                }
+
+                $detailsByOrder[(int) $detail->column_order] = $detail;
+                $detailId = (int) ($detail->parent_id ?? 0);
+            }
+
+            abort_unless(isset($detailsByOrder[1]), 422, 'The PAP hierarchy is incomplete and cannot be edited.');
+
+            ksort($detailsByOrder);
+            $parentDetailId = null;
+            $rootPpaId = 0;
+            $targetRowId = 0;
+
+            foreach ($levels as $index => $level) {
+                $columnOrder = $index + 1;
+                $name = trim((string) ($validated[$level['field']] ?? ''));
+                $recordTypeId = (int) ($recordTypeIds[$level['record_type']] ?? 0);
+
+                abort_if($recordTypeId <= 0, 422, "Record type {$level['record_type']} is not configured.");
+
+                $detail = $detailsByOrder[$columnOrder] ?? null;
+                if (! $detail && $name === '') {
+                    continue;
+                }
+
+                if (! $detail) {
+                    $newDetailId = DB::table('ppa_details')->insertGetId([
+                        'parent_id' => $parentDetailId,
+                        'column_order' => $columnOrder,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $detail = (object) [
+                        'id' => $newDetailId,
+                        'parent_id' => $parentDetailId,
+                        'column_order' => $columnOrder,
+                    ];
+                    $detailsByOrder[$columnOrder] = $detail;
+                }
+
+                $ppaRows = DB::table('ppa')
+                    ->where('types_id', $typeId)
+                    ->where('record_type_id', $recordTypeId)
+                    ->where('ppa_details_id', (int) $detail->id)
+                    ->orderBy('id')
+                    ->get();
+
+                if ($ppaRows->isEmpty()) {
+                    $insert = [
+                        'name' => $name,
+                        'types_id' => $typeId,
+                        'record_type_id' => $recordTypeId,
+                        'ppa_details_id' => (int) $detail->id,
+                        'indicator_id' => null,
+                        'office_id' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+
+                    if ($columnOrder === 1 && isset($validated['year'])) {
+                        $insert['year'] = (int) $validated['year'];
+                    }
+
+                    $ppaId = (int) DB::table('ppa')->insertGetId($insert);
+                } else {
+                    $update = [
+                        'name' => $name,
+                        'updated_at' => now(),
+                    ];
+
+                    if ($columnOrder === 1 && isset($validated['year'])) {
+                        $update['year'] = (int) $validated['year'];
+                    }
+
+                    DB::table('ppa')
+                        ->whereIn('id', $ppaRows->pluck('id')->all())
+                        ->update($update);
+
+                    $selectedLevelRow = $ppaRows->firstWhere('id', $row);
+                    $ppaId = (int) ($selectedLevelRow->id ?? $ppaRows->first()->id);
+                }
+
+                if ($columnOrder === 1) {
+                    $rootPpaId = $ppaId;
+                }
+                if ($name !== '') {
+                    $targetRowId = $ppaId;
+                }
+
+                $parentDetailId = (int) $detail->id;
+            }
+
+            abort_if($rootPpaId <= 0, 422, 'The PAP root row could not be updated.');
+
+            return (object) [
+                'id' => $rootPpaId,
+                'row_id' => $targetRowId > 0 ? $targetRowId : $row,
+                'title' => (string) ($validated['title'] ?? ''),
+                'program' => (string) ($validated['program'] ?? ''),
+                'project' => (string) ($validated['project'] ?? ''),
+                'activities' => (string) ($validated['activities'] ?? ''),
+                'subactivities' => (string) ($validated['subactivities'] ?? ''),
+                'subsubactivities' => (string) ($validated['subsubactivities'] ?? ''),
+                'level_6' => (string) ($validated['level_6'] ?? ''),
+                'level_7' => (string) ($validated['level_7'] ?? ''),
+                'level_8' => (string) ($validated['level_8'] ?? ''),
+                'year' => (int) ($validated['year'] ?? 0),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'PAP updated successfully.',
+            'pap' => $pap,
+        ]);
     }
 
     /**
@@ -73,6 +267,8 @@ class PhysicalInputController extends Controller
             'entries.*.car_totals' => ['nullable', 'array'],
             'entries.*.group_totals' => ['nullable', 'array'],
             'entries.*.imported_from' => ['nullable', 'string', 'max:50'],
+            'entries.*.changed_periods' => ['nullable', 'array'],
+            'entries.*.changed_periods.*' => ['string', Rule::in(self::PERIODS)],
         ];
 
         if ($withRemarks) {
@@ -86,10 +282,26 @@ class PhysicalInputController extends Controller
         $entries = $request->validate($rules)['entries'];
         $userOfficeId = (int) ($request->user()?->office_id ?? 0);
 
+        if ($request->user()?->requiresPenroApproval() && ! $withRemarks) {
+            abort(403, 'Users may enter accomplishments only. Targets are read-only.');
+        }
+
         if ($this->shouldScopeToUserOffice()) {
             foreach ($entries as $entry) {
                 abort_if((int) ($entry['office_id'] ?? 0) !== $userOfficeId, 403);
             }
+        }
+
+        if ($request->user()?->requiresPenroApproval()) {
+            $queuedCount = app(AccomplishmentSubmissionService::class)
+                ->queue($request->user(), 'physical', $sector, $entries);
+
+            return response()->json([
+                'success' => true,
+                'pending_approval' => true,
+                'message' => "$queuedCount accomplishment submission(s) sent to PENRO for approval.",
+                'queued_count' => $queuedCount,
+            ]);
         }
 
         $createdCount = 0;

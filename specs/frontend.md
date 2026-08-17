@@ -339,7 +339,7 @@ Imported rows may hydrate stored quarterly and annual values according to import
 When one sector receives a PAP table layout fix, review all corresponding files in:
 
 ```text
-resources/views/{admin,regional,users}/{sector}/
+resources/views/{admin,regional,penro,users}/{sector}/
 public/css/admin/{sector}/
 ```
 
@@ -507,7 +507,8 @@ The frontend has three major view namespaces, but these are presentation boundar
 
 - **Administrator:** system-wide dashboard, PAP and indicator management, user management, imports, and edit history
 - **Regional:** regional overview and cross-office performance visibility permitted by the backend
-- **Users:** office-scoped performance entry and review for user, PENRO, and CENRO roles
+- **Users/CENRO:** office-scoped accomplishment entry. Targets remain visible but read-only, accomplishment changes are submitted to PENRO for approval, and bell-based Notifications display unread decisions and PENRO decline reasons.
+- **PENRO:** office-scoped performance review plus an accomplishment queue for approving or declining submissions from its assigned CENRO offices.
 
 All authorization must still be enforced by routes, middleware, and controllers. Hiding a button or navigation item is not sufficient authorization.
 

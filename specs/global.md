@@ -51,9 +51,13 @@ Manages users and system-wide records, reviews performance information, and has 
 
 Reviews and manages regional performance data through regional dashboards and program-specific views.
 
+### PENRO
+
+Reviews performance data for the assigned provincial office and approves or declines accomplishment submissions before they enter the official records.
+
 ### User
 
-Records and reviews authorized physical and financial performance data for assigned programs and indicators.
+Submits authorized physical and financial accomplishments for PENRO approval. Target values are read-only.
 
 ## Core Modules
 

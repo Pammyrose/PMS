@@ -31,15 +31,15 @@ class EngpController extends Controller
         $programId = $program !== null ? (int) $program : null;
 
         $sortProgramHierarchy = function ($row) {
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         };
 
         $programsRaw = $this->getEngpPrograms($programId, $search, (int) $year)
@@ -187,16 +187,16 @@ class EngpController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -300,12 +300,12 @@ class EngpController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -320,16 +320,16 @@ class EngpController extends Controller
         // Also expand programsRaw for consistency (already expanded above)
         $programsRaw = $programsRaw->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -781,6 +781,7 @@ class EngpController extends Controller
         $typeId = $this->getEngpTypeId();
         $recordTypeIds = $this->getEngpRecordTypeIds();
         $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
+        $sourceOrder = max(0, (int) ($papData['source_order'] ?? 0));
         $forceDuplicateLeaf = !empty($papData['duplicate_leaf']);
 
         $levels = [
@@ -839,11 +840,25 @@ class EngpController extends Controller
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
+
+                if ($sourceOrder > 0) {
+                    DB::table('ppa_details')
+                        ->where('id', $detailId)
+                        ->where(function ($query) use ($sourceOrder) {
+                            $query->whereNull('source_order')
+                                ->orWhere('source_order', '>', $sourceOrder);
+                        })
+                        ->update([
+                            'source_order' => $sourceOrder,
+                            'updated_at' => now(),
+                        ]);
+                }
             } else {
                 $isNewHierarchy = false;
                 $detailId = DB::table('ppa_details')->insertGetId([
                     'parent_id' => $parentDetailId,
                     'column_order' => $index + 1,
+                    'source_order' => $sourceOrder > 0 ? $sourceOrder : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -890,6 +905,18 @@ class EngpController extends Controller
         ];
     }
 
+    private function sourceOrderedHierarchySortValue($sourceOrder, $value): string
+    {
+        $sourceOrder = (int) ($sourceOrder ?? 0);
+
+        if ($sourceOrder > 0 && trim((string) ($value ?? '')) !== '') {
+            return '0|' . str_pad((string) $sourceOrder, 10, '0', STR_PAD_LEFT)
+                . '|' . $this->hierarchySortValue($value);
+        }
+
+        return '1|' . $this->hierarchySortValue($value);
+    }
+
     private function hierarchySortValue($value, bool $singleIAsRoman = false): string
     {
         $raw = trim((string) ($value ?? ''));
@@ -898,6 +925,17 @@ class EngpController extends Controller
 
         if ($normalized === '') {
             return '4|999999.999999.999999.999999.999999|';
+        }
+
+        if (preg_match('/^(\d+(?:\.\d+)*)\.([a-z])(?:(?:[.)-]+)(?=\s|[a-z(]|$)|(?=\s|$))/i', $normalized, $matches)) {
+            $segments = array_map('intval', explode('.', $matches[1]));
+            $segments[] = ord(strtoupper($matches[2])) - 64;
+            $segments = array_pad($segments, 5, 0);
+            $numericKey = collect(array_slice($segments, 0, 5))
+                ->map(fn ($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                ->implode('.');
+
+            return '0|' . $numericKey . '|' . $normalized;
         }
 
         if (
@@ -1116,8 +1154,10 @@ public function update(Request $request, Engp_Indicator $indicator)
         && $selectedOfficeIds !== $currentOfficeIds;
 
     $hasMeaningfulChange = $nameChanged || $typeChanged || $officeChanged;
-    $shouldCreateSnapshot = $nameChanged
-        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId));
+    $shouldCreateSnapshot = ! $request->boolean('update_in_place') && (
+        $nameChanged
+        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId))
+    );
 
     if ($shouldCreateSnapshot) {
         $newIndicator = new Engp_Indicator();
@@ -1976,6 +2016,28 @@ private function getIndicatorsGroupedByProgram(array $programIds, ?int $year = n
             ]);
         });
 
+    Engp_Accomplishment::query()
+        ->when($year !== null, fn ($query) => $query->where('years', $year))
+        ->orderBy('id')
+        ->get(['id', 'office_ids', 'values'])
+        ->each(function ($accomplishment) use (&$indicatorAssignments, $programIdLookup) {
+            $meta = $this->parseSectionValues($accomplishment->values ?? null);
+            $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+            $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+            if ($programId <= 0 || $indicatorId <= 0 || !isset($programIdLookup[$programId])) {
+                return;
+            }
+
+            $officeId = (int) ($accomplishment->office_ids ?? 0);
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $officeId > 0 ? [$officeId] : [],
+                'sort_order' => (int) ($accomplishment->id ?? PHP_INT_MAX),
+            ]);
+        });
+
     $indicatorAssignments = $indicatorAssignments
         ->groupBy(fn ($row) => (int) $row['program_id'] . '|' . (int) $row['indicator_id'])
         ->map(function ($rows) {
@@ -2205,14 +2267,23 @@ private function getEngpPrograms(?int $programId = null, string $search = '', ?i
             'program_ppa.created_at',
             'program_ppa.updated_at',
             'program_ppa.name as title',
+            'program_detail.source_order as title_source_order',
             'project_ppa.name as program',
+            'project_detail.source_order as program_source_order',
             'main_activity_ppa.name as project',
+            'main_activity_detail.source_order as project_source_order',
             'sub_activity_ppa.name as activities',
+            'sub_activity_detail.source_order as activities_source_order',
             'sub_sub_activity_ppa.name as subactivities',
+            'sub_sub_activity_detail.source_order as subactivities_source_order',
             'sub_sub_sub_activity_ppa.name as subsubactivities',
+            'sub_sub_sub_activity_detail.source_order as subsubactivities_source_order',
             'level_7_ppa.name as level_6',
+            'level_7_detail.source_order as level_6_source_order',
             'level_8_ppa.name as level_7',
+            'level_8_detail.source_order as level_7_source_order',
             'level_9_ppa.name as level_8',
+            'level_9_detail.source_order as level_8_source_order',
         ])
         ->orderBy('program_ppa.created_at')
         ->orderBy('program_ppa.id');

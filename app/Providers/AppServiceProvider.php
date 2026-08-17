@@ -6,6 +6,7 @@ use App\Models\FinancialAccomplishment;
 use App\Models\FinancialTarget;
 use App\Models\PhysicalAccomplishment;
 use App\Models\PhysicalTarget;
+use App\Services\NotificationCountService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -25,9 +26,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->loadMigrationsFrom([
+            database_path('migrations/core'),
+            database_path('migrations/sectors'),
+            database_path('migrations/features'),
+        ]);
+
+        View::composer('components.sidebar', function ($view) {
+            $user = auth()->user();
+            $view->with(app(NotificationCountService::class)->for($user));
+        });
+
         View::composer([
             'admin.*.*_physical',
             'regional.*.*_physical',
+            'penro.*.*_physical',
             'users.*.*_physical',
         ], function ($view) {
             $nameParts = explode('.', $view->getName());

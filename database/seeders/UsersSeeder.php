@@ -24,10 +24,16 @@ class UsersSeeder extends Seeder
                 'role'              => 'admin',
             ],
             [
-                'name' => 'User User',
-                'email' => 'user@denr.gov.ph',
+                'name' => 'Cenro Cenro',
+                'email' => 'cenro@denr.gov.ph',
                 'password' => Hash::make('password'),
-                'role'              => 'user',
+                'role'              => 'cenro',
+            ],
+            [
+                'name' => 'Penro Penro',
+                'email' => 'penro@denr.gov.ph',
+                'password' => Hash::make('password'),
+                'role'              => 'penro',
             ],
         ], ['email'], ['name', 'password', 'role']);
     }

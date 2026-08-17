@@ -46,10 +46,19 @@ class User extends Authenticatable
         return in_array($this->role, ['super-admin', 'ro-office', 'ro office'], true);
     }
 
+    public function isPenro(): bool
+    {
+        return $this->role === 'penro';
+    }
+
+    public function requiresPenroApproval(): bool
+    {
+        return in_array($this->role, ['user', 'cenro'], true);
+    }
 
     public function isUser(): bool
     {
-        return in_array($this->role, ['user', 'penro', 'cenro'], true);
+        return in_array($this->role, ['user', 'cenro'], true);
     }
 
     public function office()

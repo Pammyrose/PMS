@@ -6,8 +6,6 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
-        @include('users.gass.partials.gass_physical_excel_upload')
-
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
             {{-- Preserve important filters --}}

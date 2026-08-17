@@ -90,7 +90,10 @@
                     papFormData.append('level_8', papLevel8);
                     papFormData.append('year', papYear || String(currentYear || ''));
 
-                    const papResponse = await fetch(@json(route('admin.nra_physical.pap.store')), {
+                    const papUpdateUrl = String(form.dataset.papUpdateUrl || '');
+                    const isEditingPap = form.dataset.editMode === 'true' && papUpdateUrl !== '';
+                    if (isEditingPap) papFormData.append('_method', 'PATCH');
+                    const papResponse = await fetch(isEditingPap ? papUpdateUrl : @json(route('admin.nra_physical.pap.store')), {
                         method: 'POST',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
@@ -112,6 +115,7 @@
 
                 const formData = new FormData();
                 formData.append('_token', token);
+                if (form.dataset.editMode === 'true') formData.append('update_in_place', '1');
                 formData.append('program_id', programId);
                 if (rowId) {
                     formData.append('row_id', rowId);

@@ -781,6 +781,7 @@ class StoController extends Controller
         $typeId = $this->getStoTypeId();
         $recordTypeIds = $this->getStoRecordTypeIds();
         $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
+        $sourceOrder = max(0, (int) ($papData['source_order'] ?? 0));
         $forceDuplicateLeaf = !empty($papData['duplicate_leaf']);
 
         $levels = [
@@ -839,14 +840,31 @@ class StoController extends Controller
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
+
+                if ($sourceOrder > 0) {
+                    DB::table('ppa_details')
+                        ->where('id', $detailId)
+                        ->where(function ($query) use ($sourceOrder) {
+                            $query->whereNull('source_order')
+                                ->orWhere('source_order', '>', $sourceOrder);
+                        })
+                        ->update([
+                            'source_order' => $sourceOrder,
+                            'updated_at' => now(),
+                        ]);
+                }
             } else {
                 $isNewHierarchy = false;
-                $detailId = DB::table('ppa_details')->insertGetId([
+                $detailData = [
                     'parent_id' => $parentDetailId,
                     'column_order' => $index + 1,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+                if ($sourceOrder > 0) {
+                    $detailData['source_order'] = $sourceOrder;
+                }
+                $detailId = DB::table('ppa_details')->insertGetId($detailData);
 
                 $ppaInsertData = [
                     'name' => $level['name'],
@@ -898,6 +916,17 @@ class StoController extends Controller
 
         if ($normalized === '') {
             return '4|999999.999999.999999.999999.999999|';
+        }
+
+        if (preg_match('/^(\d+(?:\.\d+)*)\.([a-z])(?:(?:[.)-]+)(?=\s|[a-z(]|$)|(?=\s|$))/i', $normalized, $matches)) {
+            $segments = array_map('intval', explode('.', $matches[1]));
+            $segments[] = ord(strtoupper($matches[2])) - 64;
+            $segments = array_pad($segments, 5, 0);
+            $numericKey = collect(array_slice($segments, 0, 5))
+                ->map(fn ($segment) => str_pad((string) $segment, 6, '0', STR_PAD_LEFT))
+                ->implode('.');
+
+            return '0|' . $numericKey . '|' . $normalized;
         }
 
         if (
@@ -1116,8 +1145,10 @@ public function update(Request $request, Sto_Indicator $indicator)
         && $selectedOfficeIds !== $currentOfficeIds;
 
     $hasMeaningfulChange = $nameChanged || $typeChanged || $officeChanged;
-    $shouldCreateSnapshot = $nameChanged
-        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId));
+    $shouldCreateSnapshot = ! $request->boolean('update_in_place') && (
+        $nameChanged
+        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId))
+    );
 
     if ($shouldCreateSnapshot) {
         $newIndicator = new Sto_Indicator();
@@ -1857,6 +1888,7 @@ private function resolveIndicatorTargetRowId(int $rowId, string $indicatorName =
         if ($currentIndicatorName !== null && mb_strtolower(trim((string) $currentIndicatorName)) === $normalizedIndicatorName) {
             return $rowId;
         }
+
     }
 
     return (int) DB::table('ppa')->insertGetId([
@@ -1973,6 +2005,28 @@ private function getIndicatorsGroupedByProgram(array $programIds, ?int $year = n
                 'indicator_id' => $indicatorId,
                 'office_ids' => $officeId > 0 ? [$officeId] : [],
                 'sort_order' => (int) ($target->id ?? PHP_INT_MAX),
+            ]);
+        });
+
+    Sto_Accomplishment::query()
+        ->when($year !== null, fn ($query) => $query->where('years', $year))
+        ->orderBy('id')
+        ->get(['id', 'office_ids', 'values'])
+        ->each(function ($accomplishment) use (&$indicatorAssignments, $programIdLookup) {
+            $meta = $this->parseSectionValues($accomplishment->values ?? null);
+            $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+            $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+            if ($programId <= 0 || $indicatorId <= 0 || !isset($programIdLookup[$programId])) {
+                return;
+            }
+
+            $officeId = (int) ($accomplishment->office_ids ?? 0);
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $officeId > 0 ? [$officeId] : [],
+                'sort_order' => (int) ($accomplishment->id ?? PHP_INT_MAX),
             ]);
         });
 
@@ -2413,7 +2467,7 @@ private function collectEmptyActivityParentDetailIds(int $rootDetailId, array $d
     return $extraDetailIds;
 }
 
-private function getStoTypeId(): int
+protected function getStoTypeId(): int
 {
     $typeId = DB::table('types')
         ->where('code', 'STO')

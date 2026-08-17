@@ -40,6 +40,17 @@ $sectorClasses = [
     'continuing' => 'Continuing',
 ];
 $importSectors = ['sto'];
+$componentImportSectors = [
+    'enf' => 'enf_excel_upload',
+    'pa' => 'pa_excel_upload',
+    'engp' => 'engp_excel_upload',
+    'lands' => 'lands_excel_upload',
+    'soilcon' => 'soilcon_excel_upload',
+    'nra' => 'nra_excel_upload',
+    'paria' => 'paria_excel_upload',
+    'cobb' => 'cobb_excel_upload',
+    'continuing' => 'continuing_excel_upload',
+];
 $partialSuffixes = [
     'physical_header.blade.php',
     'physical_main_scripts.blade.php',
@@ -171,6 +182,17 @@ foreach ($roles as $role) {
             }
 
             $content = $adapt($content, $sector, $label);
+
+            if (array_key_exists($sector, $componentImportSectors) && $suffix === 'physical_toolbar.blade.php') {
+                $componentName = $componentImportSectors[$sector];
+                $content = (string) preg_replace(
+                    '/(<i class="fa fa-plus me-1"><\/i> Add PAP\s*<\/button>\s*)/',
+                    "$1\n        @if(auth()->user()?->isAdmin())\n            @include('components.{$componentName}')\n        @endif\n\n",
+                    $content,
+                    1
+                );
+            }
+
             $writeOrCheck("{$targetDirectory}/partials/{$sector}_{$suffix}", $content);
         }
 

@@ -186,6 +186,40 @@
         </div>
       </details>
 
+      @if ($signedInUser?->isPenro())
+        <a href="{{ route('penro.submissions.index') }}"
+          class="flex items-center px-4 py-3 rounded-lg text-white {{ request()->routeIs('penro.submissions.*') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <i class="fa-solid fa-bell mr-3 w-5 text-center"></i>
+          Notifications
+          <span id="notificationCountBadge"
+                class="ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white {{ ($pendingPenroNotifications ?? 0) > 0 ? '' : 'hidden' }}"
+                data-count-url="{{ route('notifications.count') }}"
+                data-version="{{ $notificationVersion ?? '0' }}"
+                aria-live="polite"
+                aria-label="{{ $pendingPenroNotifications ?? 0 }} pending accomplishment notifications"
+                @if(($pendingPenroNotifications ?? 0) < 1) hidden @endif>
+            {{ ($pendingPenroNotifications ?? 0) > 99 ? '99+' : ($pendingPenroNotifications ?? 0) }}
+          </span>
+        </a>
+      @endif
+
+      @if ($signedInUser?->requiresPenroApproval())
+        <a href="{{ route('notifications.index') }}"
+          class="flex items-center px-4 py-3 rounded-lg text-white {{ request()->routeIs('notifications.index') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <i class="fa-solid fa-bell mr-3 w-5 text-center"></i>
+          Notifications
+          <span id="notificationCountBadge"
+                class="ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white {{ ($unreadSubmissionNotifications ?? 0) > 0 ? '' : 'hidden' }}"
+                data-count-url="{{ route('notifications.count') }}"
+                data-version="{{ $notificationVersion ?? '0' }}"
+                aria-live="polite"
+                aria-label="{{ $unreadSubmissionNotifications ?? 0 }} unread submission notifications"
+                @if(($unreadSubmissionNotifications ?? 0) < 1) hidden @endif>
+            {{ ($unreadSubmissionNotifications ?? 0) > 99 ? '99+' : ($unreadSubmissionNotifications ?? 0) }}
+          </span>
+        </a>
+      @endif
+
 
       @if ($canManageSystem)
         <a href="{{ route('user') }}"
@@ -193,7 +227,9 @@
           <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
           Users & Roles
         </a>
+      @endif
 
+      @if ($canManageSystem || ($signedInUser?->isPenro() ?? false))
         <a href="{{ route('history') }}"
           class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('history') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
           <i class="fa-solid fa-clock-rotate-left mr-3 w-5 text-center"></i>
@@ -384,6 +420,88 @@
         link.addEventListener('blur', cancelPrefetch, { passive: true });
         link.addEventListener('click', showNavigationPending, { passive: true });
       });
+    })();
+
+    (() => {
+      const badge = document.getElementById('notificationCountBadge');
+      const countUrl = badge?.dataset.countUrl;
+      if (!badge || !countUrl) return;
+
+      let timerId = null;
+      let requestInFlight = false;
+      let pollingEnabled = true;
+
+      const scheduleRefresh = (delay = 3000) => {
+        if (!pollingEnabled) return;
+        window.clearTimeout(timerId);
+        timerId = window.setTimeout(refreshCount, delay);
+      };
+
+      const renderCount = (count, label) => {
+        const visible = count > 0;
+        badge.textContent = count > 99 ? '99+' : String(count);
+        badge.hidden = !visible;
+        badge.classList.toggle('hidden', !visible);
+        badge.setAttribute('aria-label', `${count} ${label}`);
+      };
+
+      async function refreshCount() {
+        if (document.hidden) {
+          scheduleRefresh();
+          return;
+        }
+
+        if (requestInFlight) {
+          scheduleRefresh(250);
+          return;
+        }
+
+        requestInFlight = true;
+
+        try {
+          const response = await fetch(countUrl, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {
+              Accept: 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          });
+
+          if (response.status === 401 || response.status === 403) {
+            pollingEnabled = false;
+            return;
+          }
+
+          if (!response.ok) throw new Error(`Notification count request failed (${response.status})`);
+
+          const data = await response.json();
+          const count = Math.max(0, Number.parseInt(data.count, 10) || 0);
+          const previousVersion = badge.dataset.version || '';
+          const nextVersion = String(data.version || '');
+          renderCount(count, data.label || 'notifications');
+
+          if (nextVersion) badge.dataset.version = nextVersion;
+
+          if (previousVersion && nextVersion && previousVersion !== nextVersion) {
+            window.dispatchEvent(new CustomEvent('pms:notifications-updated', {
+              detail: { previousVersion, version: nextVersion },
+            }));
+          }
+        } catch (error) {
+          console.warn('Notification count could not be refreshed.', error);
+        } finally {
+          requestInFlight = false;
+          scheduleRefresh();
+        }
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleRefresh(0);
+      });
+      window.addEventListener('focus', () => scheduleRefresh(0));
+
+      scheduleRefresh(0);
     })();
   </script>
 

@@ -10,6 +10,64 @@ use ZipArchive;
 
 class SimpleXlsxReader
 {
+    /** @return array<int, string> */
+    public function sheetNames(string $path): array
+    {
+        if (! is_file($path)) {
+            throw new RuntimeException("File not found: {$path}");
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($path) !== true) {
+            throw new RuntimeException('Unable to open Excel file.');
+        }
+
+        try {
+            $workbookXml = $zip->getFromName('xl/workbook.xml');
+            if ($workbookXml === false) {
+                throw new RuntimeException('Unable to read the Excel workbook.');
+            }
+
+            $workbook = simplexml_load_string($workbookXml);
+            if (! $workbook instanceof SimpleXMLElement) {
+                throw new RuntimeException('Unable to parse the Excel workbook.');
+            }
+
+            $names = [];
+            foreach ($workbook->sheets->sheet as $sheet) {
+                $name = trim((string) ($sheet->attributes()['name'] ?? ''));
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+
+            return $names;
+        } finally {
+            $zip->close();
+        }
+    }
+
+    /** @param array<int, string> $candidates */
+    public function resolveSheetName(string $path, array $candidates): string
+    {
+        $sheetNames = $this->sheetNames($path);
+
+        foreach ($candidates as $candidate) {
+            foreach ($sheetNames as $sheetName) {
+                if (strcasecmp(trim($sheetName), trim((string) $candidate)) === 0) {
+                    return $sheetName;
+                }
+            }
+        }
+
+        $expected = implode(' or ', array_map(
+            static fn (string $name): string => '"'.$name.'"',
+            array_values(array_filter(array_map('trim', $candidates)))
+        ));
+
+        throw new RuntimeException('Sheet not found: '.$expected);
+    }
+
     public function rows(string $path, string $sheetName, bool $skipHiddenRows = false): Generator
     {
         foreach ($this->rowsWithStyles($path, $sheetName, $skipHiddenRows) as $rowNumber => $row) {
@@ -186,7 +244,7 @@ class SimpleXlsxReader
         $workbook->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
         foreach ($workbook->sheets->sheet as $sheet) {
             $attrs = $sheet->attributes();
-            if (strcasecmp((string) $attrs['name'], $sheetName) !== 0) {
+            if (strcasecmp(trim((string) $attrs['name']), trim($sheetName)) !== 0) {
                 continue;
             }
 

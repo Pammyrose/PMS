@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\EditHistory;
+use App\Models\Office;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
@@ -42,7 +44,9 @@ class HistoryController extends Controller
             return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'roles', 'editedParts', 'actions'));
         }
 
-        $historyQuery = EditHistory::query()
+        $visibleHistoryQuery = $this->visibleHistoryQuery($request);
+
+        $historyQuery = (clone $visibleHistoryQuery)
             ->with('user.office')
             ->when(!empty($filters['module']), function ($query) use ($filters) {
                 $query->where('module', $filters['module']);
@@ -71,12 +75,28 @@ class HistoryController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        $modules = EditHistory::query()->whereNotNull('module')->select('module')->distinct()->orderBy('module')->pluck('module');
-        $users = EditHistory::query()->whereNotNull('user_name')->select('user_name')->distinct()->orderBy('user_name')->pluck('user_name');
-        $roles = EditHistory::query()->whereNotNull('user_role')->select('user_role')->distinct()->orderBy('user_role')->pluck('user_role');
-        $editedParts = EditHistory::query()->whereNotNull('edited_part')->select('edited_part')->distinct()->orderBy('edited_part')->pluck('edited_part');
-        $actions = EditHistory::query()->whereNotNull('action')->select('action')->distinct()->orderBy('action')->pluck('action');
+        $modules = (clone $visibleHistoryQuery)->whereNotNull('module')->select('module')->distinct()->orderBy('module')->pluck('module');
+        $users = (clone $visibleHistoryQuery)->whereNotNull('user_name')->select('user_name')->distinct()->orderBy('user_name')->pluck('user_name');
+        $roles = (clone $visibleHistoryQuery)->whereNotNull('user_role')->select('user_role')->distinct()->orderBy('user_role')->pluck('user_role');
+        $editedParts = (clone $visibleHistoryQuery)->whereNotNull('edited_part')->select('edited_part')->distinct()->orderBy('edited_part')->pluck('edited_part');
+        $actions = (clone $visibleHistoryQuery)->whereNotNull('action')->select('action')->distinct()->orderBy('action')->pluck('action');
 
         return view('admin.history', compact('histories', 'filters', 'modules', 'users', 'roles', 'editedParts', 'actions'));
+    }
+
+    private function visibleHistoryQuery(Request $request): Builder
+    {
+        $query = EditHistory::query();
+        $user = $request->user();
+
+        if (! $user?->isPenro()) {
+            return $query;
+        }
+
+        $officeIds = Office::serviceAreaOfficeIdsForPenro((int) $user->office_id);
+
+        return $query->whereHas('user', function (Builder $userQuery) use ($officeIds) {
+            $userQuery->whereIn('office_id', $officeIds);
+        });
     }
 }

@@ -1,5 +1,5 @@
-<div class="year-header">
+﻿<div class="year-header">
     <div class="d-flex align-items-center justify-content-center" style="padding: 0 20px;">
-        <span>LANDS - Physical Performance</span>
+        <span>LANDS Sector</span>
     </div>
 </div>

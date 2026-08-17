@@ -1116,8 +1116,10 @@ public function update(Request $request, Soilcon_Indicator $indicator)
         && $selectedOfficeIds !== $currentOfficeIds;
 
     $hasMeaningfulChange = $nameChanged || $typeChanged || $officeChanged;
-    $shouldCreateSnapshot = $nameChanged
-        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId));
+    $shouldCreateSnapshot = ! $request->boolean('update_in_place') && (
+        $nameChanged
+        || ($hasMeaningfulChange && $this->isIndicatorAssignedToOtherRows((int) $indicator->id, $targetRowId))
+    );
 
     if ($shouldCreateSnapshot) {
         $newIndicator = new Soilcon_Indicator();
@@ -1976,6 +1978,28 @@ private function getIndicatorsGroupedByProgram(array $programIds, ?int $year = n
             ]);
         });
 
+    Soilcon_Accomplishment::query()
+        ->when($year !== null, fn ($query) => $query->where('years', $year))
+        ->orderBy('id')
+        ->get(['id', 'office_ids', 'values'])
+        ->each(function ($accomplishment) use (&$indicatorAssignments, $programIdLookup) {
+            $meta = $this->parseSectionValues($accomplishment->values ?? null);
+            $programId = (int) ($meta['row_id'] ?? $meta['program_id'] ?? 0);
+            $indicatorId = (int) ($meta['indicator_id'] ?? 0);
+
+            if ($programId <= 0 || $indicatorId <= 0 || !isset($programIdLookup[$programId])) {
+                return;
+            }
+
+            $officeId = (int) ($accomplishment->office_ids ?? 0);
+            $indicatorAssignments->push([
+                'program_id' => $programId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $officeId > 0 ? [$officeId] : [],
+                'sort_order' => (int) ($accomplishment->id ?? PHP_INT_MAX),
+            ]);
+        });
+
     $indicatorAssignments = $indicatorAssignments
         ->groupBy(fn ($row) => (int) $row['program_id'] . '|' . (int) $row['indicator_id'])
         ->map(function ($rows) {
@@ -2416,7 +2440,7 @@ private function collectEmptyActivityParentDetailIds(int $rootDetailId, array $d
 private function getSoilconTypeId(): int
 {
     $typeId = DB::table('types')
-        ->where('code', 'SOILCON')
+        ->where('code', 'Soilcon')
         ->value('id');
 
     if (!$typeId) {

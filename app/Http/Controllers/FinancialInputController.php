@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FinancialAccomplishment;
 use App\Models\FinancialTarget;
+use App\Services\AccomplishmentSubmissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,7 +17,7 @@ class FinancialInputController extends Controller
         'gass' => 'GASS',
         'sto' => 'STO',
         'enf' => 'ENF',
-        'pa' => 'PA',
+        'pa' => 'Biodiv',
         'engp' => 'ENGP',
         'lands' => 'Lands',
         'soilcon' => 'Soilcon',
@@ -59,6 +60,8 @@ class FinancialInputController extends Controller
             'entries.*.kind' => ['nullable', Rule::in(['target', 'accomplishment'])],
             'entries.*.car_totals' => ['nullable', 'array'],
             'entries.*.group_totals' => ['nullable', 'array'],
+            'entries.*.changed_periods' => ['nullable', 'array'],
+            'entries.*.changed_periods.*' => ['string', Rule::in(self::PERIODS)],
         ];
 
         foreach (self::PERIODS as $period) {
@@ -73,6 +76,23 @@ class FinancialInputController extends Controller
             foreach ($entries as $entry) {
                 abort_if((int) ($entry['office_id'] ?? 0) !== $userOfficeId, 403);
             }
+        }
+
+        if ($user?->requiresPenroApproval()) {
+            $containsTarget = collect($entries)
+                ->contains(fn (array $entry) => ($entry['kind'] ?? 'target') !== 'accomplishment');
+
+            abort_if($containsTarget, 403, 'Users may enter accomplishments only. Financial targets are read-only.');
+
+            $queuedCount = app(AccomplishmentSubmissionService::class)
+                ->queue($user, 'financial', $sector, $entries);
+
+            return response()->json([
+                'success' => true,
+                'pending_approval' => true,
+                'message' => "$queuedCount financial accomplishment submission(s) sent to PENRO for approval.",
+                'queued_count' => $queuedCount,
+            ]);
         }
 
         $createdCount = 0;

@@ -35,6 +35,12 @@ class TypeSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
+                'code' => 'ENGP',
+                'desc' => 'Enhanced National Greening Program',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
                 'code' => 'Lands',
                 'desc' => 'Land Management',
                 'created_at' => now(),
@@ -52,8 +58,31 @@ class TypeSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'code' => 'PARIA',
+                'desc' => 'PARIA',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'COBB',
+                'desc' => 'COBB',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'CONTINUING',
+                'desc' => 'Continuing Activities',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ];
 
-        DB::table('types')->insert($types);
+        foreach ($types as $type) {
+            DB::table('types')->updateOrInsert(
+                ['code' => $type['code']],
+                $type
+            );
+        }
     }
 }

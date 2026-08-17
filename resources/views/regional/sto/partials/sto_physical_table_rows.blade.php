@@ -390,6 +390,7 @@
                 </tr>
             @endif
             @foreach($subSubActivityGroup as $subProgram)
+                @continue(!\App\Support\PhysicalHierarchyRow::ownsDisplayedHierarchy($subProgram))
                 @php
                     $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
                     $allowParentActivityIndicator = $isEmptyOrNaHierarchyValue($subProgram->subactivities ?? null);

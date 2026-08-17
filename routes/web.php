@@ -6,9 +6,7 @@ use App\Http\Controllers\FinancialInputController;
 use App\Http\Controllers\PhysicalInputController;
 use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\GassController;
-use App\Http\Controllers\GassExcelUploadController;
 use App\Http\Controllers\StoController;
-use App\Http\Controllers\StoExcelUploadController;
 use App\Http\Controllers\EnfController;
 use App\Http\Controllers\PaController;
 use App\Http\Controllers\EngpController;
@@ -18,8 +16,13 @@ use App\Http\Controllers\NraController;
 use App\Http\Controllers\PariaController;
 use App\Http\Controllers\CobbController;
 use App\Http\Controllers\ContinuingController;
+use App\Http\Controllers\PhysicalExcelUploadController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\HistoryController;
+use App\Http\Controllers\WfpExcelExportController;
+use App\Http\Controllers\PenroSubmissionController;
+use App\Http\Controllers\UserSubmissionController;
+use App\Http\Controllers\NotificationCountController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -29,6 +32,8 @@ Route::post('/login', [AuthController::class, 'login']);
 $adminRoles = 'role:admin';
 $viewRoles = 'role:super-admin,admin,user,penro,cenro,ro-office,ro office';
 $userRole = 'role:user,penro,cenro';
+$penroRole = 'role:penro';
+$wfpExportRoles = 'role:super-admin,admin,penro,ro-office,ro office';
 
 // admin pages
 Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', $viewRoles])->name('dashboard');
@@ -63,10 +68,29 @@ Route::get('/cobb_physical/{program?}', [CobbController::class, 'index'])->middl
 Route::get('/continuing', [ContinuingController::class, 'index'])->middleware(['auth', $viewRoles])->name('continuing');
 Route::get('/continuing_physical/{program?}', [ContinuingController::class, 'index'])->middleware(['auth', $viewRoles])->name('continuing_physical');
 Route::get('/user', [UserController::class, 'index'])->middleware(['auth', $adminRoles])->name('user');
-Route::get('/history', [HistoryController::class, 'index'])->middleware(['auth', $adminRoles])->name('history');
+Route::get('/history', [HistoryController::class, 'index'])->middleware(['auth', 'role:admin,penro'])->name('history');
+Route::prefix('penro/submissions')->name('penro.submissions.')->middleware(['auth', $penroRole])->group(function () {
+    Route::get('/', [PenroSubmissionController::class, 'index'])->name('index');
+    Route::patch('/{submission}/approve', [PenroSubmissionController::class, 'approve'])->name('approve');
+    Route::patch('/{submission}/decline', [PenroSubmissionController::class, 'decline'])->name('decline');
+});
+Route::get('/notifications', [UserSubmissionController::class, 'index'])
+    ->middleware(['auth', 'role:user,cenro'])
+    ->name('notifications.index');
+Route::get('/notifications/count', NotificationCountController::class)
+    ->middleware(['auth', $userRole])
+    ->name('notifications.count');
+Route::get('/wfp/export/{sector}', WfpExcelExportController::class)
+    ->middleware(['auth', $wfpExportRoles])
+    ->whereIn('sector', ['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'])
+    ->name('wfp.export');
 Route::post('/financial-inputs/{sector}/store', [FinancialInputController::class, 'store'])
     ->middleware(['auth', $viewRoles, 'field.history'])
     ->name('financial_inputs.store');
+Route::patch('/admin/physical-inputs/{sector}/pap/{row}', [PhysicalInputController::class, 'updatePap'])
+    ->middleware(['auth', $adminRoles, 'field.history'])
+    ->whereNumber('row')
+    ->name('physical_pap.update');
 Route::post('/users', [UserController::class, 'store'])->middleware(['auth', $adminRoles, 'field.history'])->name('users.store');
 Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware(['auth', $adminRoles])->name('users.edit');
 Route::put('/users/{user}', [UserController::class, 'update'])->middleware(['auth', $adminRoles, 'field.history'])->name('users.update');
@@ -95,6 +119,7 @@ foreach ($userPhysicalSaveControllers as $physicalKey => $controllerClass) {
         ->group(function () use ($physicalKey) {
             Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])
                 ->defaults('sector', $physicalKey)
+                ->middleware('role:penro')
                 ->name('targets.store');
             Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])
                 ->defaults('sector', $physicalKey)
@@ -109,8 +134,8 @@ Route::prefix('admin/gass_physical')->name('admin.gass_physical.')->middleware([
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'gass')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'gass')->name('accomplishments.store');
     Route::delete('/rows', [GassController::class, 'destroyPhysicalRow'])->name('rows.destroy');
-    Route::post('/import-excel/preview', [GassExcelUploadController::class, 'previewExcelImport'])->name('import_excel.preview');
-    Route::post('/import-excel', [GassExcelUploadController::class, 'importExcel'])->name('import_excel');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'gass')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'gass')->name('import_excel');
     Route::post('/indicators', [GassController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [GassController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [GassController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -123,8 +148,8 @@ Route::prefix('admin/sto_physical')->name('admin.sto_physical.')->middleware(['a
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'sto')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'sto')->name('accomplishments.store');
     Route::delete('/rows', [StoController::class, 'destroyPhysicalRow'])->name('rows.destroy');
-    Route::post('/import-excel/preview', [StoExcelUploadController::class, 'previewExcelImport'])->name('import_excel.preview');
-    Route::post('/import-excel', [StoExcelUploadController::class, 'importExcel'])->name('import_excel');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'sto')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'sto')->name('import_excel');
     Route::post('/indicators', [StoController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [StoController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [StoController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -137,6 +162,8 @@ Route::prefix('admin/enf_physical')->name('admin.enf_physical.')->middleware(['a
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'enf')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'enf')->name('accomplishments.store');
     Route::delete('/rows', [EnfController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'enf')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'enf')->name('import_excel');
     Route::post('/indicators', [EnfController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [EnfController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [EnfController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -149,6 +176,8 @@ Route::prefix('admin/pa_physical')->name('admin.pa_physical.')->middleware(['aut
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'pa')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'pa')->name('accomplishments.store');
     Route::delete('/rows', [PaController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'pa')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'pa')->name('import_excel');
     Route::post('/indicators', [PaController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [PaController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [PaController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -161,6 +190,8 @@ Route::prefix('admin/engp_physical')->name('admin.engp_physical.')->middleware([
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'engp')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'engp')->name('accomplishments.store');
     Route::delete('/rows', [EngpController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'engp')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'engp')->name('import_excel');
     Route::post('/indicators', [EngpController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [EngpController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [EngpController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -173,6 +204,8 @@ Route::prefix('admin/lands_physical')->name('admin.lands_physical.')->middleware
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'lands')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'lands')->name('accomplishments.store');
     Route::delete('/rows', [LandsController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'lands')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'lands')->name('import_excel');
     Route::post('/indicators', [LandsController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [LandsController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [LandsController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -185,6 +218,8 @@ Route::prefix('admin/soilcon_physical')->name('admin.soilcon_physical.')->middle
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'soilcon')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'soilcon')->name('accomplishments.store');
     Route::delete('/rows', [SoilconController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'soilcon')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'soilcon')->name('import_excel');
     Route::post('/indicators', [SoilconController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [SoilconController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [SoilconController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -197,6 +232,8 @@ Route::prefix('admin/nra_physical')->name('admin.nra_physical.')->middleware(['a
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'nra')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'nra')->name('accomplishments.store');
     Route::delete('/rows', [NraController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'nra')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'nra')->name('import_excel');
     Route::post('/indicators', [NraController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [NraController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [NraController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -209,6 +246,8 @@ Route::prefix('admin/paria_physical')->name('admin.paria_physical.')->middleware
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'paria')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'paria')->name('accomplishments.store');
     Route::delete('/rows', [PariaController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'paria')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'paria')->name('import_excel');
     Route::post('/indicators', [PariaController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [PariaController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [PariaController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -221,6 +260,8 @@ Route::prefix('admin/cobb_physical')->name('admin.cobb_physical.')->middleware([
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'cobb')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'cobb')->name('accomplishments.store');
     Route::delete('/rows', [CobbController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'cobb')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'cobb')->name('import_excel');
     Route::post('/indicators', [CobbController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [CobbController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [CobbController::class, 'destroyIndicator'])->name('indicators.destroy');
@@ -233,6 +274,8 @@ Route::prefix('admin/continuing_physical')->name('admin.continuing_physical.')->
     Route::post('/targets/store', [PhysicalInputController::class, 'storeTargets'])->defaults('sector', 'continuing')->name('targets.store');
     Route::post('/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])->defaults('sector', 'continuing')->name('accomplishments.store');
     Route::delete('/rows', [ContinuingController::class, 'destroyPhysicalRow'])->name('rows.destroy');
+    Route::post('/import-excel/preview', [PhysicalExcelUploadController::class, 'previewExcelImport'])->defaults('sector', 'continuing')->name('import_excel.preview');
+    Route::post('/import-excel', [PhysicalExcelUploadController::class, 'importExcel'])->defaults('sector', 'continuing')->name('import_excel');
     Route::post('/indicators', [ContinuingController::class, 'storeIndicator'])->name('indicators.store');
     Route::patch('/indicators/{indicator}', [ContinuingController::class, 'update'])->name('indicators.update');
     Route::delete('/indicators/{indicator}', [ContinuingController::class, 'destroyIndicator'])->name('indicators.destroy');

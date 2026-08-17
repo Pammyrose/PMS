@@ -22,7 +22,7 @@
             return '4|999999.999999.999999.999999.999999|';
         }
 
-        if (preg_match('/^(\d+(?:\.\d+)*)([.)-]+)?(?:\s|$)/', $normalized, $matches)) {
+        if (preg_match('/^(\d+(?:\.\d+)*)([.)-]+)?(?=\s|$|(?<=[.)-]))/', $normalized, $matches)) {
             if (($matches[2] ?? '') !== '' || str_contains($matches[1], '.')) {
                 $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
                 $segments = array_pad($segments, 5, 0);
@@ -461,7 +461,7 @@
                             ->all();
                     @endphp
                     @foreach($subProgramIndicatorCollection as $indicator)
-                        @php $renderCount++; $isPapCellRendered = false; @endphp
+                        @php $renderCount++; @endphp
                         @php
                             $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
                             if ($resolvedIndicatorType === '') {
@@ -540,6 +540,8 @@
                                         
                                     @endif
                               </td>
+                            @else
+                                <td class="px-4 py-3" aria-hidden="true"></td>
                             @endif
                               <td class="px-4 py-3">
                                   @if($hasIndicatorData ?? false)

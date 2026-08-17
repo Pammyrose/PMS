@@ -8,6 +8,8 @@
 
         @include('regional.sto.partials.sto_physical_excel_upload')
 
+        <x-wfp-excel-export-button sector="sto" />
+
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">
             {{-- Preserve important filters --}}

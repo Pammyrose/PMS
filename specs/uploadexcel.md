@@ -10,10 +10,19 @@ The import feature converts a sector workbook into the same PAP hierarchy, indic
 
 Excel import is currently implemented for:
 
-- **GASS** through the `GASS` worksheet and `GassExcelUploadController`
-- **STO** through the `STO` worksheet and `StoExcelUploadController`
+- **GASS** through the `GASS` worksheet and the shared `PhysicalExcelUploadController`
+- **STO** through the `STO` worksheet and the shared `PhysicalExcelUploadController`
+- **ENF** through either the `ENF` or `NRE&RP` worksheet and the shared `PhysicalExcelUploadController`
+- **PA** through either the `PA` or `Biodiv` worksheet and `PaExcelUploadController`
+- **ENGP** through the combined `E-NGP +Soilcon` worksheet and `EngpExcelUploadController` (the Soil Conservation section is excluded)
+- **Lands** through the `LANDS` worksheet and `LandsExcelUploadController`
+- **Soilcon** through the Soil Conservation section of the combined `E-NGP +Soilcon` worksheet and `SoilconExcelUploadController`
+- **NRA** through the `NRA` worksheet and `NraExcelUploadController`
+- **PARIA** through the `PARIA` worksheet and `PariaExcelUploadController`
+- **COBB** through the `COBB` worksheet and `CobbExcelUploadController`
+- **Continuing** through the `CONTINUING` worksheet and `ContinuingExcelUploadController`
 
-The current import writes **physical targets only**. It does not import physical accomplishments, financial inputs, remarks, users, or audit history from the workbook.
+The importer can write either **physical targets** or **physical accomplishments**. A GASS import also writes the workbook's **financial targets** from AB–AR and **financial accomplishments** from BN–CD. It does not import accomplishment remarks, users, or audit history from the workbook.
 
 Import and preview routes are currently inside administrator-protected sector route groups. Upload controls must be rendered only for roles that can successfully call those routes.
 
@@ -63,7 +72,7 @@ Redirect with success/error feedback
 
 ### 1. Select a Workbook
 
-The sector toolbar provides an **Upload Excel** button. It opens a hidden file input configured with `accept=".xlsx"`. The form includes:
+The sector toolbar keeps the existing **Upload Excel** button and hidden file input configured with `accept=".xlsx"`. The server detects an accomplishment workbook from the Physical Accomplishment header and numeric values in AV–BL; otherwise it imports Targets. The form includes:
 
 - A CSRF token
 - The selected reporting year
@@ -118,6 +127,7 @@ Both preview and confirmed import must apply the same server-side rules.
 | Maximum size | 51,200 KB (50 MB) |
 | `year` | Optional integer |
 | Year range | 2000–2099 |
+| `import_type` | Optional explicit `target` or `accomplishment`; when omitted, the server detects the populated accomplishment block |
 
 Browser `accept` filtering is only a convenience. The server-side file validation is authoritative.
 
@@ -131,14 +141,20 @@ The workbook must contain a worksheet whose name matches the importing sector:
 | --- | --- |
 | GASS | `GASS` |
 | STO | `STO` |
+| ENF | `ENF` or `NRE&RP` |
+| PA | `PA` or `Biodiv` |
 
 Worksheet matching is case-insensitive. A missing or unreadable worksheet causes preview/import failure.
 
+The worksheet name selects the sheet to read and the upload page selects the destination sector. Parsing rules are selected from the worksheet content. When sector-specific layout markers are present, the importer uses those specialized hierarchy rules; otherwise it uses the neutral row/column structure. Renaming a valid GASS-layout worksheet to another accepted sector sheet name therefore preserves the hierarchy and values from the worksheet instead of skipping them because an ENF-specific marker is absent.
+
 ### Starting Row
 
-Rows before Excel row 10 are treated as document headers and ignored. Hidden worksheet rows are skipped.
+The importer discovers the final period-header row from the workbook and starts reading data on the following row. Hidden worksheet rows are skipped.
 
 ### Core Columns
+
+The table below describes the official template layout. The importer does not assume these letters: it locates the PAP, indicator, location, period, and grand-total columns from their worksheet header labels. Therefore, inserting or moving columns does not redirect STO values into the wrong fields.
 
 | Excel column | Meaning | Import behavior |
 | --- | --- | --- |
@@ -147,7 +163,12 @@ Rows before Excel row 10 are treated as document headers and ignored. Hidden wor
 | C | Location or office | Resolves CAR, PENRO/province, CENRO, or another known office |
 | D–H | Non-physical metadata/template columns | Not persisted by the physical-target importer |
 | I–Y | Physical target periods | Parsed into monthly, quarterly, and annual values |
-| AA and later financial-only rows | Financial template content | Ignored by the physical-target importer |
+| AV–BL | Physical accomplishment periods | Parsed only for an accomplishment import |
+| AA | Financial target expense class | Used by the workbook layout; not stored as a separate dimension |
+| AB–AR | Financial target periods | Imported with GASS office rows into `financial_target` |
+| AS | Workbook financial-target reference total | Not persisted; AR is the periodized grand total |
+| BM | Financial accomplishment expense class | Used by the workbook layout; not stored as a separate dimension |
+| BN–CD | Financial accomplishment periods | Imported with GASS office rows into `financial_accomplishment` |
 
 ### Physical Period Mapping
 
@@ -165,6 +186,32 @@ Rows before Excel row 10 are treated as document headers and ignored. Hidden wor
 
 Empty, non-numeric, error-like, or comment-prefixed numeric cells are treated as zero. When the annual value in column Y is zero or absent, the importer calculates it as `Q1 + Q2 + Q3 + Q4`.
 
+For accomplishment imports, every resolved office listed in the workbook is retained even when all period values are blank or zero. This preserves the CAR/RO, province/PENRO, and child-office structure shown in the official template.
+
+### Physical Accomplishment Period Mapping
+
+| Column | Period | Column | Period |
+| --- | --- | --- | --- |
+| AV | January | BD | July |
+| AW | February | BE | August |
+| AX | March | BF | September |
+| AY | Q1 | BG | Q3 |
+| AZ | April | BH | October |
+| BA | May | BI | November |
+| BB | June | BJ | December |
+| BC | Q2 | BK | Q4 |
+| BL | Annual total |  |  |
+
+An accomplishment import is accepted only when the worksheet header identifies the Physical Accomplishment block in column AV. This prevents unrelated notes or extended template columns from being written as accomplishments. When BL is zero or absent, the annual accomplishment is calculated as `Q1 + Q2 + Q3 + Q4`.
+
+### Financial Target Period Mapping
+
+GASS imports map AB–AR to January, February, March, Q1, and the same repeating month/quarter sequence through Q4 and annual total. Non-numeric and Excel error values are treated as zero. When AR is zero or absent, annual total falls back to `Q1 + Q2 + Q3 + Q4`. Financial rows use the same sector, year, office, PAP row, and indicator identity as their physical row, and CAR/province totals are stored in the existing JSON total fields.
+
+### Financial Accomplishment Period Mapping
+
+GASS imports map BN–CD to January, February, March, Q1, and the same repeating month/quarter sequence through Q4 and annual total. Non-numeric and Excel error values are treated as zero. When CD is zero or absent, annual total falls back to `Q1 + Q2 + Q3 + Q4`. The rows use the same sector, year, office, PAP row, and indicator identity as their corresponding physical row, and CAR/province totals are stored in the existing JSON total fields.
+
 ## XLSX Reader Behavior
 
 `SimpleXlsxReader` reads the workbook directly as an Open XML ZIP package. It does not use Excel automation and does not evaluate workbook formulas or macros.
@@ -181,7 +228,7 @@ The reader:
 - Uses a generator so rows can be processed incrementally
 - Skips rows marked hidden when requested
 
-STO parsing uses style-aware rows because bold/fill information can help distinguish hierarchy headers. GASS currently uses normalized cell values without requiring style metadata.
+STO, ENF, and PA parsing use style-aware rows because bold/fill information can help distinguish hierarchy headers. GASS currently uses normalized cell values without requiring style metadata.
 
 ## Parser Model
 
@@ -344,9 +391,10 @@ For each valid block, it:
 1. Creates or reuses the PAP hierarchy.
 2. Creates or reuses the indicator.
 3. Synchronizes the indicator/PAP/office assignment.
-4. Upserts one `PhysicalTarget` per resolved office.
-5. Stores CAR and group totals.
-6. Marks the row with `imported_from = "excel"`.
+4. Upserts one `PhysicalTarget` or `PhysicalAccomplishment` per resolved office according to `import_type`.
+5. For GASS workbooks containing the Financial Target or Financial Accomplishment header, upserts the corresponding `FinancialTarget` and/or `FinancialAccomplishment` office row.
+6. Stores CAR and group totals.
+7. Marks the physical row with `imported_from = "excel"`.
 
 The consolidated target identity is:
 
@@ -354,9 +402,9 @@ The consolidated target identity is:
 sector + year + office_id + row_id + indicator_id
 ```
 
-Re-importing the same identity updates the existing physical target. It must not create a duplicate. The importing user becomes the record's current `user_id`.
+Re-importing the same identity updates the existing selected physical entry. It must not create a duplicate. The importing user becomes the record's current `user_id`.
 
-An exception anywhere in the confirmed import rolls back PAP, indicator, assignment, and target changes made by that request. Physical accomplishments and financial inputs are not changed.
+An exception anywhere in the confirmed import rolls back PAP, indicator, assignment, physical-entry, and GASS financial changes made by that request. A target import never changes physical accomplishments, and an accomplishment import never changes physical targets.
 
 ## Audit Behavior
 
@@ -477,16 +525,19 @@ Prefer extracting shared parser, preview, and persistence services over copying 
 - CAR, PENRO/province, CENRO, and aliases resolve correctly.
 - Unmatched offices are warned and not silently assigned.
 - Columns I–Y map to the correct periods.
+- Columns AV–BL map to the correct accomplishment periods.
 - Annual fallback equals Q1 + Q2 + Q3 + Q4.
 - CAR and PENRO/group totals match their source office rows.
 
 ### Persistence
 
-- Confirmed import creates the expected PAPs, indicators, assignments, and targets.
+- Confirmed import creates the expected PAPs, indicators, assignments, and selected target/accomplishment entries.
 - A repeated import updates matching identities without duplicates.
-- All imported target rows contain `imported_from = "excel"`.
+- All imported physical rows contain `imported_from = "excel"`.
+- Importing accomplishments does not change target records, and importing targets does not change accomplishment records.
 - One failing block rolls back the entire confirmed import.
-- Accomplishments and financial inputs remain unchanged.
+- GASS financial targets map AB–AR correctly and upsert without duplicate identities.
+- GASS financial accomplishments map BN–CD correctly and upsert without duplicate identities.
 - The sector page renders imported records using the canonical PAP layout.
 
 ---

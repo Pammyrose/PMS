@@ -129,7 +129,7 @@ The current route groups distinguish:
 
 - **Administrator mutations:** `admin`
 - **General viewing:** `super-admin`, `admin`, `user`, `penro`, `cenro`, `ro-office`, and `ro office`
-- **Office-user physical writes:** `user`, `penro`, and `cenro`
+- **Office-user physical writes:** `user` and `cenro` may submit accomplishments for PENRO approval; `penro` may review those submissions and write approved accomplishments. Targets are read-only for `user` and `cenro`.
 
 ### Office Scoping
 
@@ -149,7 +149,7 @@ Route middleware protects the operation type; controller rules protect the data 
 
 The application base controller contains shared behavior for:
 
-- Selecting `admin`, `regional`, or `users` Blade namespaces
+- Selecting `admin`, `regional`, `penro`, or `users` Blade namespaces
 - Resolving office context
 - Filtering PAP, indicator, and section data
 - Determining whether the current account is office-scoped

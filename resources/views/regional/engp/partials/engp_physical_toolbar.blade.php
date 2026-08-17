@@ -6,6 +6,12 @@
             <i class="fa fa-plus me-1"></i> Add PAP
         </button>
 
+        @if(auth()->user()?->isAdmin())
+            @include('components.engp_excel_upload')
+
+            <x-wfp-excel-export-button sector="engp" />
+        @endif
+
 
         <form method="GET" action="{{ url()->current() }}"
             class="d-flex align-items-center gap-2 flex-wrap" id="papSearchForm" role="search">

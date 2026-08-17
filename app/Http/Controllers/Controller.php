@@ -15,6 +15,10 @@ abstract class Controller
             return 'regional.' . $view;
         }
 
+        if ($user?->isPenro()) {
+            return 'penro.' . $view;
+        }
+
         if ($user?->isUser()) {
             return 'users.' . $view;
         }

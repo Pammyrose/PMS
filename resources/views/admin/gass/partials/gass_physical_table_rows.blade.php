@@ -22,7 +22,7 @@
             return '4|999999.999999.999999.999999.999999|';
         }
 
-        if (preg_match('/^(\d+(?:\.\d+)*)([.)-]+)?(?:\s|$)/', $normalized, $matches)) {
+        if (preg_match('/^(\d+(?:\.\d+)*)([.)-]+)?(?=\s|$|(?<=[.)-]))/', $normalized, $matches)) {
             if (($matches[2] ?? '') !== '' || str_contains($matches[1], '.')) {
                 $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
                 $segments = array_pad($segments, 5, 0);
@@ -370,7 +370,6 @@
                 }
                 $previousPapHierarchyLevels = $fullPapHierarchyLevels;
                 $isPapCellRendered = false;
-                $renderedEmptyIndicatorPlaceholder = false;
             @endphp
             @php
                 $promotedHierarchyGroupKey = $normalizeGroupValue($promotedHierarchyGroupLabel ?? '');
@@ -390,6 +389,7 @@
                 </tr>
             @endif
             @foreach($subSubActivityGroup as $subProgram)
+                @continue(!\App\Support\PhysicalHierarchyRow::ownsDisplayedHierarchy($subProgram))
                 @php
                     $subProgramRowKey = (int) ($subProgram->row_id ?? $subProgram->id);
                     $allowParentActivityIndicator = $isEmptyOrNaHierarchyValue($subProgram->subactivities ?? null);
@@ -461,7 +461,7 @@
                             ->all();
                     @endphp
                     @foreach($subProgramIndicatorCollection as $indicator)
-                        @php $renderCount++; $isPapCellRendered = false; @endphp
+                        @php $renderCount++; @endphp
                         @php
                             $resolvedIndicatorType = (string) ($indicator->indicator_type ?? '');
                             if ($resolvedIndicatorType === '') {
@@ -540,6 +540,8 @@
                                         
                                     @endif
                               </td>
+                            @else
+                                <td class="px-4 py-3" aria-hidden="true"></td>
                             @endif
                               <td class="px-4 py-3">
                                   @if($hasIndicatorData ?? false)
@@ -618,102 +620,6 @@
                                 </td>
                         </tr>
                     @endforeach
-                @else
-                    @if($renderCount === 0)
-                        @php 
-                            $renderCount++; 
-                            if (!$isPapCellRendered) {
-                                $renderedEmptyIndicatorPlaceholder = true;
-                            }
-                            $rowSearchText = collect([
-                                $programSearchText,
-                                $subProgram->activities ?? '',
-                                $subProgram->subactivities ?? '',
-                                $subProgram->subsubactivities ?? '',
-                                $subProgram->level_6 ?? '',
-                                $subProgram->level_7 ?? '',
-                                $subProgram->level_8 ?? '',
-                            ])->filter()->implode(' ');
-                        @endphp
-                        <tr class="data-row @if(!$isPapCellRendered) first-indicator-row @endif @if($allowParentActivityIndicator) sub-hierarchy-na-row @endif"
-                            data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
-                            data-program-id="{{ $subProgram->id }}"
-                            data-indicator-id=""
-                            data-core-key="{{ $programCoreKey }}"
-                            data-sync-key="{{ $programCoreKey }}|no-indicator|row-{{ (int) ($subProgram->row_id ?? $subProgram->id) }}"
-                            data-search-text="{{ e($rowSearchText) }}"
-                            data-indicator-type=""
-                            data-office-ids=""
-                            data-office-names=""
-                            data-input-office-ids=""
-                            data-input-office-names=""
-                            data-input-break-indices=""
-                            data-input-group-penro-flags=""
-                            id="content-{{ $subProgram->id }}-0"
-                            style="display:none;">
-                            @if(!$isPapCellRendered)
-                                @php $isPapCellRendered = true; @endphp
-                                <td class="px-4 py-3 pl-5 text-primary fw-medium position-relative" style="padding-left: 3.75rem !important;">
-                                    @php
-                                        $hierarchyLevels = $hierarchyLevelsToDisplay;
-                                        $showPlaceholderDeleteButton = count($hierarchyLevels) > 0;
-                                    @endphp
-                                    @if($showPlaceholderDeleteButton)
-                                        <button type="button"
-                                            class="btn btn-sm btn-outline-danger delete-physical-row-btn d-inline-flex align-items-center justify-content-center position-absolute"
-                                            style="top: 0.35rem; left: 0.75rem;"
-                                            title="Delete row"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#deletePhysicalRowConfirmModal"
-                                            data-row-id="{{ $subProgram->row_id ?? $subProgram->id }}"
-                                            data-indicator-id=""
-                                            data-indicator-ids=""
-                                            data-office-ids="">
-                                            <i class="fa-solid fa-trash"></i>
-                                        </button>
-                                    @endif
-                                    @if(count($hierarchyLevels) > 0)
-                                        @foreach($hierarchyLevels as $index => $level)
-                                            <div class="{{ ($hierarchyDisplayStartIndex + $index) > 0 ? 'ms-4 mt-2 fst-italic text-secondary' : '' }}">{{ $level }}</div>
-                                        @endforeach
-                                    @else
-                                        
-                                    @endif
-                                        
-                                    </td>
-                            @endif
-                              <td class="px-4 py-3">
-                                  @if($hasIndicatorData ?? false)
-                                      @php
-                                          $indTypeLower = strtolower(trim((string)($indicator->indicator_type ?? '')));
-                                          if ($indTypeLower === '' && isset($indicatorTypeNameById)) {
-                                              $indTypeLower = strtolower(trim((string)($indicatorTypeNameById[(int)($indicator->indicator_type_id ?? 0)] ?? '')));
-                                          }
-                                          $indTypeShort = '';
-                                          $indTypeTitle = '';
-                                          $indTypeBg = '#6c757d';
-                                          if ($indTypeLower === 'cumulative') { $indTypeShort = 'C'; $indTypeTitle = 'Cumulative'; $indTypeBg = '#2563eb'; }
-                                          elseif ($indTypeLower === 'non-cumulative') { $indTypeShort = 'NC'; $indTypeTitle = 'Non-cumulative'; $indTypeBg = '#dc2626'; }
-                                          elseif ($indTypeLower === 'semi-cumulative') { $indTypeShort = 'SC'; $indTypeTitle = 'Semi-cumulative'; $indTypeBg = '#d97706'; }
-                                      @endphp
-                                      <div class="d-flex flex-column gap-1">
-                                          <span>{{ $indicator->name ?? 'N/A' }}</span>
-                                          @if($indTypeShort)
-                                              <span title="{{ $indTypeTitle }}" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:{{ $indTypeBg }};color:#fff;font-size:10px;font-weight:700;">{{ $indTypeShort }}</span>
-                                          @endif
-                                      </div>
-                                  @else
-                                      N/A
-                                  @endif
-                              </td>
-                              <td class="px-4 py-3 small text-center">
-                                <div class="office-lines">
-                                    <div class="office-line car-office-line">CAR</div>
-                                    <div class="office-line">N/A</div>
-                                </div>
-                            </td>
-                        </tr>
-                    @endif
                 @endif
             @endforeach
         @endforeach
