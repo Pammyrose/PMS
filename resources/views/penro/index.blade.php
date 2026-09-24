@@ -57,7 +57,7 @@
         }
 
         .progress-trend-bar {
-            background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+            background: linear-gradient(180deg, #fb7185 0%, #dc2626 100%);
             border-radius: 0.45rem 0.45rem 0 0;
             min-height: 3px;
             position: relative;
@@ -130,80 +130,6 @@
         <div>
           <h2 class="text-2xl sm:text-3xl font-bold text-gray-900">Performance Overview</h2>
         </div>
-<form 
-    method="GET" 
-    action="{{ route('dashboard') }}" 
-    class="d-flex align-items-center gap-3 mt-3 mt-sm-0"
-    id="yearFilterForm"
->
-    <div class="d-flex align-items-center gap-2">
-        <label
-            for="dashboard_sector"
-            class="form-label fw-semibold text-muted mb-0 fs-6"
-        >
-            Sector
-        </label>
-
-        <select
-            id="dashboard_sector"
-            name="sector"
-            class="form-select form-select-md shadow-sm border-primary-subtle"
-            style="width: 170px; min-width: 140px;"
-            aria-label="Select dashboard sector"
-            onchange="this.form.submit()"
-        >
-            @php
-                $currentSector = $selectedSector ?? 'all';
-                $sectors = $sectorOptions ?? collect();
-            @endphp
-
-            <option value="all" {{ $currentSector === 'all' ? 'selected' : '' }}>
-                All
-            </option>
-
-            @foreach($sectors as $sector)
-                <option
-                    value="{{ $sector['key'] }}"
-                    {{ $currentSector === $sector['key'] ? 'selected' : '' }}
-                >
-                    {{ $sector['label'] }}
-                </option>
-            @endforeach
-        </select>
-    </div>
-
-    <div class="d-flex align-items-center gap-2">
-        <label 
-            for="dashboard_year" 
-            class="form-label fw-semibold text-muted mb-0 fs-6"
-        >
-            Year
-        </label>
-
-        <select 
-            id="dashboard_year" 
-            name="year" 
-            class="form-select form-select-md shadow-sm border-primary-subtle"
-            style="width: 140px; min-width: 120px;"
-            aria-label="Select dashboard year"
-            onchange="this.form.submit()"
-        >
-            @php
-                $currentYear = (int) ($year ?? now()->year);
-                $options = $yearOptions ?? collect(range(now()->year - 5, now()->year + 1));
-            @endphp
-
-            @foreach($options as $optionYear)
-                <option 
-                    value="{{ $optionYear }}" 
-                    {{ $currentYear === (int) $optionYear ? 'selected' : '' }}
-                >
-                    {{ $optionYear }}
-                </option>
-            @endforeach
-        </select>
-    </div>
-</form>
       </div>
 
       @include('components.dashboard_overall_cards')
@@ -216,10 +142,10 @@
         <div class="px-6 py-5 border-b border-gray-100 d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
           <div>
             <h3 class="text-xl font-bold text-gray-900 flex items-center gap-3 mb-1">
-              <i class="fa-solid fa-chart-line text-accent"></i> Monthly / Quarterly Accomplishments Chart
+              <i class="fa-solid fa-triangle-exclamation text-danger"></i> Monthly / Quarterly Delays Chart
             </h3>
             <p class="text-sm text-gray-500 mb-0">
-              Accomplishment trend for {{ (int) ($year ?? now()->year) }}{{ ($selectedSector ?? 'all') !== 'all' ? ' - ' . strtoupper((string) $selectedSector) : '' }}
+              Delayed physical inputs for {{ (int) ($year ?? now()->year) }}{{ ($selectedSector ?? 'all') !== 'all' ? ' - ' . strtoupper((string) $selectedSector) : '' }}
             </p>
           </div>
           <div class="btn-group progress-trend-toggle" role="group" aria-label="Progress chart range">
@@ -229,10 +155,10 @@
         </div>
 
         <div class="p-6">
-          <div id="progressTrendChart" class="progress-trend-chart" aria-label="Monthly accomplishments chart"></div>
+          <div id="progressTrendChart" class="progress-trend-chart" aria-label="Monthly delays chart"></div>
           <div class="d-flex flex-wrap gap-4 justify-content-between align-items-center mt-4 text-sm text-gray-500">
-            <span><span class="d-inline-block rounded me-2" style="width: 12px; height: 12px; background: #2563eb;"></span>Accomplishments</span>
-            <span>Bars compare accomplished physical outputs by period.</span>
+            <span><span class="d-inline-block rounded me-2" style="width: 12px; height: 12px; background: #dc2626;"></span>Delayed outputs</span>
+            <span>Each bar counts inputs where accomplishment is below target.</span>
           </div>
         </div>
       </div>
@@ -259,23 +185,23 @@
             }
 
             const rows = progressTrendData[view] || [];
-            const hasAccomplishments = rows.some((row) => Number(row.accomplishment || 0) > 0);
+            const hasDelays = rows.some((row) => Number(row.delay || 0) > 0);
 
             progressTrendChart.classList.toggle('is-quarterly', view === 'quarterly');
-            progressTrendChart.setAttribute('aria-label', `${view === 'quarterly' ? 'Quarterly' : 'Monthly'} accomplishments chart`);
+            progressTrendChart.setAttribute('aria-label', `${view === 'quarterly' ? 'Quarterly' : 'Monthly'} delays chart`);
 
-            if (!hasAccomplishments) {
-                progressTrendChart.innerHTML = '<div class="progress-trend-empty" style="grid-column: 1 / -1;">No accomplishment data available for this selection.</div>';
+            if (!hasDelays) {
+                progressTrendChart.innerHTML = '<div class="progress-trend-empty" style="grid-column: 1 / -1;">No delayed physical outputs for this selection.</div>';
                 return;
             }
 
             progressTrendChart.innerHTML = rows.map((row) => {
                 const barHeight = Math.max(0, Math.min(100, Number(row.progress || 0)));
-                const accomplishment = Number(row.accomplishment || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+                const delay = Number(row.delay || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
                 return `
-                    <div class="progress-trend-item" title="${row.label}: ${accomplishment} accomplished">
-                        <div class="progress-trend-value">${accomplishment}</div>
+                    <div class="progress-trend-item" title="${row.label}: ${delay} delayed">
+                        <div class="progress-trend-value">${delay}</div>
                         <div class="progress-trend-bar-track" aria-hidden="true">
                             <div class="progress-trend-bar" style="height: ${Math.max(barHeight, 1)}%;"></div>
                         </div>

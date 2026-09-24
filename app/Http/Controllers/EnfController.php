@@ -74,7 +74,7 @@ class EnfController extends Controller
         $entries = Schema::hasTable('gass_physical')
             ? Gass_Physical::whereIn('programs_id', $programIds)
                 ->where('year', $year)
-                ->where('office_id', $office_id)
+                ->whereIn('office_id', $this->officeIdsForPhysicalPageScope($office_id))
                 ->get()
             : collect();
 
@@ -85,10 +85,10 @@ class EnfController extends Controller
         $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
 
         $targets = Enf_Target::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
         $accomplishments = Enf_Accomplishment::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
 
         $programs = $programsRaw

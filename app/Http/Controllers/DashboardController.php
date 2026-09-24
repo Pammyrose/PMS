@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Office;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -9,7 +10,11 @@ use Illuminate\Support\Facades\Schema;
 class DashboardController extends Controller
 {
     private array $tableExistsCache = [];
-    private array $columnExistsCache = [];
+    private array $tableColumnsCache = [];
+    private array $monthlySumsCache = [];
+    private array $physicalRowsCache = [];
+    private array $ppaRowIdsByDetailSetCache = [];
+    private ?array $ppaDetailChildrenByParent = null;
 
     public function index(\Illuminate\Http\Request $request)
     {
@@ -21,13 +26,15 @@ class DashboardController extends Controller
         }
 
         $selectedSector = strtolower((string) $request->query('sector', 'all'));
-        $officeId = $this->dashboardOfficeScope();
+        $officeFilter = $this->dashboardOfficeFilter($request);
+        $officeScope = $officeFilter['scope'];
+        $officeScopeKey = empty($officeScope) ? 'all' : implode('-', $officeScope);
 
         $fieldConfigs = [
             ['key' => 'gass', 'label' => 'GASS', 'type_code' => 'GASS', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
             ['key' => 'sto', 'label' => 'STO', 'type_code' => 'STO', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
             ['key' => 'enf', 'label' => 'ENF', 'type_code' => 'ENF', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
-            ['key' => 'pa', 'label' => 'PA', 'type_code' => 'PA', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
+            ['key' => 'pa', 'label' => 'PA', 'type_code' => 'Biodiv', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
             ['key' => 'engp', 'label' => 'ENGP', 'type_code' => 'ENGP', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
             ['key' => 'lands', 'label' => 'LANDS', 'type_code' => 'Lands', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
             ['key' => 'soilcon', 'label' => 'SOILCON', 'type_code' => 'Soilcon', 'targets' => 'physical_targets', 'accomp' => 'physical_accomplishments'],
@@ -51,30 +58,33 @@ class DashboardController extends Controller
             ->when($selectedSector !== 'all', fn ($configs) => $configs->where('key', $selectedSector))
             ->values();
 
-        $dashboardSummary = Cache::remember(
-            'dashboard.summary.v10.' . $year . '.sector.' . $selectedSector . '.office.' . ($officeId ?? 'all'),
-            now()->addMinutes(2),
-            fn () => $this->buildDashboardSummary($visibleFieldConfigs->all(), $year, $officeId)
+        $dashboardSummary = Cache::flexible(
+            'dashboard.summary.v25.' . $year . '.sector.' . $selectedSector . '.offices.' . $officeScopeKey,
+            [120, 1800],
+            fn () => $this->buildDashboardSummary($visibleFieldConfigs->all(), $year, $officeScope)
         );
 
         $fieldStats = $dashboardSummary['fieldStats'];
         $overallTarget = $dashboardSummary['overallTarget'];
         $overallAccomp = $dashboardSummary['overallAccomp'];
         $overallProgress = $dashboardSummary['overallProgress'];
+        $financialUtilization = $dashboardSummary['financialUtilization'] ?? null;
         $progressTrend = $dashboardSummary['progressTrend'];
         $physicalTargetsProgress = $dashboardSummary['physicalTargetsProgress'];
         $activeFields = $dashboardSummary['activeFields'];
         $activeFieldsProgress = $dashboardSummary['activeFieldsProgress'];
         $officeStats = $dashboardSummary['officeStats'] ?? collect();
+        $performanceComparison = $dashboardSummary['performanceComparison'] ?? [];
         $totalPap = $dashboardSummary['totalPap'] ?? 0;
         $totalIndicators = $dashboardSummary['totalIndicators'] ?? 0;
         $papList = $dashboardSummary['papList'] ?? collect();
         $indicatorList = $dashboardSummary['indicatorList'] ?? collect();
+        $dashboardOfficeScopeNames = $this->dashboardOfficeScopeNames($officeScope);
 
         $yearOptions = Cache::remember(
-            'dashboard.year_options.' . $currentYear . '.office.' . ($officeId ?? 'all'),
+            'dashboard.year_options.v2.' . $currentYear . '.offices.' . $officeScopeKey,
             now()->addMinutes(5),
-            fn () => $this->yearOptions($fieldConfigs, $currentYear, $officeId)
+            fn () => $this->yearOptions($fieldConfigs, $currentYear, $officeScope)
         );
 
         return view($this->roleView('index'), [
@@ -82,8 +92,13 @@ class DashboardController extends Controller
             'yearOptions' => $yearOptions,
             'selectedSector' => $selectedSector,
             'sectorOptions' => $sectorOptions,
+            'selectedOffice' => $officeFilter['selected'],
+            'officeOptions' => $officeFilter['options'],
+            'officeAllowsAll' => $officeFilter['allows_all'],
+            'officeAllLabel' => $officeFilter['all_label'],
             'fieldStats' => $fieldStats,
             'officeStats' => $officeStats,
+            'performanceComparison' => $performanceComparison,
             'overallProgress' => $overallProgress,
             'progressTrend' => $progressTrend,
             'physicalTargetsProgress' => $physicalTargetsProgress,
@@ -93,10 +108,11 @@ class DashboardController extends Controller
             'totalIndicators' => $totalIndicators,
             'papList' => $papList,
             'indicatorList' => $indicatorList,
+            'dashboardOfficeScopeNames' => $dashboardOfficeScopeNames,
             'activeFields' => $activeFields,
             'activeFieldsProgress' => $activeFieldsProgress,
             'totalFields' => $fieldStats->count(),
-            'financialUtilization' => null,
+            'financialUtilization' => $financialUtilization,
         ]);
     }
 
@@ -113,10 +129,10 @@ class DashboardController extends Controller
         return 'Delayed';
     }
 
-    private function buildDashboardSummary(array $fieldConfigs, int $year, ?int $officeId = null): array
+    private function buildDashboardSummary(array $fieldConfigs, int $year, int|array|null $officeScope = null): array
     {
-        $fieldStats = collect($fieldConfigs)->map(function (array $config) use ($year, $officeId) {
-            $totals = $this->physicalTotalsForYear($config['targets'], $config['accomp'], $year, $officeId, $config['key']);
+        $fieldStats = collect($fieldConfigs)->map(function (array $config) use ($year, $officeScope) {
+            $totals = $this->physicalTotalsForYear($config['targets'], $config['accomp'], $year, $officeScope, $config['key']);
             $targetTotal = $totals['target_total'];
             $accompTotal = $totals['accomp_total'];
 
@@ -138,9 +154,7 @@ class DashboardController extends Controller
 
         $overallTarget = (float) $fieldStats->sum('target_total');
         $overallAccomp = (float) $fieldStats->sum('accomp_total');
-        $overallProgress = $overallTarget > 0
-            ? round(min(100, ($overallAccomp / $overallTarget) * 100), 2)
-            : 0.0;
+        $overallProgress = $this->physicalInputProgressForYear($fieldConfigs, $year, $officeScope);
 
         $fieldsWithTargets = $fieldStats->filter(fn ($row) => (float) ($row['target_total'] ?? 0) > 0)->count();
         $physicalTargetsProgress = $fieldStats->count() > 0
@@ -152,7 +166,7 @@ class DashboardController extends Controller
             ? round(($activeFields / $fieldStats->count()) * 100, 2)
             : 0.0;
 
-        $papIndicatorTotals = $this->papIndicatorTotalsForYear($fieldConfigs, $year, $officeId);
+        $papIndicatorTotals = $this->papIndicatorTotalsForYear($fieldConfigs, $year, $officeScope);
 
         return [
             'fieldStats' => $fieldStats,
@@ -160,18 +174,20 @@ class DashboardController extends Controller
             'overallAccomp' => $overallAccomp,
             'totalPap' => $papIndicatorTotals['pap_total'],
             'totalIndicators' => $papIndicatorTotals['indicator_total'],
-            'papList' => $this->papListForYear($fieldConfigs, $year, $officeId),
-            'indicatorList' => $this->indicatorListForYear($fieldConfigs, $year, $officeId),
+            'papList' => $this->papListForYear($fieldConfigs, $year, $officeScope),
+            'indicatorList' => $this->indicatorListForYear($fieldConfigs, $year, $officeScope),
             'overallProgress' => $overallProgress,
-            'progressTrend' => $this->progressTrend($fieldConfigs, $year, $officeId),
-            'officeStats' => $this->officePerformanceStatsForYear($fieldConfigs, $year, $officeId),
+            'financialUtilization' => $this->financialUtilizationForYear($fieldConfigs, $year, $officeScope),
+            'progressTrend' => $this->progressTrend($fieldConfigs, $year, $officeScope),
+            'officeStats' => $this->officePerformanceStatsForYear($fieldConfigs, $year, $officeScope),
+            'performanceComparison' => $this->performanceComparisonForYear($fieldConfigs, $year, $officeScope),
             'physicalTargetsProgress' => $physicalTargetsProgress,
             'activeFields' => $activeFields,
             'activeFieldsProgress' => $activeFieldsProgress,
         ];
     }
 
-    private function papListForYear(array $fieldConfigs, int $year, ?int $officeId = null)
+    private function papListForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null)
     {
         if (!$this->hasTable('ppa') || !$this->hasTable('types') || !$this->hasTable('record_types')) {
             return collect();
@@ -219,10 +235,6 @@ class DashboardController extends Controller
             ->orderBy('types.code')
             ->orderBy('ppa.name');
 
-        if ($officeId !== null && $this->hasColumn('ppa', 'office_id')) {
-            $query->whereJsonContains('ppa.office_id', $officeId);
-        }
-
         $rows = $query->get();
 
         if ($rows->isEmpty()) {
@@ -234,8 +246,16 @@ class DashboardController extends Controller
             ->filter()
             ->all();
 
-        return $rows->map(function ($row) use ($typeIds, $sectorKeyByTypeCode, $officeId) {
-            $officeIds = $this->parseJsonIdArray($row->office_id ?? null);
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+        $primaryOfficeId = $officeIds[0] ?? null;
+        $officeNames = !$this->hasTable('offices')
+            ? collect()
+            : DB::table('offices')
+                ->when(!empty($officeIds), fn ($query) => $query->whereIn('id', $officeIds))
+                ->pluck('name', 'id');
+
+        return $rows->map(function ($row) use ($typeIds, $sectorKeyByTypeCode, $officeIds, $primaryOfficeId, $officeNames) {
+            $rootOfficeIds = $this->parseJsonIdArray($row->office_id ?? null);
             $detailIds = $this->hasTable('ppa_details')
                 ? $this->descendantPpaDetailIds([$row->ppa_details_id])
                 : [];
@@ -243,6 +263,14 @@ class DashboardController extends Controller
             $indicatorRowQuery = DB::table('ppa')
                 ->whereIn('types_id', $typeIds)
                 ->whereNotNull('indicator_id');
+
+            if (!empty($officeIds) && $this->hasColumn('ppa', 'office_id')) {
+                $indicatorRowQuery->where(function ($query) use ($officeIds) {
+                    foreach ($officeIds as $officeId) {
+                        $query->orWhereJsonContains('office_id', $officeId);
+                    }
+                });
+            }
 
             if (!empty($detailIds)) {
                 $indicatorRowQuery->where(function ($query) use ($row, $detailIds) {
@@ -253,20 +281,30 @@ class DashboardController extends Controller
                 $indicatorRowQuery->where('id', (int) $row->id);
             }
 
-            $indicatorCount = $indicatorRowQuery
-                ->distinct()
-                ->count('indicator_id');
-
+            $indicatorRows = $indicatorRowQuery->get(['indicator_id', 'office_id']);
+            $indicatorCount = $indicatorRows->pluck('indicator_id')->filter()->unique()->count();
+            $assignedOfficeIds = $indicatorRows
+                ->flatMap(fn ($indicatorRow) => $this->parseJsonIdArray($indicatorRow->office_id ?? null))
+                ->when(!empty($officeIds), fn ($ids) => $ids->intersect($officeIds))
+                ->unique()
+                ->values();
+            $assignedOfficeNames = $assignedOfficeIds
+                ->map(fn ($officeId) => (string) ($officeNames[(int) $officeId] ?? ''))
+                ->filter()
+                ->values()
+                ->all();
             $sectorKey = $sectorKeyByTypeCode[strtolower((string) ($row->sector_code ?? ''))] ?? '';
             $routeParams = [
                 'program' => (int) $row->id,
                 'year' => (int) ($row->year ?? 0),
             ];
 
-            if ($officeId !== null) {
-                $routeParams['office_id'] = $officeId;
-            } elseif (!empty($officeIds)) {
-                $routeParams['office_id'] = $officeIds[0];
+            if ($primaryOfficeId !== null) {
+                $routeParams['office_id'] = $primaryOfficeId;
+            } elseif ($assignedOfficeIds->isNotEmpty()) {
+                $routeParams['office_id'] = (int) $assignedOfficeIds->first();
+            } elseif (!empty($rootOfficeIds)) {
+                $routeParams['office_id'] = $rootOfficeIds[0];
             }
 
             return [
@@ -275,12 +313,15 @@ class DashboardController extends Controller
                 'sector' => (string) ($row->sector_code ?? ''),
                 'year' => (int) ($row->year ?? 0),
                 'indicator_count' => (int) $indicatorCount,
+                'offices' => $assignedOfficeNames,
                 'url' => $sectorKey !== '' ? route($sectorKey . '_physical', $routeParams) : '#',
             ];
-        })->values();
+        })
+            ->filter(fn (array $pap) => (int) ($pap['indicator_count'] ?? 0) > 0)
+            ->values();
     }
 
-    private function indicatorListForYear(array $fieldConfigs, int $year, ?int $officeId = null)
+    private function indicatorListForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null)
     {
         if (!$this->hasTable('ppa') || !$this->hasTable('types') || !$this->hasTable('record_types') || !$this->hasTable('indicators')) {
             return collect();
@@ -296,6 +337,14 @@ class DashboardController extends Controller
         if (empty($typeCodes)) {
             return collect();
         }
+
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+        $primaryOfficeId = $officeIds[0] ?? null;
+        $officeNames = !$this->hasTable('offices')
+            ? collect()
+            : DB::table('offices')
+                ->when(!empty($officeIds), fn ($query) => $query->whereIn('id', $officeIds))
+                ->pluck('name', 'id');
 
         $typeRows = DB::table('types')
             ->whereIn('code', $typeCodes)
@@ -327,10 +376,6 @@ class DashboardController extends Controller
             ->whereIn('types_id', $typeIds)
             ->where('year', $year);
 
-        if ($officeId !== null && $this->hasColumn('ppa', 'office_id')) {
-            $baseQuery->whereJsonContains('office_id', $officeId);
-        }
-
         $papRows = (clone $baseQuery)
             ->where('record_type_id', $programRecordTypeId)
             ->get(['id', 'name', 'types_id', 'ppa_details_id', 'office_id', 'year']);
@@ -351,11 +396,7 @@ class DashboardController extends Controller
             $rowIds = collect([$rootId]);
 
             if (!empty($detailIds)) {
-                $rowIds = $rowIds->merge(DB::table('ppa')
-                    ->whereIn('types_id', $typeIds)
-                    ->whereIn('ppa_details_id', $detailIds)
-                    ->pluck('id')
-                    ->map(fn ($id) => (int) $id));
+                $rowIds = $rowIds->merge($this->ppaRowIdsForDetailIds($typeIds, $detailIds));
             }
 
             foreach ($rowIds->filter(fn ($id) => $id > 0)->unique() as $rowId) {
@@ -394,7 +435,12 @@ class DashboardController extends Controller
                 continue;
             }
 
-            $targetRows = $this->physicalRowsForYear($targetTable, $year, $officeId, $config['key']);
+            $targetRows = $this->physicalRowsForYear(
+                $targetTable,
+                $year,
+                empty($officeIds) ? null : $officeIds,
+                $config['key']
+            );
 
             foreach ($targetRows as $targetRow) {
                 $meta = $this->parseValuesJson($targetRow->values ?? null);
@@ -415,18 +461,23 @@ class DashboardController extends Controller
             }
         }
 
-        if ($officeId !== null) {
-            $indicatorAssignments = $indicatorAssignments->filter(function (array $assignment) use ($officeId) {
-                $officeIds = collect($assignment['office_ids'] ?? [])
-                    ->map(fn ($id) => (int) $id)
-                    ->filter(fn ($id) => $id > 0);
-
-                return $officeIds->isEmpty() || $officeIds->contains($officeId);
-            });
-        }
-
         $indicatorAssignments = $indicatorAssignments
             ->filter(fn (array $assignment) => (int) ($assignment['program_id'] ?? 0) > 0 && (int) ($assignment['indicator_id'] ?? 0) > 0)
+            ->map(function (array $assignment) use ($officeIds) {
+                $assignmentOfficeIds = collect($assignment['office_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique();
+
+                if (!empty($officeIds)) {
+                    $assignmentOfficeIds = $assignmentOfficeIds->intersect($officeIds);
+                }
+
+                $assignment['office_ids'] = $assignmentOfficeIds->values()->all();
+
+                return $assignment;
+            })
+            ->filter(fn (array $assignment) => !empty($assignment['office_ids']))
             ->unique(fn (array $assignment) => (int) $assignment['program_id'] . '|' . (int) $assignment['indicator_id'])
             ->values();
 
@@ -438,7 +489,7 @@ class DashboardController extends Controller
 
         return $indicatorAssignments
             ->filter(fn (array $assignment) => $indicatorNames->has((int) ($assignment['indicator_id'] ?? 0)) && $rowMetaById->has((int) ($assignment['program_id'] ?? 0)))
-            ->map(function (array $assignment) use ($indicatorNames, $rowMetaById, $sectorKeyByTypeCode, $officeId) {
+            ->map(function (array $assignment) use ($indicatorNames, $rowMetaById, $sectorKeyByTypeCode, $primaryOfficeId, $officeIds, $officeNames) {
                 $rowMeta = $rowMetaById->get((int) $assignment['program_id']);
                 $sector = (string) ($rowMeta['sector'] ?? '');
                 $sectorKey = $sectorKeyByTypeCode[strtolower($sector)] ?? '';
@@ -448,6 +499,11 @@ class DashboardController extends Controller
                     ->values()
                     ->all();
                 $rootOfficeIds = $rowMeta['office_ids'] ?? [];
+                $assignedOfficeNames = collect($assignmentOfficeIds)
+                    ->map(fn ($officeId) => (string) ($officeNames[(int) $officeId] ?? ''))
+                    ->filter()
+                    ->values()
+                    ->all();
                 $routeParams = [
                     'program' => (int) ($rowMeta['root_id'] ?? 0),
                     'year' => (int) ($rowMeta['year'] ?? 0),
@@ -455,8 +511,8 @@ class DashboardController extends Controller
                     'highlight_indicator_id' => (int) ($assignment['indicator_id'] ?? 0),
                 ];
 
-                if ($officeId !== null) {
-                    $routeParams['office_id'] = $officeId;
+                if ($primaryOfficeId !== null) {
+                    $routeParams['office_id'] = $primaryOfficeId;
                 } elseif (!empty($assignmentOfficeIds)) {
                     $routeParams['office_id'] = $assignmentOfficeIds[0];
                 } elseif (!empty($rootOfficeIds)) {
@@ -469,6 +525,7 @@ class DashboardController extends Controller
                     'pap_name' => (string) ($rowMeta['pap_name'] ?? ''),
                     'sector' => $sector,
                     'year' => (int) ($rowMeta['year'] ?? 0),
+                    'offices' => $assignedOfficeNames,
                     'url' => $sectorKey !== '' ? route($sectorKey . '_physical', $routeParams) : '#',
                 ];
             })
@@ -480,7 +537,7 @@ class DashboardController extends Controller
             ->values();
     }
 
-    private function officePerformanceStatsForYear(array $fieldConfigs, int $year, ?int $scopedOfficeId = null)
+    private function officePerformanceStatsForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null)
     {
         if (!$this->hasTable('offices')) {
             return collect();
@@ -491,21 +548,33 @@ class DashboardController extends Controller
             ->orderBy('office_types_id')
             ->orderBy('name');
 
-        if ($scopedOfficeId !== null) {
-            $officesQuery->where('id', $scopedOfficeId);
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+
+        if (!empty($officeIds)) {
+            $officesQuery->whereIn('id', $officeIds);
         }
+
+        $sectorKeys = collect($fieldConfigs)
+            ->pluck('key')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $targetTable = (string) ($fieldConfigs[0]['targets'] ?? 'physical_targets');
+        $accomplishmentTable = (string) ($fieldConfigs[0]['accomp'] ?? 'physical_accomplishments');
+        $targetTotalsByOffice = $this->totalsByOfficeFromAggregateRows(
+            $this->physicalMonthlySumsForYear($targetTable, $year, $officeScope, $sectorKeys)
+        );
+        $accomplishmentTotalsByOffice = $this->totalsByOfficeFromAggregateRows(
+            $this->physicalMonthlySumsForYear($accomplishmentTable, $year, $officeScope, $sectorKeys)
+        );
 
         return $officesQuery
             ->get()
-            ->map(function ($office) use ($fieldConfigs, $year) {
-                $targetTotal = 0.0;
-                $accompTotal = 0.0;
-
-                foreach ($fieldConfigs as $config) {
-                    $totals = $this->physicalTotalsForYear($config['targets'], $config['accomp'], $year, (int) $office->id, $config['key']);
-                    $targetTotal += (float) ($totals['target_total'] ?? 0);
-                    $accompTotal += (float) ($totals['accomp_total'] ?? 0);
-                }
+            ->map(function ($office) use ($targetTotalsByOffice, $accomplishmentTotalsByOffice) {
+                $officeId = (int) $office->id;
+                $targetTotal = (float) ($targetTotalsByOffice[$officeId] ?? 0.0);
+                $accompTotal = (float) ($accomplishmentTotalsByOffice[$officeId] ?? 0.0);
 
                 $progress = $targetTotal > 0
                     ? round(min(100, ($accompTotal / $targetTotal) * 100), 2)
@@ -528,7 +597,7 @@ class DashboardController extends Controller
             ->values();
     }
 
-    private function papIndicatorTotalsForYear(array $fieldConfigs, int $year, ?int $officeId = null): array
+    private function papIndicatorTotalsForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null): array
     {
         if (!$this->hasTable('ppa') || !$this->hasTable('types') || !$this->hasTable('record_types') || !$this->hasTable('indicators')) {
             return [
@@ -536,6 +605,8 @@ class DashboardController extends Controller
                 'indicator_total' => 0,
             ];
         }
+
+        $officeIds = $this->normalizeOfficeScope($officeScope);
 
         $typeCodes = collect($fieldConfigs)
             ->pluck('type_code')
@@ -572,17 +643,27 @@ class DashboardController extends Controller
             ->whereIn('types_id', $typeIds)
             ->where('year', $year);
 
-        if ($officeId !== null && $this->hasColumn('ppa', 'office_id')) {
-            $baseQuery->whereJsonContains('office_id', $officeId);
-        }
-
-        $papTotal = (clone $baseQuery)
-            ->where('record_type_id', $programRecordTypeId)
-            ->count();
-
         $papRows = (clone $baseQuery)
             ->where('record_type_id', $programRecordTypeId)
             ->get(['id', 'ppa_details_id']);
+
+        $rootProgramIdByRowId = collect();
+
+        foreach ($papRows as $papRow) {
+            $rootProgramId = (int) ($papRow->id ?? 0);
+            $rowIds = collect([$rootProgramId]);
+            $detailIds = $this->hasTable('ppa_details')
+                ? $this->descendantPpaDetailIds([$papRow->ppa_details_id])
+                : [];
+
+            if (!empty($detailIds)) {
+                $rowIds = $rowIds->merge($this->ppaRowIdsForDetailIds($typeIds, $detailIds));
+            }
+
+            foreach ($rowIds->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique() as $rowId) {
+                $rootProgramIdByRowId->put($rowId, $rootProgramId);
+            }
+        }
 
         $programIds = $papRows
             ->pluck('id')
@@ -590,24 +671,7 @@ class DashboardController extends Controller
             ->filter(fn ($id) => $id > 0)
             ->unique()
             ->values();
-
-        $performanceIndicatorRowIds = $programIds;
-
-        if (!$programIds->isEmpty() && $this->hasTable('ppa_details')) {
-            $detailIds = $this->descendantPpaDetailIds($papRows->pluck('ppa_details_id')->all());
-
-            if (!empty($detailIds)) {
-                $performanceIndicatorRowIds = DB::table('ppa')
-                    ->whereIn('types_id', $typeIds)
-                    ->whereIn('ppa_details_id', $detailIds)
-                    ->pluck('id')
-                    ->map(fn ($id) => (int) $id)
-                    ->filter(fn ($id) => $id > 0)
-                    ->merge($programIds)
-                    ->unique()
-                    ->values();
-            }
-        }
+        $performanceIndicatorRowIds = $rootProgramIdByRowId->keys();
 
         $indicatorAssignments = $performanceIndicatorRowIds->isEmpty()
             ? collect()
@@ -629,7 +693,12 @@ class DashboardController extends Controller
                     continue;
                 }
 
-                $targetRows = $this->physicalRowsForYear($targetTable, $year, $officeId, $config['key']);
+                $targetRows = $this->physicalRowsForYear(
+                    $targetTable,
+                    $year,
+                    empty($officeIds) ? null : $officeIds,
+                    $config['key']
+                );
 
                 foreach ($targetRows as $targetRow) {
                     $meta = $this->parseValuesJson($targetRow->values ?? null);
@@ -651,19 +720,30 @@ class DashboardController extends Controller
             }
         }
 
-        if ($officeId !== null) {
-            $indicatorAssignments = $indicatorAssignments->filter(function (array $assignment) use ($officeId) {
-                $officeIds = collect($assignment['office_ids'] ?? [])
-                    ->map(fn ($id) => (int) $id)
-                    ->filter(fn ($id) => $id > 0);
-
-                return $officeIds->isEmpty() || $officeIds->contains($officeId);
-            });
-        }
-
         $indicatorAssignments = $indicatorAssignments
             ->filter(fn (array $assignment) => (int) ($assignment['program_id'] ?? 0) > 0 && (int) ($assignment['indicator_id'] ?? 0) > 0)
-            ->unique(fn (array $assignment) => (int) $assignment['program_id'] . '|' . (int) $assignment['indicator_id'])
+            ->flatMap(function (array $assignment) use ($officeIds) {
+                $assignmentOfficeIds = collect($assignment['office_ids'] ?? [])
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique();
+
+                if (!empty($officeIds)) {
+                    $assignmentOfficeIds = $assignmentOfficeIds->intersect($officeIds);
+                }
+
+                return $assignmentOfficeIds->map(function (int $officeId) use ($assignment) {
+                    $assignment['office_id'] = $officeId;
+                    $assignment['office_ids'] = [$officeId];
+
+                    return $assignment;
+                });
+            })
+            ->unique(fn (array $assignment) => implode('|', [
+                (int) $assignment['program_id'],
+                (int) $assignment['indicator_id'],
+                (int) $assignment['office_id'],
+            ]))
             ->values();
 
         $validIndicatorIds = $indicatorAssignments
@@ -680,6 +760,20 @@ class DashboardController extends Controller
 
         $indicatorTotal = $indicatorAssignments
             ->filter(fn (array $assignment) => $existingIndicatorIds->contains((int) ($assignment['indicator_id'] ?? 0)))
+            ->count();
+
+        $papTotal = $indicatorAssignments
+            ->filter(fn (array $assignment) => $existingIndicatorIds->contains((int) ($assignment['indicator_id'] ?? 0)))
+            ->map(function (array $assignment) use ($rootProgramIdByRowId) {
+                $rootProgramId = (int) $rootProgramIdByRowId->get((int) ($assignment['program_id'] ?? 0), 0);
+                $officeId = (int) ($assignment['office_id'] ?? 0);
+
+                return $rootProgramId > 0 && $officeId > 0
+                    ? $rootProgramId . '|' . $officeId
+                    : null;
+            })
+            ->filter()
+            ->unique()
             ->count();
 
         return [
@@ -700,30 +794,63 @@ class DashboardController extends Controller
             return [];
         }
 
-        $frontier = $allDetailIds;
+        if ($this->ppaDetailChildrenByParent === null) {
+            $this->ppaDetailChildrenByParent = DB::table('ppa_details')
+                ->get(['id', 'parent_id'])
+                ->reduce(function (array $childrenByParent, $row) {
+                    $parentId = (int) ($row->parent_id ?? 0);
+                    $childId = (int) ($row->id ?? 0);
 
-        while ($frontier->isNotEmpty()) {
-            $children = DB::table('ppa_details')
-                ->whereIn('parent_id', $frontier->all())
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->filter(fn ($id) => $id > 0)
-                ->diff($allDetailIds)
-                ->unique()
-                ->values();
+                    if ($parentId > 0 && $childId > 0) {
+                        $childrenByParent[$parentId][] = $childId;
+                    }
 
-            if ($children->isEmpty()) {
-                break;
+                    return $childrenByParent;
+                }, []);
+        }
+
+        $frontier = $allDetailIds->all();
+        $seen = array_fill_keys($frontier, true);
+
+        while (!empty($frontier)) {
+            $children = [];
+
+            foreach ($frontier as $parentId) {
+                foreach ($this->ppaDetailChildrenByParent[$parentId] ?? [] as $childId) {
+                    if (!isset($seen[$childId])) {
+                        $seen[$childId] = true;
+                        $children[] = $childId;
+                    }
+                }
             }
 
-            $allDetailIds = $allDetailIds
-                ->merge($children)
-                ->unique()
-                ->values();
             $frontier = $children;
         }
 
-        return $allDetailIds->all();
+        return array_map('intval', array_keys($seen));
+    }
+
+    private function ppaRowIdsForDetailIds(array $typeIds, array $detailIds): array
+    {
+        $typeIds = collect($typeIds)->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+        $detailIds = collect($detailIds)->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+
+        if (empty($typeIds) || empty($detailIds)) {
+            return [];
+        }
+
+        $cacheKey = implode(',', $typeIds).'|'.implode(',', $detailIds);
+
+        if (!array_key_exists($cacheKey, $this->ppaRowIdsByDetailSetCache)) {
+            $this->ppaRowIdsByDetailSetCache[$cacheKey] = DB::table('ppa')
+                ->whereIn('types_id', $typeIds)
+                ->whereIn('ppa_details_id', $detailIds)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        return $this->ppaRowIdsByDetailSetCache[$cacheKey];
     }
 
     private function parseJsonIdArray($raw): array
@@ -767,10 +894,10 @@ class DashboardController extends Controller
             ->all();
     }
 
-    private function physicalTotalsForYear(string $targetTable, string $accompTable, int $year, ?int $officeId = null, ?string $sector = null): array
+    private function physicalTotalsForYear(string $targetTable, string $accompTable, int $year, int|array|null $officeScope = null, ?string $sector = null): array
     {
-        $targetMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($targetTable, $year, $officeId, $sector));
-        $accompMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($accompTable, $year, $officeId, $sector));
+        $targetMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($targetTable, $year, $officeScope, $sector));
+        $accompMap = $this->monthlyMapFromAggregateRows($this->physicalMonthlySumsForYear($accompTable, $year, $officeScope, $sector));
         $targetTotal = 0.0;
         $accompTotal = 0.0;
 
@@ -788,30 +915,270 @@ class DashboardController extends Controller
         ];
     }
 
-    private function progressTrend(array $fieldConfigs, int $year, ?int $officeId = null): array
+    /**
+     * Average the attainment of each physical monthly input independently so
+     * values with different units are never added together. Each target input
+     * contributes equally, and over-accomplishment is capped at 100%.
+     */
+    private function physicalInputProgressForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null): float
+    {
+        if (empty($fieldConfigs)) {
+            return 0.0;
+        }
+
+        $attainmentTotal = 0.0;
+        $targetInputCount = 0;
+        $sectorKeys = collect($fieldConfigs)->pluck('key')->all();
+        $targetMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear($fieldConfigs[0]['targets'], $year, $officeScope, $sectorKeys)
+        );
+        $accomplishmentMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear($fieldConfigs[0]['accomp'], $year, $officeScope, $sectorKeys)
+        );
+
+        foreach ($targetMap as $key => $target) {
+            $target = max((float) $target, 0.0);
+
+            if ($target <= 0) {
+                continue;
+            }
+
+            $accomplishment = max((float) ($accomplishmentMap[$key] ?? 0), 0.0);
+            $attainmentTotal += min($accomplishment / $target, 1.0);
+            $targetInputCount++;
+        }
+
+        return $targetInputCount > 0
+            ? round(($attainmentTotal / $targetInputCount) * 100, 2)
+            : 0.0;
+    }
+
+    private function financialUtilizationForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null): ?float
+    {
+        if (empty($fieldConfigs)) {
+            return null;
+        }
+
+        $targetTotal = 0.0;
+        $accomplishmentTotal = 0.0;
+        $sectorKeys = collect($fieldConfigs)->pluck('key')->all();
+        $targetMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear('financial_target', $year, $officeScope, $sectorKeys)
+        );
+        $accomplishmentMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear('financial_accomplishment', $year, $officeScope, $sectorKeys)
+        );
+
+        foreach ($targetMap as $key => $target) {
+            $target = max((float) $target, 0.0);
+
+            if ($target <= 0) {
+                continue;
+            }
+
+            $targetTotal += $target;
+            $accomplishmentTotal += max((float) ($accomplishmentMap[$key] ?? 0), 0.0);
+        }
+
+        if ($targetTotal <= 0) {
+            return null;
+        }
+
+        return round(min(100, ($accomplishmentTotal / $targetTotal) * 100), 2);
+    }
+
+    /**
+     * Build one period-by-period data set for the two comparison cards.
+     * Keeping target and accomplishment values in the same rows guarantees
+     * that both cards use an identical sector order and period selection.
+     */
+    private function performanceComparisonForYear(array $fieldConfigs, int $year, int|array|null $officeScope = null): array
+    {
+        $dataSets = [
+            'physical' => [
+                'target' => 'physical_targets',
+                'accomplishment' => 'physical_accomplishments',
+                'aggregation' => 'input_count',
+            ],
+            'financial' => [
+                'target' => 'financial_target',
+                'accomplishment' => 'financial_accomplishment',
+                'aggregation' => 'sum',
+            ],
+        ];
+
+        $sectorKeys = collect($fieldConfigs)->pluck('key')->all();
+
+        return collect($dataSets)->map(function (array $tables) use ($fieldConfigs, $sectorKeys, $year, $officeScope) {
+            $aggregate = ($tables['aggregation'] ?? 'sum') === 'input_count'
+                ? fn (string $table) => $this->periodInputCountsBySectorForYear($table, $year, $officeScope, $sectorKeys)
+                : fn (string $table) => $this->periodTotalsBySectorForYear($table, $year, $officeScope, $sectorKeys);
+            $targetsBySector = $aggregate($tables['target']);
+            $accomplishmentsBySector = $aggregate($tables['accomplishment']);
+
+            return collect($fieldConfigs)->map(function (array $config) use ($targetsBySector, $accomplishmentsBySector) {
+                $targetPeriods = $targetsBySector[$config['key']] ?? array_fill_keys($this->comparisonPeriodColumns(), 0.0);
+                $accomplishmentPeriods = $accomplishmentsBySector[$config['key']] ?? array_fill_keys($this->comparisonPeriodColumns(), 0.0);
+
+                return [
+                    'key' => $config['key'],
+                    'label' => $config['label'],
+                    'target' => $targetPeriods,
+                    'accomplishment' => $accomplishmentPeriods,
+                ];
+            })->values()->all();
+        })->all();
+    }
+
+    /**
+     * Count positive physical input cells by sector and period. The physical
+     * columns default to zero, so positive values represent populated inputs.
+     */
+    private function periodInputCountsBySectorForYear(
+        string $table,
+        int $year,
+        int|array|null $officeScope,
+        array $sectors
+    ): array {
+        $emptyCounts = array_fill_keys($this->comparisonPeriodColumns(), 0.0);
+        $counts = collect($sectors)->mapWithKeys(fn (string $sector) => [$sector => $emptyCounts])->all();
+
+        if (!$this->hasTable($table) || !$this->hasColumn($table, 'sector') || empty($sectors)) {
+            return $counts;
+        }
+
+        $yearColumn = $this->resolveYearColumn($table);
+
+        if ($yearColumn === null) {
+            return $counts;
+        }
+
+        $selects = collect($this->comparisonPeriodColumns())
+            ->filter(fn (string $column) => $this->hasColumn($table, $column))
+            ->map(fn (string $column) => DB::raw("SUM(CASE WHEN `{$column}` > 0 THEN 1 ELSE 0 END) as `{$column}`"))
+            ->values()
+            ->all();
+
+        if (empty($selects)) {
+            return $counts;
+        }
+
+        $query = DB::table($table)
+            ->select(array_merge(['sector'], $selects))
+            ->whereIn('sector', $sectors)
+            ->groupBy('sector');
+        $this->applyYearFilter($query, $yearColumn, $year);
+
+        $officeColumn = $this->hasColumn($table, 'office_id') ? 'office_id' : 'office_ids';
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+
+        if (!empty($officeIds) && $this->hasColumn($table, $officeColumn)) {
+            $query->whereIn($officeColumn, $officeIds);
+        }
+
+        foreach ($query->get() as $row) {
+            $sector = strtolower((string) ($row->sector ?? ''));
+
+            if (!array_key_exists($sector, $counts)) {
+                continue;
+            }
+
+            foreach ($this->comparisonPeriodColumns() as $periodColumn) {
+                $counts[$sector][$periodColumn] = (float) ($row->{$periodColumn} ?? 0);
+            }
+        }
+
+        return $counts;
+    }
+
+    private function periodTotalsBySectorForYear(
+        string $table,
+        int $year,
+        int|array|null $officeScope,
+        array $sectors
+    ): array
+    {
+        $emptyTotals = array_fill_keys($this->comparisonPeriodColumns(), 0.0);
+        $totals = collect($sectors)->mapWithKeys(fn (string $sector) => [$sector => $emptyTotals])->all();
+
+        if (!$this->hasTable($table) || !$this->hasColumn($table, 'sector') || empty($sectors)) {
+            return $totals;
+        }
+
+        $yearColumn = $this->resolveYearColumn($table);
+
+        if ($yearColumn === null) {
+            return $totals;
+        }
+
+        $selects = collect($this->comparisonPeriodColumns())
+            ->filter(fn (string $column) => $this->hasColumn($table, $column))
+            ->map(fn (string $column) => DB::raw("COALESCE(SUM(`{$column}`), 0) as `{$column}`"))
+            ->values()
+            ->all();
+
+        if (empty($selects)) {
+            return $totals;
+        }
+
+        $query = DB::table($table)
+            ->select(array_merge(['sector'], $selects))
+            ->whereIn('sector', $sectors)
+            ->groupBy('sector');
+        $this->applyYearFilter($query, $yearColumn, $year);
+
+        $officeColumn = $this->hasColumn($table, 'office_id') ? 'office_id' : 'office_ids';
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+
+        if (!empty($officeIds) && $this->hasColumn($table, $officeColumn)) {
+            $query->whereIn($officeColumn, $officeIds);
+        }
+
+        foreach ($query->get() as $row) {
+            $sector = strtolower((string) ($row->sector ?? ''));
+
+            if (!array_key_exists($sector, $totals)) {
+                continue;
+            }
+
+            foreach ($this->comparisonPeriodColumns() as $periodColumn) {
+                $totals[$sector][$periodColumn] = max((float) ($row->{$periodColumn} ?? 0), 0.0);
+            }
+        }
+
+        return $totals;
+    }
+
+    private function progressTrend(array $fieldConfigs, int $year, int|array|null $officeScope = null): array
     {
         $monthlyLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         $monthColumns = $this->monthColumns();
-        $monthlyAccomplishments = array_fill_keys($monthColumns, 0.0);
+        $monthlyDelays = array_fill_keys($monthColumns, 0.0);
 
         foreach ($fieldConfigs as $config) {
-            $totals = $this->physicalAccomplishmentTrendForYear($config['accomp'], $year, $officeId, $config['key']);
+            $totals = $this->physicalDelayTrendForYear(
+                $config['targets'],
+                $config['accomp'],
+                $year,
+                $officeScope,
+                $config['key']
+            );
 
             foreach ($monthColumns as $monthColumn) {
-                $monthlyAccomplishments[$monthColumn] += (float) ($totals['accomplishments'][$monthColumn] ?? 0);
+                $monthlyDelays[$monthColumn] += (float) ($totals[$monthColumn] ?? 0);
             }
         }
 
         $monthly = [];
-        $maxMonthlyAccomplishment = max($monthlyAccomplishments);
+        $maxMonthlyDelay = max($monthlyDelays);
 
         foreach ($monthColumns as $index => $monthColumn) {
-            $accomplishment = $monthlyAccomplishments[$monthColumn];
+            $delay = $monthlyDelays[$monthColumn];
 
             $monthly[] = [
                 'label' => $monthlyLabels[$index],
-                'accomplishment' => round($accomplishment, 2),
-                'progress' => $maxMonthlyAccomplishment > 0 ? round(($accomplishment / $maxMonthlyAccomplishment) * 100, 2) : 0.0,
+                'delay' => round($delay, 2),
+                'progress' => $maxMonthlyDelay > 0 ? round(($delay / $maxMonthlyDelay) * 100, 2) : 0.0,
             ];
         }
 
@@ -823,20 +1190,20 @@ class DashboardController extends Controller
         ];
 
         $quarterly = [];
-        $quarterlyAccomplishments = [];
+        $quarterlyDelays = [];
 
         foreach ($quarters as $label => $quarterMonths) {
-            $quarterlyAccomplishments[$label] = array_sum(array_intersect_key($monthlyAccomplishments, array_flip($quarterMonths)));
+            $quarterlyDelays[$label] = array_sum(array_intersect_key($monthlyDelays, array_flip($quarterMonths)));
         }
 
-        $maxQuarterlyAccomplishment = max($quarterlyAccomplishments);
+        $maxQuarterlyDelay = max($quarterlyDelays);
 
-        foreach ($quarterlyAccomplishments as $label => $accomplishment) {
+        foreach ($quarterlyDelays as $label => $delay) {
 
             $quarterly[] = [
                 'label' => $label,
-                'accomplishment' => round($accomplishment, 2),
-                'progress' => $maxQuarterlyAccomplishment > 0 ? round(($accomplishment / $maxQuarterlyAccomplishment) * 100, 2) : 0.0,
+                'delay' => round($delay, 2),
+                'progress' => $maxQuarterlyDelay > 0 ? round(($delay / $maxQuarterlyDelay) * 100, 2) : 0.0,
             ];
         }
 
@@ -846,64 +1213,62 @@ class DashboardController extends Controller
         ];
     }
 
-    private function physicalAccomplishmentTrendForYear(string $accompTable, int $year, ?int $officeId = null, ?string $sector = null): array
+    private function physicalDelayTrendForYear(
+        string $targetTable,
+        string $accompTable,
+        int $year,
+        int|array|null $officeScope = null,
+        ?string $sector = null
+    ): array
     {
-        $accomplishments = array_fill_keys($this->monthColumns(), 0.0);
+        $delays = array_fill_keys($this->monthColumns(), 0.0);
+        $targetMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear($targetTable, $year, $officeScope, $sector)
+        );
+        $accomplishmentMap = $this->monthlyMapFromAggregateRows(
+            $this->physicalMonthlySumsForYear($accompTable, $year, $officeScope, $sector)
+        );
 
-        if (!$this->hasTable($accompTable)) {
-            return [
-                'accomplishments' => $accomplishments,
-            ];
+        foreach ($targetMap as $key => $target) {
+            $separatorPosition = strrpos($key, '|');
+            $monthColumn = $separatorPosition === false ? '' : substr($key, $separatorPosition + 1);
+
+            if (!array_key_exists($monthColumn, $delays)) {
+                continue;
+            }
+
+            if ((float) $target > (float) ($accomplishmentMap[$key] ?? 0)) {
+                $delays[$monthColumn]++;
+            }
         }
 
-        $yearColumn = $this->resolveYearColumn($accompTable);
-
-        if ($yearColumn === null) {
-            return [
-                'accomplishments' => $accomplishments,
-            ];
-        }
-
-        $selects = collect($this->monthColumns())
-            ->filter(fn (string $column) => $this->hasColumn($accompTable, $column))
-            ->map(fn (string $column) => DB::raw("COALESCE(SUM(`{$column}`), 0) as `{$column}`"))
-            ->values()
-            ->all();
-
-        if (empty($selects)) {
-            return [
-                'accomplishments' => $accomplishments,
-            ];
-        }
-
-        $query = DB::table($accompTable)->select($selects);
-        $this->applyYearFilter($query, $yearColumn, $year);
-
-        $officeColumn = $this->hasColumn($accompTable, 'office_id') ? 'office_id' : 'office_ids';
-
-        if ($officeId !== null && $this->hasColumn($accompTable, $officeColumn)) {
-            $query->where($officeColumn, $officeId);
-        }
-
-        if ($sector !== null && $this->hasColumn($accompTable, 'sector')) {
-            $query->where('sector', $sector);
-        }
-
-        $row = $query->first();
-
-        foreach ($this->monthColumns() as $monthColumn) {
-            $accomplishments[$monthColumn] = max((float) ($row->{$monthColumn} ?? 0), 0.0);
-        }
-
-        return [
-            'accomplishments' => $accomplishments,
-        ];
+        return $delays;
     }
 
-    private function physicalRowsForYear(string $table, int $year, ?int $officeId = null, ?string $sector = null)
+    private function physicalRowsForYear(string $table, int $year, int|array|null $officeScope = null, string|array|null $sector = null)
     {
         if (!$this->hasTable($table)) {
             return collect();
+        }
+
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+        sort($officeIds);
+        $sectorKeys = collect(is_array($sector) ? $sector : [$sector])
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->map(fn ($value) => strtolower((string) $value))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+        $cacheKey = implode('|', [
+            $table,
+            $year,
+            implode(',', $officeIds),
+            implode(',', $sectorKeys),
+        ]);
+
+        if (array_key_exists($cacheKey, $this->physicalRowsCache)) {
+            return $this->physicalRowsCache[$cacheKey];
         }
 
         $yearColumn = $this->resolveYearColumn($table);
@@ -923,18 +1288,18 @@ class DashboardController extends Controller
 
         $officeColumn = $this->hasColumn($table, 'office_id') ? 'office_id' : 'office_ids';
 
-        if ($officeId !== null && $this->hasColumn($table, $officeColumn)) {
-            $query->where($officeColumn, $officeId);
+        if (!empty($officeIds) && $this->hasColumn($table, $officeColumn)) {
+            $query->whereIn($officeColumn, $officeIds);
         }
 
-        if ($sector !== null && $this->hasColumn($table, 'sector')) {
-            $query->where('sector', $sector);
+        if (!empty($sectorKeys) && $this->hasColumn($table, 'sector')) {
+            $query->whereIn('sector', $sectorKeys);
         }
 
-        return $query->get();
+        return $this->physicalRowsCache[$cacheKey] = $query->get();
     }
 
-    private function physicalMonthlySumsForYear(string $table, int $year, ?int $officeId = null, ?string $sector = null)
+    private function physicalMonthlySumsForYear(string $table, int $year, int|array|null $officeScope = null, string|array|null $sector = null)
     {
         if (!$this->hasTable($table)) {
             return collect();
@@ -946,6 +1311,26 @@ class DashboardController extends Controller
 
         if ($yearColumn === null || !$this->hasColumn($table, $officeColumn)) {
             return collect();
+        }
+
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+        sort($officeIds);
+        $sectorKeys = collect(is_array($sector) ? $sector : [$sector])
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->map(fn ($value) => strtolower((string) $value))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+        $cacheKey = implode('|', [
+            $table,
+            $year,
+            implode(',', $officeIds),
+            implode(',', $sectorKeys),
+        ]);
+
+        if (array_key_exists($cacheKey, $this->monthlySumsCache)) {
+            return $this->monthlySumsCache[$cacheKey];
         }
 
         $monthColumns = collect($this->monthColumns())
@@ -988,26 +1373,145 @@ class DashboardController extends Controller
 
         $this->applyYearFilter($query, $yearColumn, $year);
 
-        if ($officeId !== null) {
-            $query->where($officeColumn, $officeId);
+        if (!empty($officeIds)) {
+            $query->whereIn($officeColumn, $officeIds);
         }
 
-        if ($sector !== null && $this->hasColumn($table, 'sector')) {
-            $query->where('sector', $sector);
+        if (!empty($sectorKeys) && $this->hasColumn($table, 'sector')) {
+            $query->whereIn('sector', $sectorKeys);
         }
 
-        return $query->get();
+        return $this->monthlySumsCache[$cacheKey] = $query->get();
     }
 
-    private function dashboardOfficeScope(): ?int
+    private function totalsByOfficeFromAggregateRows($rows): array
     {
-        $user = auth()->user();
+        $totals = [];
 
-        if ($user && $this->shouldScopeToUserOffice()) {
-            return (int) $user->office_id;
+        foreach ($rows as $row) {
+            $officeId = (int) ($row->office_ids ?? 0);
+
+            if ($officeId <= 0) {
+                continue;
+            }
+
+            foreach ($this->monthColumns() as $column) {
+                $totals[$officeId] = ($totals[$officeId] ?? 0.0)
+                    + max((float) ($row->{$column} ?? 0), 0.0);
+            }
         }
 
-        return null;
+        return $totals;
+    }
+
+    private function dashboardOfficeFilter(\Illuminate\Http\Request $request): array
+    {
+        $user = auth()->user();
+        $allOffices = $this->hasTable('offices')
+            ? Office::query()
+                ->orderBy('office_types_id')
+                ->orderBy('name')
+                ->get(['id', 'name', 'office_types_id'])
+            : collect();
+
+        $canViewAllOffices = $user === null || $user->isAdmin() || $user->isRegionalOffice();
+        $allowsAll = $canViewAllOffices || ($user?->isPenro() ?? false);
+        $allLabel = $canViewAllOffices ? 'All Offices' : 'All Service Area';
+
+        if ($canViewAllOffices) {
+            $allowedOfficeIds = $allOffices->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $allScope = null;
+        } elseif ($user?->isPenro()) {
+            $allowedOfficeIds = Office::serviceAreaOfficeIdsForPenro((int) $user->office_id);
+            $allScope = $allowedOfficeIds;
+        } else {
+            $assignedOfficeId = (int) ($user?->office_id ?? 0);
+            $allowedOfficeIds = $assignedOfficeId > 0 ? [$assignedOfficeId] : [-1];
+            $allScope = $allowedOfficeIds;
+        }
+
+        $allowedOfficeIds = $this->normalizeOfficeScope($allowedOfficeIds);
+        $officeOptions = $allOffices
+            ->whereIn('id', $allowedOfficeIds)
+            ->map(fn (Office $office) => [
+                'id' => (int) $office->id,
+                'name' => (string) $office->name,
+                'type' => match ((int) ($office->office_types_id ?? 0)) {
+                    1 => 'Regional Office',
+                    2 => 'PENRO',
+                    3 => 'CENRO',
+                    default => 'Office',
+                },
+            ])
+            ->values();
+
+        $defaultSelection = $allowsAll
+            ? 'all'
+            : (string) ($allowedOfficeIds[0] ?? '');
+        $requestedSelection = strtolower(trim((string) $request->query('office_id', $defaultSelection)));
+
+        if ($allowsAll && $requestedSelection === 'all') {
+            return [
+                'selected' => 'all',
+                'scope' => $allScope,
+                'options' => $officeOptions,
+                'allows_all' => true,
+                'all_label' => $allLabel,
+            ];
+        }
+
+        $requestedOfficeId = ctype_digit($requestedSelection) ? (int) $requestedSelection : 0;
+
+        if (!in_array($requestedOfficeId, $allowedOfficeIds, true)) {
+            if ($defaultSelection === 'all') {
+                return [
+                    'selected' => 'all',
+                    'scope' => $allScope,
+                    'options' => $officeOptions,
+                    'allows_all' => true,
+                    'all_label' => $allLabel,
+                ];
+            }
+
+            $requestedOfficeId = (int) $defaultSelection;
+        }
+
+        return [
+            'selected' => (string) $requestedOfficeId,
+            'scope' => $requestedOfficeId !== 0 ? [$requestedOfficeId] : [-1],
+            'options' => $officeOptions,
+            'allows_all' => $allowsAll,
+            'all_label' => $allLabel,
+        ];
+    }
+
+    private function dashboardOfficeScopeNames(int|array|null $officeScope): array
+    {
+        $officeIds = $this->normalizeOfficeScope($officeScope);
+
+        if (empty($officeIds) || !$this->hasTable('offices')) {
+            return [];
+        }
+
+        $namesById = DB::table('offices')
+            ->whereIn('id', $officeIds)
+            ->pluck('name', 'id');
+
+        return collect($officeIds)
+            ->map(fn (int $scopedOfficeId) => (string) ($namesById[$scopedOfficeId] ?? ''))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeOfficeScope(int|array|null $officeScope): array
+    {
+        return collect(is_array($officeScope) ? $officeScope : [$officeScope])
+            ->map(fn ($officeId) => (int) $officeId)
+            ->filter(fn (int $officeId) => $officeId !== 0)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function monthlyMap($rows): array
@@ -1090,6 +1594,16 @@ class DashboardController extends Controller
         return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
     }
 
+    private function comparisonPeriodColumns(): array
+    {
+        return [
+            'jan', 'feb', 'mar', 'q1',
+            'apr', 'may', 'jun', 'q2',
+            'jul', 'aug', 'sep', 'q3',
+            'oct', 'nov', 'dec', 'q4',
+        ];
+    }
+
     private function parseValuesJson($raw): array
     {
         if (is_array($raw)) {
@@ -1107,13 +1621,14 @@ class DashboardController extends Controller
 
     private function applyYearFilter($query, string $yearColumn, int $year): void
     {
-        $query->whereRaw("CAST({$yearColumn} AS UNSIGNED) = ?", [$year]);
+        $query->where($yearColumn, $year);
     }
 
-    private function yearOptions(array $fieldConfigs, int $currentYear, ?int $officeId = null)
+    private function yearOptions(array $fieldConfigs, int $currentYear, int|array|null $officeScope = null)
     {
         $tables = collect($fieldConfigs)
             ->flatMap(fn (array $config) => [$config['targets'], $config['accomp']])
+            ->merge(['financial_target', 'financial_accomplishment'])
             ->unique()
             ->values();
 
@@ -1134,8 +1649,10 @@ class DashboardController extends Controller
 
             $officeColumn = $this->hasColumn($table, 'office_id') ? 'office_id' : 'office_ids';
 
-            if ($officeId !== null && $this->hasColumn($table, $officeColumn)) {
-                $query->where($officeColumn, $officeId);
+            $officeIds = $this->normalizeOfficeScope($officeScope);
+
+            if (!empty($officeIds) && $this->hasColumn($table, $officeColumn)) {
+                $query->whereIn($officeColumn, $officeIds);
             }
 
             $years = $years->merge($query
@@ -1195,8 +1712,12 @@ class DashboardController extends Controller
 
     private function hasColumn(string $table, string $column): bool
     {
-        $key = "{$table}.{$column}";
+        if (!array_key_exists($table, $this->tableColumnsCache)) {
+            $this->tableColumnsCache[$table] = collect(Schema::getColumnListing($table))
+                ->mapWithKeys(fn (string $name) => [strtolower($name) => true])
+                ->all();
+        }
 
-        return $this->columnExistsCache[$key] ??= Schema::hasColumn($table, $column);
+        return isset($this->tableColumnsCache[$table][strtolower($column)]);
     }
 }

@@ -63,13 +63,6 @@
     };
 
     $groupedPrograms = collect($programsRaw ?? $programs)
-        ->sortBy(function ($row) use ($hierarchySortValue) {
-            return $hierarchySortValue($row->title ?? '') . '|'
-                . $hierarchySortValue($row->program ?? '') . '|'
-                . $hierarchySortValue($row->project ?? '') . '|'
-                . $hierarchySortValue($row->activities ?? '') . '|'
-                . $hierarchySortValue($row->subactivities ?? '');
-        }, SORT_NATURAL | SORT_FLAG_CASE)
         ->groupBy(function ($row) use ($normalizeGroupValue) {
             return $normalizeGroupValue($row->title ?? '') . '|'
                 . $normalizeGroupValue($row->program ?? '') . '|'
@@ -257,7 +250,6 @@
     @php
         $activitiesUseRomanSequence = $hasRomanSequence($groupPrograms, 'activities');
         $subActivityGroups = $groupPrograms
-            ->sortBy(fn($row) => $hierarchySortValue($row->activities ?? '', $activitiesUseRomanSequence), SORT_NATURAL | SORT_FLAG_CASE)
             ->groupBy(function($row) {
                 return strtolower(trim((string)($row->activities ?? '')));
             })->values();
@@ -279,10 +271,6 @@
         @php
             $subactivitiesUseRomanSequence = $hasRomanSequence($subActivityGroup, 'subactivities');
             $subSubActivityGroups = $subActivityGroup
-                ->sortBy(function($row) use ($hierarchySortValue, $subactivitiesUseRomanSequence) {
-                    $priority = $row->_sort_priority ?? 1;
-                    return $priority . '|' . $hierarchySortValue($row->subactivities ?? '', $subactivitiesUseRomanSequence);
-                }, SORT_NATURAL | SORT_FLAG_CASE)
                 ->groupBy(function($row) {
                     return strtolower(trim((string)($row->subactivities ?? ''))) . '|'
                         . strtolower(trim((string)(isset($row->subsubactivities) ? $row->subsubactivities : ''))) . '|'

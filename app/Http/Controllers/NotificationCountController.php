@@ -12,17 +12,17 @@ class NotificationCountController extends Controller
     {
         $user = $request->user();
         $counts = $notificationCounts->for($user);
-        $isPenro = $user->isPenro();
-        $count = $isPenro
-            ? $counts['pendingPenroNotifications']
+        $isReviewer = $user->isAdmin() || $user->isRegionalOffice();
+        $count = $isReviewer
+            ? $counts['pendingReviewNotifications']
             : $counts['unreadSubmissionNotifications'];
 
         return response()
             ->json([
                 'count' => $count,
                 'version' => $counts['notificationVersion'],
-                'label' => $isPenro
-                    ? 'pending accomplishment notifications'
+                'label' => $isReviewer
+                    ? 'pending locked-period change requests'
                     : 'unread submission notifications',
             ])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');

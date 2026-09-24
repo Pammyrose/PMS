@@ -35,6 +35,7 @@ class PhysicalExcelUploadController extends Controller
         'limits_program_title_continuations' => false,
         'program_header_prefixes' => [],
         'merges_car_continuation_headers' => true,
+        'merges_activity_continuation_rows' => false,
         'starts_placeholder_from_office_continuation' => false,
         'uses_compact_alpha_headings' => false,
         'unlocated_section_markers' => [],
@@ -43,6 +44,7 @@ class PhysicalExcelUploadController extends Controller
         'uses_ordered_heading_depths' => false,
         'single_i_is_roman' => false,
         'nested_letter_parent_children' => [],
+        'lower_letter_siblings_under_root_number' => false,
         'persists_source_order' => false,
         'pap_header_aliases' => [],
         'location_header_aliases' => [],
@@ -58,6 +60,7 @@ class PhysicalExcelUploadController extends Controller
     private const SECTOR_CONFIG = [
         'gass' => [
             'sheet_name' => 'GASS',
+            'persists_source_order' => true,
             'default_title' => 'GENERAL ADMINISTRATION AND SUPPORT SERVICES (GASS)',
             'sector' => 'gass',
             'type_code' => 'GASS',
@@ -66,6 +69,7 @@ class PhysicalExcelUploadController extends Controller
         ],
         'sto' => [
             'sheet_name' => 'STO',
+            'persists_source_order' => true,
             'default_title' => 'SUPPORT TO OPERATIONS',
             'sector' => 'sto',
             'type_code' => 'STO',
@@ -99,6 +103,9 @@ class PhysicalExcelUploadController extends Controller
             'sheet_aliases' => ['Biodiv'],
             'pap_header_aliases' => ['P/A/P'],
             'location_header_aliases' => ['OFFICE'],
+            'merges_car_continuation_headers' => false,
+            'merges_activity_continuation_rows' => true,
+            'persists_source_order' => true,
             'default_title' => 'PROTECTED AREAS',
             'sector' => 'pa',
             'type_code' => 'Biodiv',
@@ -108,6 +115,8 @@ class PhysicalExcelUploadController extends Controller
         'engp' => [
             'sheet_name' => 'ENGP',
             'sheet_aliases' => ['E-NGP +Soilcon -rev', 'E-NGP +Soilcon'],
+            'merges_car_continuation_headers' => false,
+            'merges_activity_continuation_rows' => true,
             'persists_source_order' => true,
             'default_title' => 'FOREST AND WATERSHED MANAGEMENT',
             'sector' => 'engp',
@@ -118,6 +127,15 @@ class PhysicalExcelUploadController extends Controller
         ],
         'lands' => [
             'sheet_name' => 'LANDS',
+            'sheet_aliases' => ['Lands (NEP)'],
+            'pap_header_aliases' => ['Program/Project/Activity'],
+            'merges_car_continuation_headers' => false,
+            'uses_compact_alpha_headings' => true,
+            'root_section_markers' => ['LAND RECORDS MAINTENANCE'],
+            'uses_ordered_heading_depths' => true,
+            'single_i_is_roman' => true,
+            'lower_letter_siblings_under_root_number' => true,
+            'persists_source_order' => true,
             'default_title' => 'LAND MANAGEMENT',
             'sector' => 'lands',
             'type_code' => 'Lands',
@@ -125,7 +143,11 @@ class PhysicalExcelUploadController extends Controller
             'indicator_model' => Lands_Indicator::class,
         ],
         'soilcon' => [
-            'sheet_name' => 'E-NGP +Soilcon',
+            'sheet_name' => 'E-NGP +Soilcon -rev',
+            'sheet_aliases' => ['E-NGP +Soilcon'],
+            'merges_car_continuation_headers' => false,
+            'merges_activity_continuation_rows' => true,
+            'persists_source_order' => true,
             'default_title' => 'SOIL CONSERVATION AND WATERSHED MANAGEMENT',
             'sector' => 'soilcon',
             'type_code' => 'Soilcon',
@@ -135,6 +157,7 @@ class PhysicalExcelUploadController extends Controller
         ],
         'nra' => [
             'sheet_name' => 'NRA',
+            'persists_source_order' => true,
             'default_title' => 'NATURAL RESOURCES ASSESSMENT',
             'sector' => 'nra',
             'type_code' => 'NRA',
@@ -143,6 +166,7 @@ class PhysicalExcelUploadController extends Controller
         ],
         'paria' => [
             'sheet_name' => 'PARIA',
+            'persists_source_order' => true,
             'default_title' => 'PARIA',
             'sector' => 'paria',
             'type_code' => 'PARIA',
@@ -151,6 +175,7 @@ class PhysicalExcelUploadController extends Controller
         ],
         'cobb' => [
             'sheet_name' => 'COBB',
+            'persists_source_order' => true,
             'default_title' => 'COBB',
             'sector' => 'cobb',
             'type_code' => 'COBB',
@@ -159,6 +184,7 @@ class PhysicalExcelUploadController extends Controller
         ],
         'continuing' => [
             'sheet_name' => 'CONTINUING',
+            'persists_source_order' => true,
             'default_title' => 'CONTINUING',
             'sector' => 'continuing',
             'type_code' => 'CONTINUING',
@@ -428,7 +454,7 @@ class PhysicalExcelUploadController extends Controller
         $validated = $request->validate([
             'excel_file' => 'required|file|mimes:xlsx|max:51200',
             'year' => 'nullable|integer|min:2000|max:2099',
-            'import_type' => 'nullable|in:target,accomplishment',
+            'import_type' => 'nullable|in:target,accomplishment,both',
         ]);
 
         $year = (int) ($validated['year'] ?? $request->input('year', 2026));
@@ -443,18 +469,26 @@ class PhysicalExcelUploadController extends Controller
                 $sheetName,
                 $validated['import_type'] ?? null
             );
-            $result = $this->importStoPhysicalRowsFromExcel($filePath, $year, $importType);
+            $results = [];
+            foreach ($this->physicalImportTypes($importType) as $index => $physicalImportType) {
+                $results[$physicalImportType] = $this->importStoPhysicalRowsFromExcel(
+                    $filePath,
+                    $year,
+                    $physicalImportType,
+                    $index === 0,
+                    $index === 0
+                );
+            }
+            $result = $this->combinePhysicalImportResults($results);
             DB::commit();
-
-            $label = $importType === 'accomplishment' ? 'accomplishment' : 'target';
 
             return redirect()
                 ->back()
                 ->with('success', sprintf(
-                    '%s physical %s Excel import complete: %d office row(s), %d financial target row(s), and %d financial accomplishment row(s) imported; %d skipped.',
+                    '%s Excel import complete: %d physical target office row(s), %d physical accomplishment office row(s), %d financial target row(s), and %d financial accomplishment row(s) imported; %d skipped.',
                     $this->excelConfig('label'),
-                    $label,
-                    $result['imported'] ?? 0,
+                    $result['target_imported'] ?? 0,
+                    $result['accomplishment_imported'] ?? 0,
                     $result['financial_imported'] ?? 0,
                     $result['financial_accomplishment_imported'] ?? 0,
                     $result['skipped'] ?? 0
@@ -475,7 +509,7 @@ class PhysicalExcelUploadController extends Controller
         $validated = $request->validate([
             'excel_file' => 'required|file|mimes:xlsx|max:51200',
             'year' => 'nullable|integer|min:2000|max:2099',
-            'import_type' => 'nullable|in:target,accomplishment',
+            'import_type' => 'nullable|in:target,accomplishment,both',
         ]);
 
         $year = (int) ($validated['year'] ?? $request->input('year', 2026));
@@ -488,7 +522,15 @@ class PhysicalExcelUploadController extends Controller
                 $sheetName,
                 $validated['import_type'] ?? null
             );
-            $preview = $this->previewStoPhysicalRowsFromExcel($filePath, $year, $importType);
+            $previews = [];
+            foreach ($this->physicalImportTypes($importType) as $physicalImportType) {
+                $previews[$physicalImportType] = $this->previewStoPhysicalRowsFromExcel(
+                    $filePath,
+                    $year,
+                    $physicalImportType
+                );
+            }
+            $preview = $this->combinePhysicalImportPreviews($previews);
             $preview['import_type'] = $importType;
 
             return response()->json([
@@ -503,18 +545,28 @@ class PhysicalExcelUploadController extends Controller
         }
     }
 
-    private function importStoPhysicalRowsFromExcel(string $filePath, int $year, string $importType = 'target'): array
+    private function importStoPhysicalRowsFromExcel(
+        string $filePath,
+        int $year,
+        string $importType = 'target',
+        bool $importFinancialRows = true,
+        bool $resetHierarchySourceOrder = true
+    ): array
     {
         $reader = new SimpleXlsxReader;
         $sheetName = $this->resolveExcelSheetName($filePath, $reader);
         $this->configureExcelColumnLayout($reader, $filePath, $sheetName);
         $this->configureExcelParsingRules($reader, $filePath, $sheetName);
         $this->ensurePhysicalImportColumnsExist($reader, $filePath, $sheetName, $importType);
-        $hasFinancialTargetColumns = $this->hasFinancialTargetColumns($reader, $filePath, $sheetName);
-        $hasFinancialAccomplishmentColumns = $this->hasFinancialAccomplishmentColumns($reader, $filePath, $sheetName);
+        $hasFinancialTargetColumns = $importFinancialRows
+            && $this->hasFinancialTargetColumns($reader, $filePath, $sheetName);
+        $hasFinancialAccomplishmentColumns = $importFinancialRows
+            && $this->hasFinancialAccomplishmentColumns($reader, $filePath, $sheetName);
         $officeMap = $this->getOfficeImportMap();
         $staleImportedRowIds = $this->resetImportedPhysicalEntries($year, $importType, $this->excelConfig('sector'));
-        $this->resetImportedHierarchySourceOrder($year);
+        if ($resetHierarchySourceOrder) {
+            $this->resetImportedHierarchySourceOrder($year);
+        }
         $importedPpaRowIds = [];
         $importedOfficeIdsByRowId = [];
         $currentProgram = null;
@@ -1230,6 +1282,7 @@ class PhysicalExcelUploadController extends Controller
                     'project' => $currentProgramMeta[1] ?? 'N/A',
                     'headers' => $currentHeaders,
                     'activity_parts' => $papText !== '' ? [$papText] : [],
+                    'merge_text_only_rows' => $this->excelMergesActivityContinuationRows() && $papText !== '',
                     'duplicate_leaf' => $papText === '' && ! empty($currentHeaders),
                     'indicator_parts' => [$indicatorText],
                     'car_totals' => $targetValues,
@@ -2107,6 +2160,7 @@ class PhysicalExcelUploadController extends Controller
                     'project' => $currentProgramMeta[1] ?? 'N/A',
                     'headers' => $currentHeaders,
                     'activity_parts' => $papText !== '' ? [$papText] : [],
+                    'merge_text_only_rows' => $this->excelMergesActivityContinuationRows() && $papText !== '',
                     'duplicate_leaf' => $papText === '' && ! empty($currentHeaders),
                     'indicator_parts' => [$indicatorText],
                     'car_totals' => $targetValues,
@@ -3229,6 +3283,10 @@ class PhysicalExcelUploadController extends Controller
 
                     $letterIndex = $lastIndexOf(['upper_letter', 'roman']);
 
+                    if ($letterIndex === null && ($rootIndex = $lastIndexOf(['root_section'])) !== null) {
+                        return $rootIndex + max(2, count($segments));
+                    }
+
                     return $letterIndex !== null
                         ? $letterIndex + max(2, count($segments))
                         : max(1, count($segments));
@@ -3285,11 +3343,14 @@ class PhysicalExcelUploadController extends Controller
                     'number_letter' => (($numberIndex = $lastIndexOf(['number', 'alpha_number'])) !== null
                         ? $numberIndex + 2
                         : (($menuIndex = $lastIndexOf(['menu'])) !== null ? $menuIndex + 2 : 2)),
-                    'lower_letter' => (! empty($headers) && end($headerKinds) === null
+                    'lower_letter' => ($this->excelKeepsLowerLetterSiblingsUnderRootNumber()
+                        && ($headerKinds[0] ?? null) === 'number'
+                        ? 2
+                        : (! empty($headers) && end($headerKinds) === null
                         ? count($headers) + 1
                         : (($numberIndex = $lastIndexOf(['number', 'number_letter', 'alpha_number'])) !== null
                         ? $numberIndex + 2
-                        : (($letterIndex = $lastIndexOf(['upper_letter', 'roman'])) !== null ? $letterIndex + 2 : 1))),
+                        : (($letterIndex = $lastIndexOf(['upper_letter', 'roman'])) !== null ? $letterIndex + 2 : 1)))),
                     default => $headingDepth,
                 };
             } elseif ($heading['type'] === 'number' && in_array($rootKind, ['upper_letter', 'roman'], true)) {
@@ -3634,7 +3695,7 @@ class PhysicalExcelUploadController extends Controller
 
         if (
             $this->excelUsesCompactAlphaHeadings()
-            && preg_match('/^([A-Za-z])\.?\s*(\d+(?:\.\d+)*)(?:\s*\.?\s*([a-z])(?=[.)]))?[.)]\s*/u', $text, $matches)
+            && preg_match('/^([A-Za-z])\.?\s*(\d+(?:\.\d+)*)(?:\s*\.?\s*([a-z])(?=[.)]))?(?:[.)]\s*|(?=\s|$))/u', $text, $matches)
         ) {
             $numericSegments = array_map('intval', explode('.', $matches[2]));
 
@@ -3680,7 +3741,7 @@ class PhysicalExcelUploadController extends Controller
         }
 
         if (
-            preg_match('/^(\d+(?:\.\d+)*)([.)-]+)(?=\s|[A-Za-z(]|$)/u', $text, $matches)
+            preg_match('/^(\d+(?:\.\d+)*)\s*([.)-]+)(?=\s|[A-Za-z(]|$)/u', $text, $matches)
             || preg_match('/^(\d+(?:\.\d+)+)(?=\s|[A-Za-z(]|$)/u', $text, $matches)
         ) {
             $segments = array_map('intval', explode('.', rtrim($matches[1], '.')));
@@ -4121,6 +4182,13 @@ class PhysicalExcelUploadController extends Controller
             : true;
     }
 
+    private function excelMergesActivityContinuationRows(): bool
+    {
+        return $this->usesSectorSpecificExcelRules
+            ? $this->excelConfig('merges_activity_continuation_rows')
+            : false;
+    }
+
     private function excelStartsPlaceholderFromOfficeContinuation(): bool
     {
         return $this->usesSectorSpecificExcelRules
@@ -4169,6 +4237,13 @@ class PhysicalExcelUploadController extends Controller
     {
         return $this->usesSectorSpecificExcelRules
             ? $this->excelConfig('single_i_is_roman')
+            : false;
+    }
+
+    private function excelKeepsLowerLetterSiblingsUnderRootNumber(): bool
+    {
+        return $this->usesSectorSpecificExcelRules
+            ? $this->excelConfig('lower_letter_siblings_under_root_number')
             : false;
     }
 
@@ -4434,6 +4509,98 @@ class PhysicalExcelUploadController extends Controller
         );
     }
 
+    /** @return array<int, string> */
+    private function physicalImportTypes(string $importType): array
+    {
+        return $importType === 'both'
+            ? ['target', 'accomplishment']
+            : [$importType];
+    }
+
+    /** @param array<string, array<string, int>> $results */
+    private function combinePhysicalImportResults(array $results): array
+    {
+        $target = $results['target'] ?? [];
+        $accomplishment = $results['accomplishment'] ?? [];
+
+        return [
+            'imported' => (int) ($target['imported'] ?? 0) + (int) ($accomplishment['imported'] ?? 0),
+            'target_imported' => (int) ($target['imported'] ?? 0),
+            'accomplishment_imported' => (int) ($accomplishment['imported'] ?? 0),
+            'financial_imported' => (int) (($target['financial_imported'] ?? null)
+                ?? ($accomplishment['financial_imported'] ?? 0)),
+            'financial_accomplishment_imported' => (int) (($target['financial_accomplishment_imported'] ?? null)
+                ?? ($accomplishment['financial_accomplishment_imported'] ?? 0)),
+            'skipped' => (int) ($target['skipped'] ?? 0) + (int) ($accomplishment['skipped'] ?? 0),
+            'placeholders' => (int) ($target['placeholders'] ?? 0) + (int) ($accomplishment['placeholders'] ?? 0),
+        ];
+    }
+
+    /** @param array<string, array<string, mixed>> $previews */
+    private function combinePhysicalImportPreviews(array $previews): array
+    {
+        $target = $previews['target'] ?? [];
+        $accomplishment = $previews['accomplishment'] ?? [];
+        $rowsByKey = [];
+
+        foreach ($previews as $preview) {
+            foreach ($preview['rows'] ?? [] as $row) {
+                $key = implode('|', [
+                    (string) ($row['row'] ?? ''),
+                    (string) ($row['indicator'] ?? ''),
+                    json_encode($row['hierarchy'] ?? []),
+                ]);
+
+                if (! isset($rowsByKey[$key])) {
+                    $rowsByKey[$key] = $row;
+                    continue;
+                }
+
+                $rowsByKey[$key]['offices'] = collect($rowsByKey[$key]['offices'] ?? [])
+                    ->merge($row['offices'] ?? [])
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                $rowsByKey[$key]['office_count'] = max(
+                    (int) ($rowsByKey[$key]['office_count'] ?? 0),
+                    (int) ($row['office_count'] ?? 0),
+                    count($rowsByKey[$key]['offices'])
+                );
+                $rowsByKey[$key]['has_car_total'] = ! empty($rowsByKey[$key]['has_car_total'])
+                    || ! empty($row['has_car_total']);
+            }
+        }
+
+        $warningsByKey = [];
+        foreach ($previews as $preview) {
+            foreach ($preview['warnings'] ?? [] as $warning) {
+                $key = implode('|', [
+                    (string) ($warning['row'] ?? ''),
+                    (string) ($warning['level'] ?? ''),
+                    (string) ($warning['message'] ?? ''),
+                ]);
+                $warningsByKey[$key] = $warning;
+            }
+        }
+        $warnings = array_values($warningsByKey);
+        $rows = array_slice(array_values($rowsByKey), 0, 120);
+
+        return [
+            'year' => (int) (($target['year'] ?? null) ?? ($accomplishment['year'] ?? 0)),
+            'imported' => (int) ($target['imported'] ?? 0) + (int) ($accomplishment['imported'] ?? 0),
+            'target_imported' => (int) ($target['imported'] ?? 0),
+            'accomplishment_imported' => (int) ($accomplishment['imported'] ?? 0),
+            'skipped' => (int) ($target['skipped'] ?? 0) + (int) ($accomplishment['skipped'] ?? 0),
+            'parsed_rows' => (int) ($target['parsed_rows'] ?? 0) + (int) ($accomplishment['parsed_rows'] ?? 0),
+            'shown_rows' => count($rows),
+            'placeholders' => (int) ($target['placeholders'] ?? 0) + (int) ($accomplishment['placeholders'] ?? 0),
+            'rows' => $rows,
+            'warnings' => array_slice($warnings, 0, 80),
+            'warning_count' => count($warnings),
+        ];
+    }
+
     private function resolvePhysicalImportType(string $filePath, string $sheetName, ?string $requestedImportType): string
     {
         if ($requestedImportType !== null) {
@@ -4443,8 +4610,6 @@ class PhysicalExcelUploadController extends Controller
         $reader = new SimpleXlsxReader;
         $this->configureExcelColumnLayout($reader, $filePath, $sheetName);
         $accomplishmentColumns = $this->excelPeriodColumns('physical_accomplishment');
-        $hasAccomplishmentHeader = $accomplishmentColumns !== [];
-        $hasAccomplishmentValues = false;
 
         foreach ($reader->rows($filePath, $sheetName, true) as $rowNumber => $row) {
             if ($rowNumber < $this->excelDataStartRow) {
@@ -4453,15 +4618,12 @@ class PhysicalExcelUploadController extends Controller
 
             foreach ($accomplishmentColumns as $column) {
                 if ($this->excelNumber($row[$column] ?? null) != 0.0) {
-                    $hasAccomplishmentValues = true;
-                    break 2;
+                    return 'both';
                 }
             }
         }
 
-        return $hasAccomplishmentHeader && $hasAccomplishmentValues
-            ? 'accomplishment'
-            : 'target';
+        return 'target';
     }
 
     private function hasAnyTargetValue(array $values): bool

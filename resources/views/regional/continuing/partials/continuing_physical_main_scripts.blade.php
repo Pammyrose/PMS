@@ -129,7 +129,7 @@
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
         const targetStoreUrl = @json(route('admin.continuing_physical.targets.store'));
-        const accompStoreUrl = @json(route('admin.continuing_physical.accomplishments.store'));
+        const accompStoreUrl = @json(route('regional.physical-accomplishments.store', ['sector' => 'continuing']));
         const deletePhysicalRowUrl = @json(route('admin.continuing_physical.rows.destroy'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);

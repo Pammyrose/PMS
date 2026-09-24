@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PhysicalAccomplishment;
 use App\Models\PhysicalTarget;
+use App\Services\AccomplishmentPeriodLock;
 use App\Services\AccomplishmentSubmissionService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -269,6 +270,7 @@ class PhysicalInputController extends Controller
             'entries.*.imported_from' => ['nullable', 'string', 'max:50'],
             'entries.*.changed_periods' => ['nullable', 'array'],
             'entries.*.changed_periods.*' => ['string', Rule::in(self::PERIODS)],
+            'entries.*.change_reason' => ['nullable', 'string', 'max:1000'],
         ];
 
         if ($withRemarks) {
@@ -282,7 +284,7 @@ class PhysicalInputController extends Controller
         $entries = $request->validate($rules)['entries'];
         $userOfficeId = (int) ($request->user()?->office_id ?? 0);
 
-        if ($request->user()?->requiresPenroApproval() && ! $withRemarks) {
+        if ($request->user()?->hasAccomplishmentOnlyAccess() && ! $withRemarks) {
             abort(403, 'Users may enter accomplishments only. Targets are read-only.');
         }
 
@@ -292,22 +294,14 @@ class PhysicalInputController extends Controller
             }
         }
 
-        if ($request->user()?->requiresPenroApproval()) {
-            $queuedCount = app(AccomplishmentSubmissionService::class)
-                ->queue($request->user(), 'physical', $sector, $entries);
-
-            return response()->json([
-                'success' => true,
-                'pending_approval' => true,
-                'message' => "$queuedCount accomplishment submission(s) sent to PENRO for approval.",
-                'queued_count' => $queuedCount,
-            ]);
-        }
-
         $createdCount = 0;
         $updatedCount = 0;
+        $queuedCount = 0;
+        $user = $request->user();
+        $canDirectEditLockedChanges = ($user?->isAdmin() ?? false)
+            || ($user?->isRegionalOffice() ?? false);
 
-        DB::transaction(function () use ($entries, $sector, $modelClass, $withRemarks, &$createdCount, &$updatedCount) {
+        DB::transaction(function () use ($entries, $sector, $modelClass, $withRemarks, $user, $canDirectEditLockedChanges, &$createdCount, &$updatedCount, &$queuedCount) {
             foreach ($entries as $entry) {
                 $programId = (int) $entry['program_id'];
                 $identity = [
@@ -321,6 +315,28 @@ class PhysicalInputController extends Controller
                 /** @var Model $record */
                 $record = $modelClass::firstOrNew($identity);
                 $wasExisting = $record->exists;
+
+                if ($withRemarks) {
+                    $lockedChanges = app(AccomplishmentPeriodLock::class)
+                        ->changedLockedPeriods($entry, $wasExisting ? $record : null);
+
+                    if ($lockedChanges !== []) {
+                        if (! $canDirectEditLockedChanges) {
+                            app(AccomplishmentSubmissionService::class)->queueLockedChange(
+                                $user,
+                                'physical',
+                                $sector,
+                                $entry,
+                                $lockedChanges,
+                                (string) ($entry['change_reason'] ?? '')
+                            );
+                            $queuedCount++;
+
+                            continue;
+                        }
+                    }
+                }
+
                 $values = [
                     'user_id' => Auth::id(),
                     'program_id' => $programId,
@@ -346,9 +362,13 @@ class PhysicalInputController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "$createdCount created, $updatedCount updated successfully.",
+            'pending_approval' => $queuedCount > 0,
+            'message' => $queuedCount > 0
+                ? "$queuedCount locked-period change request(s) sent for Regional Office/admin approval."
+                : "$createdCount created, $updatedCount updated successfully.",
             'created_count' => $createdCount,
             'updated_count' => $updatedCount,
+            'queued_count' => $queuedCount,
         ]);
     }
 }

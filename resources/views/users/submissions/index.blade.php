@@ -17,7 +17,7 @@
         <main class="flex-grow-1 p-4">
             <div class="mb-4">
                 <h2 class="mb-1"><i class="fa-solid fa-bell me-2"></i>Notifications</h2>
-                <p class="text-muted mb-0">Track PENRO decisions about your accomplishment submissions.</p>
+                <p class="text-muted mb-0">Track Regional Office or administrator decisions on your locked-period change requests.</p>
             </div>
 
             <div class="btn-group mb-3" role="group" aria-label="Submission status">
@@ -111,6 +111,9 @@
                                         @if(filled($payload['remarks'] ?? null))
                                             <div class="small mt-1 text-start"><strong>Remarks:</strong> {{ $payload['remarks'] }}</div>
                                         @endif
+                                        <div class="small mt-2 text-start">
+                                            <strong>Reason for change:</strong> {{ $submission->request_reason ?: 'No reason provided (legacy request).' }}
+                                        </div>
                                     </td>
                                     <td style="min-width: 280px">
                                         @if($submission->status === 'declined')

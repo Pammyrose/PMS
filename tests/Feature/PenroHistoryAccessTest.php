@@ -38,6 +38,23 @@ class PenroHistoryAccessTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_regional_office_can_open_history_and_see_all_offices(): void
+    {
+        [$penro, $abraUser, $apayaUser, $regional] = $this->makeUsers();
+
+        $this->recordFor($penro, 'PENRO Abra activity');
+        $this->recordFor($abraUser, 'CENRO Bangued activity');
+        $this->recordFor($apayaUser, 'CENRO Conner activity');
+
+        $this->actingAs($regional)
+            ->get(route('history'))
+            ->assertOk()
+            ->assertSee('History')
+            ->assertSee('PENRO Abra activity')
+            ->assertSee('CENRO Bangued activity')
+            ->assertSee('CENRO Conner activity');
+    }
+
     private function makeUsers(): array
     {
         $now = now();
@@ -47,6 +64,9 @@ class PenroHistoryAccessTest extends TestCase
             ['name' => 'CENRO', 'desc' => 'CENRO', 'created_at' => $now, 'updated_at' => $now],
         ]);
 
+        $carId = DB::table('offices')->insertGetId([
+            'name' => 'CAR', 'office_types_id' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ]);
         $abraId = DB::table('offices')->insertGetId([
             'name' => 'ABRA', 'office_types_id' => 2, 'created_at' => $now, 'updated_at' => $now,
         ]);
@@ -81,8 +101,15 @@ class PenroHistoryAccessTest extends TestCase
             'role' => 'cenro',
             'office_id' => $connerId,
         ]);
+        $regional = User::query()->create([
+            'name' => 'Regional Office',
+            'email' => 'regional-history@example.test',
+            'password' => 'Password1!',
+            'role' => 'ro-office',
+            'office_id' => $carId,
+        ]);
 
-        return [$penro, $abraUser, $apayaUser];
+        return [$penro, $abraUser, $apayaUser, $regional];
     }
 
     private function recordFor(User $user, string $name): void

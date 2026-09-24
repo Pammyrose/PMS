@@ -32,7 +32,9 @@ Route::post('/login', [AuthController::class, 'login']);
 $adminRoles = 'role:admin';
 $viewRoles = 'role:super-admin,admin,user,penro,cenro,ro-office,ro office';
 $userRole = 'role:user,penro,cenro';
-$penroRole = 'role:penro';
+$reviewRoles = 'role:super-admin,admin,ro-office,ro office';
+$notificationRoles = 'role:super-admin,admin,user,penro,cenro,ro-office,ro office';
+$historyRoles = 'role:super-admin,admin,penro,ro-office,ro office';
 $wfpExportRoles = 'role:super-admin,admin,penro,ro-office,ro office';
 
 // admin pages
@@ -68,18 +70,22 @@ Route::get('/cobb_physical/{program?}', [CobbController::class, 'index'])->middl
 Route::get('/continuing', [ContinuingController::class, 'index'])->middleware(['auth', $viewRoles])->name('continuing');
 Route::get('/continuing_physical/{program?}', [ContinuingController::class, 'index'])->middleware(['auth', $viewRoles])->name('continuing_physical');
 Route::get('/user', [UserController::class, 'index'])->middleware(['auth', $adminRoles])->name('user');
-Route::get('/history', [HistoryController::class, 'index'])->middleware(['auth', 'role:admin,penro'])->name('history');
-Route::prefix('penro/submissions')->name('penro.submissions.')->middleware(['auth', $penroRole])->group(function () {
+Route::get('/history', [HistoryController::class, 'index'])->middleware(['auth', $historyRoles])->name('history');
+Route::prefix('accomplishment-change-requests')->name('accomplishment-requests.')->middleware(['auth', $reviewRoles])->group(function () {
     Route::get('/', [PenroSubmissionController::class, 'index'])->name('index');
     Route::patch('/{submission}/approve', [PenroSubmissionController::class, 'approve'])->name('approve');
     Route::patch('/{submission}/decline', [PenroSubmissionController::class, 'decline'])->name('decline');
 });
 Route::get('/notifications', [UserSubmissionController::class, 'index'])
-    ->middleware(['auth', 'role:user,cenro'])
+    ->middleware(['auth', 'role:user,cenro,penro'])
     ->name('notifications.index');
 Route::get('/notifications/count', NotificationCountController::class)
-    ->middleware(['auth', $userRole])
+    ->middleware(['auth', $notificationRoles])
     ->name('notifications.count');
+Route::post('/regional/physical-inputs/{sector}/accomplishments/store', [PhysicalInputController::class, 'storeAccomplishments'])
+    ->middleware(['auth', $reviewRoles, 'field.history'])
+    ->whereIn('sector', ['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'])
+    ->name('regional.physical-accomplishments.store');
 Route::get('/wfp/export/{sector}', WfpExcelExportController::class)
     ->middleware(['auth', $wfpExportRoles])
     ->whereIn('sector', ['gass', 'sto', 'enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'])

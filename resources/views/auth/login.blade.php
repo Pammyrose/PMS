@@ -157,7 +157,7 @@
     </div>
 
     <div class="text-center mt-4 text-muted small">
-        © {{ date('Y') }} {{ config('app.name', 'Laravel') }} • All rights reserved
+        © {{ date('Y') }} DENR-PMS • All rights reserved
     </div>
 
 </div>

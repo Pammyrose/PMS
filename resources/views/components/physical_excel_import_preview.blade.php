@@ -108,17 +108,24 @@
 
             if (excelPreviewSubtitle) {
                 excelPreviewSubtitle.textContent = warningCount > 0
-                    ? 'Review warnings before importing.'
-                    : 'No sorting warnings found in the preview.';
+                    ? 'Review warnings before importing physical targets and accomplishments.'
+                    : 'Physical targets and accomplishments are ready to import.';
             }
 
             if (excelPreviewStats) {
-                const stats = [
-                    ['Parsed Items', preview?.parsed_rows ?? 0, 'text-bg-primary'],
-                    ['Office Rows', preview?.imported ?? 0, 'text-bg-success'],
-                    ['Skipped', preview?.skipped ?? 0, 'text-bg-secondary'],
-                    ['Warnings', warningCount, warningCount > 0 ? 'text-bg-warning' : 'text-bg-light text-dark'],
-                ];
+                const stats = preview?.import_type === 'both'
+                    ? [
+                        ['Physical Targets', preview?.target_imported ?? 0, 'text-bg-primary'],
+                        ['Physical Accomplishments', preview?.accomplishment_imported ?? 0, 'text-bg-success'],
+                        ['Skipped', preview?.skipped ?? 0, 'text-bg-secondary'],
+                        ['Warnings', warningCount, warningCount > 0 ? 'text-bg-warning' : 'text-bg-light text-dark'],
+                    ]
+                    : [
+                        ['Parsed Items', preview?.parsed_rows ?? 0, 'text-bg-primary'],
+                        ['Office Rows', preview?.imported ?? 0, 'text-bg-success'],
+                        ['Skipped', preview?.skipped ?? 0, 'text-bg-secondary'],
+                        ['Warnings', warningCount, warningCount > 0 ? 'text-bg-warning' : 'text-bg-light text-dark'],
+                    ];
 
                 excelPreviewStats.innerHTML = stats.map(([label, value, badgeClass]) => `
                     <div class="col-6 col-md-3">

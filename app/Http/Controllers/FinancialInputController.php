@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FinancialAccomplishment;
 use App\Models\FinancialTarget;
+use App\Services\AccomplishmentPeriodLock;
 use App\Services\AccomplishmentSubmissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,6 +63,7 @@ class FinancialInputController extends Controller
             'entries.*.group_totals' => ['nullable', 'array'],
             'entries.*.changed_periods' => ['nullable', 'array'],
             'entries.*.changed_periods.*' => ['string', Rule::in(self::PERIODS)],
+            'entries.*.change_reason' => ['nullable', 'string', 'max:1000'],
         ];
 
         foreach (self::PERIODS as $period) {
@@ -78,27 +80,20 @@ class FinancialInputController extends Controller
             }
         }
 
-        if ($user?->requiresPenroApproval()) {
+        if ($user?->hasAccomplishmentOnlyAccess()) {
             $containsTarget = collect($entries)
                 ->contains(fn (array $entry) => ($entry['kind'] ?? 'target') !== 'accomplishment');
 
             abort_if($containsTarget, 403, 'Users may enter accomplishments only. Financial targets are read-only.');
-
-            $queuedCount = app(AccomplishmentSubmissionService::class)
-                ->queue($user, 'financial', $sector, $entries);
-
-            return response()->json([
-                'success' => true,
-                'pending_approval' => true,
-                'message' => "$queuedCount financial accomplishment submission(s) sent to PENRO for approval.",
-                'queued_count' => $queuedCount,
-            ]);
         }
 
         $createdCount = 0;
         $updatedCount = 0;
+        $queuedCount = 0;
+        $canDirectEditLockedChanges = ($user?->isAdmin() ?? false)
+            || ($user?->isRegionalOffice() ?? false);
 
-        DB::transaction(function () use ($entries, $sector, &$createdCount, &$updatedCount) {
+        DB::transaction(function () use ($entries, $sector, $user, $canDirectEditLockedChanges, &$createdCount, &$updatedCount, &$queuedCount) {
             foreach ($entries as $entry) {
                 $kind = (string) ($entry['kind'] ?? 'target');
                 $identity = [
@@ -114,6 +109,28 @@ class FinancialInputController extends Controller
                     : FinancialTarget::class;
                 $record = $modelClass::firstOrNew($identity);
                 $wasExisting = $record->exists;
+
+                if ($kind === 'accomplishment') {
+                    $lockedChanges = app(AccomplishmentPeriodLock::class)
+                        ->changedLockedPeriods($entry, $wasExisting ? $record : null);
+
+                    if ($lockedChanges !== []) {
+                        if (! $canDirectEditLockedChanges) {
+                            app(AccomplishmentSubmissionService::class)->queueLockedChange(
+                                $user,
+                                'financial',
+                                $sector,
+                                $entry,
+                                $lockedChanges,
+                                (string) ($entry['change_reason'] ?? '')
+                            );
+                            $queuedCount++;
+
+                            continue;
+                        }
+                    }
+                }
+
                 $values = [
                     'user_id' => Auth::id(),
                     'program_id' => (int) $entry['program_id'],
@@ -132,9 +149,13 @@ class FinancialInputController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "$createdCount created, $updatedCount updated successfully.",
+            'pending_approval' => $queuedCount > 0,
+            'message' => $queuedCount > 0
+                ? "$queuedCount locked-period change request(s) sent for Regional Office/admin approval."
+                : "$createdCount created, $updatedCount updated successfully.",
             'created_count' => $createdCount,
             'updated_count' => $updatedCount,
+            'queued_count' => $queuedCount,
         ]);
     }
 }

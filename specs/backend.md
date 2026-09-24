@@ -129,7 +129,7 @@ The current route groups distinguish:
 
 - **Administrator mutations:** `admin`
 - **General viewing:** `super-admin`, `admin`, `user`, `penro`, `cenro`, `ro-office`, and `ro office`
-- **Office-user physical writes:** `user` and `cenro` may submit accomplishments for PENRO approval; `penro` may review those submissions and write approved accomplishments. Targets are read-only for `user` and `cenro`.
+- **Office-user physical writes:** current and future accomplishment months save immediately. Changes to passed months require a reason and enter a review queue. Only `admin`, `super-admin`, `ro-office`, and `ro office` may approve or decline them; PENRO cannot review them. Targets are read-only for `user` and `cenro`.
 
 ### Office Scoping
 
@@ -195,10 +195,10 @@ Sector controllers load the relevant type, PAP hierarchy, assigned indicators, p
 3. Confirms that PAP rows belong to that sector.
 4. Validates indicator, office, year, period, aggregate, and remarks fields.
 5. Enforces office scope for restricted users.
-6. Upserts every submitted row inside a database transaction.
-7. Returns created and updated counts as JSON.
+6. Sends changed locked periods to the reason-backed approval queue while upserting ordinary entries inside a database transaction.
+7. Returns created, updated, and queued counts as JSON.
 
-Targets and accomplishments share the same write workflow. Accomplishments additionally accept remarks.
+Targets and accomplishments share the same write workflow. Accomplishments additionally accept remarks and locked-period change reasons.
 
 ### Shared Financial Input Controller
 

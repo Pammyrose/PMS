@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Office;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
@@ -12,18 +13,18 @@ abstract class Controller
         $user = auth()->user();
 
         if ($user?->isRegionalOffice()) {
-            return 'regional.' . $view;
+            return 'regional.'.$view;
         }
 
         if ($user?->isPenro()) {
-            return 'penro.' . $view;
+            return 'penro.'.$view;
         }
 
         if ($user?->isUser()) {
-            return 'users.' . $view;
+            return 'users.'.$view;
         }
 
-        return 'admin.' . $view;
+        return 'admin.'.$view;
     }
 
     protected function officeIdForPhysicalPage(Request $request, int $defaultOfficeId = 1): int
@@ -43,16 +44,24 @@ abstract class Controller
             return $indicators;
         }
 
-        return $indicators->map(function (Collection $programIndicators) use ($officeId) {
+        $officeIds = $this->officeIdsForPhysicalPageScope($officeId);
+
+        return $indicators->map(function (Collection $programIndicators) use ($officeIds) {
             return $programIndicators
-                ->filter(function ($indicator) use ($officeId) {
+                ->filter(function ($indicator) use ($officeIds) {
                     return collect($indicator->office_id ?? [])
                         ->map(fn ($id) => (int) $id)
-                        ->contains($officeId);
+                        ->intersect($officeIds)
+                        ->isNotEmpty();
                 })
-                ->map(function ($indicator) use ($officeId) {
+                ->map(function ($indicator) use ($officeIds) {
                     $indicatorClone = clone $indicator;
-                    $indicatorClone->office_id = [$officeId];
+                    $indicatorClone->office_id = collect($indicator->office_id ?? [])
+                        ->map(fn ($id) => (int) $id)
+                        ->intersect($officeIds)
+                        ->unique()
+                        ->values()
+                        ->all();
 
                     return $indicatorClone;
                 })
@@ -110,16 +119,21 @@ abstract class Controller
             return $sectionData;
         }
 
-        $officeKey = (string) $officeId;
+        $officeKeys = collect($this->officeIdsForPhysicalPageScope($officeId))
+            ->map(fn (int $scopedOfficeId) => (string) $scopedOfficeId)
+            ->all();
 
         foreach ($sectionData as $programId => $indicators) {
             foreach ($indicators as $indicatorId => $officeRows) {
                 $officeRows = is_array($officeRows) ? $officeRows : [];
 
-                if (array_key_exists($officeKey, $officeRows)) {
-                    $sectionData[$programId][$indicatorId] = [
-                        $officeKey => $officeRows[$officeKey],
-                    ];
+                $scopedOfficeRows = collect($officeRows)
+                    ->only($officeKeys)
+                    ->all();
+
+                if (! empty($scopedOfficeRows)) {
+                    $sectionData[$programId][$indicatorId] = $scopedOfficeRows;
+
                     continue;
                 }
 
@@ -132,6 +146,21 @@ abstract class Controller
         }
 
         return $sectionData;
+    }
+
+    protected function officeIdsForPhysicalPageScope(int $officeId): array
+    {
+        $user = auth()->user();
+
+        if ($user?->isPenro() && (int) ($user->office_id ?? 0) === $officeId) {
+            $serviceAreaOfficeIds = Office::serviceAreaOfficeIdsForPenro($officeId);
+
+            if (! empty($serviceAreaOfficeIds)) {
+                return $serviceAreaOfficeIds;
+            }
+        }
+
+        return [$officeId];
     }
 
     protected function shouldScopeToUserOffice(): bool

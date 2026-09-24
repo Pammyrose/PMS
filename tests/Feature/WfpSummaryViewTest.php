@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use Tests\TestCase;
 
 class WfpSummaryViewTest extends TestCase
@@ -156,5 +157,73 @@ class WfpSummaryViewTest extends TestCase
             ': officeValues.reduce((total, value) => total + value, 0)',
             $html
         );
+    }
+
+    public function test_accomplishment_borders_identify_due_targets_that_were_not_met(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString('#performanceTable .month-box.car-total-box', $html);
+        $this->assertStringContainsString('border-color: #000 !important;', $html);
+        $this->assertStringContainsString('#performanceTable .month-box.target-not-accomplished', $html);
+        $this->assertStringContainsString('border: 2px solid #dc2626 !important;', $html);
+        $this->assertStringContainsString('const dueMonthColumns = new Set(', $html);
+        $this->assertStringContainsString('const missedTarget = target > 0 && accomplishment + 0.000001 < target;', $html);
+        $this->assertStringContainsString("input.classList.toggle('target-not-accomplished', missedTarget)", $html);
+    }
+
+    public function test_locked_month_edits_collect_a_reason_for_review(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString('locked-change-request', $html);
+        $this->assertStringContainsString("input.readOnly = true;", $html);
+        $this->assertStringContainsString('id="lockedMonthEditConfirmModal"', $html);
+        $this->assertStringContainsString('Edit Locked Accomplishment', $html);
+        $this->assertStringContainsString('fa-lock-open me-1"></i> Yes', $html);
+        $this->assertStringNotContainsString('Yes, Edit Month', $html);
+        $this->assertStringContainsString('modal-header bg-primary text-white', $html);
+        $this->assertStringContainsString('btn btn-primary" id="confirmLockedMonthEditBtn', $html);
+        $this->assertStringContainsString('for="lockedMonthEditReason"', $html);
+        $this->assertStringContainsString('id="lockedMonthEditReason"', $html);
+        $this->assertStringContainsString('Reason for change', $html);
+        $this->assertStringContainsString('Please enter a reason before continuing.', $html);
+        $this->assertStringContainsString('Are you sure you want to edit this locked accomplishment month?', $html);
+        $this->assertStringNotContainsString('This reason will be submitted for Regional Office/admin review when you save.', $html);
+        $this->assertStringNotContainsString('Explain why this locked accomplishment must be changed', $html);
+        $this->assertStringContainsString('bootstrap.Modal.getOrCreateInstance(lockedMonthModalElement)', $html);
+        $this->assertStringContainsString("document.getElementById('confirmLockedMonthEditBtn')", $html);
+        $this->assertStringContainsString("input.dataset.lockedEditConfirmed = '1'", $html);
+        $this->assertStringContainsString('lockedChangeReasons.set(reasonKey, reason)', $html);
+        $this->assertStringNotContainsString("window.confirm('This month is locked.", $html);
+        $this->assertStringContainsString('entryChangesLockedMonth', $html);
+        $this->assertStringContainsString("change_reason: lockedChangeReasons.get(reasonKey) || ''", $html);
+        $this->assertStringNotContainsString('window.prompt(', $html);
+        $this->assertStringContainsString('Locked-month change request submitted for Regional Office/admin approval.', $html);
+    }
+
+    public function test_admin_and_regional_office_bypass_locked_month_inputs_and_do_not_receive_the_dialog(): void
+    {
+        foreach (['admin', 'ro-office'] as $role) {
+            $this->actingAs(new User(['role' => $role]));
+
+            $html = (string) $this->view('components.financial_input_persistence', [
+                'financialSector' => 'gass',
+                'financials' => [],
+                'financialAccomplishments' => [],
+            ]);
+
+            $this->assertStringNotContainsString('id="lockedMonthEditConfirmModal"', $html);
+            $this->assertStringContainsString('bypassLockedMonths: true', $html);
+            $this->assertStringContainsString('canRequestLockedChanges: false', $html);
+        }
     }
 }

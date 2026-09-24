@@ -186,24 +186,32 @@
         </div>
       </details>
 
-      @if ($signedInUser?->isPenro())
-        <a href="{{ route('penro.submissions.index') }}"
-          class="flex items-center px-4 py-3 rounded-lg text-white {{ request()->routeIs('penro.submissions.*') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+      @if ($canManageSystem)
+        <a href="{{ route('user') }}"
+          class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('user') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
+          <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
+          Users & Roles
+        </a>
+      @endif
+
+      @if (($signedInUser?->isAdmin() ?? false) || ($signedInUser?->isRegionalOffice() ?? false))
+        <a href="{{ route('accomplishment-requests.index') }}"
+          class="flex items-center px-4 py-3 rounded-lg text-white {{ request()->routeIs('accomplishment-requests.*') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
           <i class="fa-solid fa-bell mr-3 w-5 text-center"></i>
           Notifications
           <span id="notificationCountBadge"
-                class="ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white {{ ($pendingPenroNotifications ?? 0) > 0 ? '' : 'hidden' }}"
+                class="ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white {{ ($pendingReviewNotifications ?? 0) > 0 ? '' : 'hidden' }}"
                 data-count-url="{{ route('notifications.count') }}"
                 data-version="{{ $notificationVersion ?? '0' }}"
                 aria-live="polite"
-                aria-label="{{ $pendingPenroNotifications ?? 0 }} pending accomplishment notifications"
-                @if(($pendingPenroNotifications ?? 0) < 1) hidden @endif>
-            {{ ($pendingPenroNotifications ?? 0) > 99 ? '99+' : ($pendingPenroNotifications ?? 0) }}
+                aria-label="{{ $pendingReviewNotifications ?? 0 }} pending locked-period change requests"
+                @if(($pendingReviewNotifications ?? 0) < 1) hidden @endif>
+            {{ ($pendingReviewNotifications ?? 0) > 99 ? '99+' : ($pendingReviewNotifications ?? 0) }}
           </span>
         </a>
       @endif
 
-      @if ($signedInUser?->requiresPenroApproval())
+      @if ($signedInUser?->isUser() || $signedInUser?->isCenro() || $signedInUser?->isPenro())
         <a href="{{ route('notifications.index') }}"
           class="flex items-center px-4 py-3 rounded-lg text-white {{ request()->routeIs('notifications.index') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
           <i class="fa-solid fa-bell mr-3 w-5 text-center"></i>
@@ -220,16 +228,7 @@
         </a>
       @endif
 
-
-      @if ($canManageSystem)
-        <a href="{{ route('user') }}"
-          class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('user') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
-          <i class="fa-solid fa-users-gear mr-3 w-5 text-center"></i>
-          Users & Roles
-        </a>
-      @endif
-
-      @if ($canManageSystem || ($signedInUser?->isPenro() ?? false))
+      @if ($canManageSystem || ($signedInUser?->isRegionalOffice() ?? false) || ($signedInUser?->isPenro() ?? false))
         <a href="{{ route('history') }}"
           class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-500 {{ request()->routeIs('history') ? 'bg-blue-500' : 'hover:bg-blue-500' }}">
           <i class="fa-solid fa-clock-rotate-left mr-3 w-5 text-center"></i>
@@ -353,57 +352,6 @@
     });
 
     (() => {
-      const prefetchedPages = new Set();
-      const prefetchTimers = new WeakMap();
-
-      const prefetchPage = (href) => {
-        if (!href || href.startsWith('#') || prefetchedPages.has(href)) return;
-
-        let url;
-        try {
-          url = new URL(href, window.location.href);
-        } catch (error) {
-          return;
-        }
-
-        if (url.origin !== window.location.origin || url.href === window.location.href) return;
-
-        prefetchedPages.add(url.href);
-
-        const link = document.createElement('link');
-        link.rel = 'prefetch';
-        link.as = 'document';
-        link.href = url.href;
-        document.head.appendChild(link);
-      };
-
-      const schedulePrefetch = (event) => {
-        const link = event.currentTarget;
-        if (!link || prefetchTimers.has(link)) return;
-
-        const timer = window.setTimeout(() => {
-          prefetchTimers.delete(link);
-
-          const run = () => prefetchPage(link.getAttribute('href'));
-          if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(run, { timeout: 1200 });
-          } else {
-            run();
-          }
-        }, 160);
-
-        prefetchTimers.set(link, timer);
-      };
-
-      const cancelPrefetch = (event) => {
-        const link = event.currentTarget;
-        const timer = prefetchTimers.get(link);
-        if (!timer) return;
-
-        window.clearTimeout(timer);
-        prefetchTimers.delete(link);
-      };
-
       const showNavigationPending = (event) => {
         const href = event.currentTarget?.getAttribute('href') || '';
         if (!href || href.startsWith('#')) return;
@@ -414,10 +362,6 @@
       document.querySelectorAll('#sidebar a[href]').forEach((link) => {
         if (link.getAttribute('href') === '#') return;
 
-        link.addEventListener('pointerenter', schedulePrefetch, { passive: true });
-        link.addEventListener('pointerleave', cancelPrefetch, { passive: true });
-        link.addEventListener('focus', schedulePrefetch, { passive: true });
-        link.addEventListener('blur', cancelPrefetch, { passive: true });
         link.addEventListener('click', showNavigationPending, { passive: true });
       });
     })();
@@ -431,7 +375,7 @@
       let requestInFlight = false;
       let pollingEnabled = true;
 
-      const scheduleRefresh = (delay = 3000) => {
+      const scheduleRefresh = (delay = 30000) => {
         if (!pollingEnabled) return;
         window.clearTimeout(timerId);
         timerId = window.setTimeout(refreshCount, delay);
@@ -452,7 +396,7 @@
         }
 
         if (requestInFlight) {
-          scheduleRefresh(250);
+          scheduleRefresh(1000);
           return;
         }
 
@@ -501,7 +445,7 @@
       });
       window.addEventListener('focus', () => scheduleRefresh(0));
 
-      scheduleRefresh(0);
+      scheduleRefresh();
     })();
   </script>
 

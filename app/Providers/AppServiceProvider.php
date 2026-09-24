@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\FinancialAccomplishment;
 use App\Models\FinancialTarget;
+use App\Models\Office;
 use App\Models\PhysicalAccomplishment;
 use App\Models\PhysicalTarget;
 use App\Services\NotificationCountService;
@@ -51,13 +52,22 @@ class AppServiceProvider extends ServiceProvider
             $scopeToOffice = auth()->user()
                 && ! auth()->user()->isAdmin()
                 && ! auth()->user()->isRegionalOffice();
+            $officeIds = [$officeId];
+
+            if (auth()->user()?->isPenro()) {
+                $penroServiceAreaOfficeIds = Office::serviceAreaOfficeIdsForPenro($officeId);
+
+                if (! empty($penroServiceAreaOfficeIds)) {
+                    $officeIds = $penroServiceAreaOfficeIds;
+                }
+            }
 
             $financialTargets = FinancialTarget::query()
                 ->where('sector', $sector)
                 ->where('year', $year)
                 ->when(
                     $scopeToOffice,
-                    fn ($query) => $query->where('office_id', $officeId)
+                    fn ($query) => $query->whereIn('office_id', $officeIds)
                 )
                 ->get();
             $financialAccomplishmentRows = FinancialAccomplishment::query()
@@ -65,7 +75,7 @@ class AppServiceProvider extends ServiceProvider
                 ->where('year', $year)
                 ->when(
                     $scopeToOffice,
-                    fn ($query) => $query->where('office_id', $officeId)
+                    fn ($query) => $query->whereIn('office_id', $officeIds)
                 )
                 ->get();
 
@@ -95,7 +105,7 @@ class AppServiceProvider extends ServiceProvider
                     PhysicalTarget::query()
                         ->where('sector', $sector)
                         ->where('year', $year)
-                        ->when($scopeToOffice, fn ($query) => $query->where('office_id', $officeId))
+                        ->when($scopeToOffice, fn ($query) => $query->whereIn('office_id', $officeIds))
                         ->get()
                 )
                 : ($view->getData()['targets'] ?? []);
@@ -105,7 +115,7 @@ class AppServiceProvider extends ServiceProvider
                     PhysicalAccomplishment::query()
                         ->where('sector', $sector)
                         ->where('year', $year)
-                        ->when($scopeToOffice, fn ($query) => $query->where('office_id', $officeId))
+                        ->when($scopeToOffice, fn ($query) => $query->whereIn('office_id', $officeIds))
                         ->get()
                 )
                 : ($view->getData()['accomplishments'] ?? []);

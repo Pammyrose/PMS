@@ -507,8 +507,9 @@ The frontend has three major view namespaces, but these are presentation boundar
 
 - **Administrator:** system-wide dashboard, PAP and indicator management, user management, imports, and edit history
 - **Regional:** regional overview and cross-office performance visibility permitted by the backend
-- **Users/CENRO:** office-scoped accomplishment entry. Targets remain visible but read-only, accomplishment changes are submitted to PENRO for approval, and bell-based Notifications display unread decisions and PENRO decline reasons.
-- **PENRO:** office-scoped performance review plus an accomplishment queue for approving or declining submissions from its assigned CENRO offices.
+- **Users/CENRO:** office-scoped accomplishment entry. Targets remain visible but read-only. Current and future accomplishment months save immediately; passed-month corrections require a reason and Regional Office/administrator approval.
+- **PENRO:** office-scoped accomplishment entry and tracking for its own locked-period change requests. PENRO cannot approve or decline requests.
+- **Regional/Administrator:** cross-office locked-period change queue with approve and decline actions.
 
 All authorization must still be enforced by routes, middleware, and controllers. Hiding a button or navigation item is not sufficient authorization.
 

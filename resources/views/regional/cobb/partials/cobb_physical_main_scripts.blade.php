@@ -129,7 +129,7 @@
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
         const targetStoreUrl = @json(route('admin.cobb_physical.targets.store'));
-        const accompStoreUrl = @json(route('admin.cobb_physical.accomplishments.store'));
+        const accompStoreUrl = @json(route('regional.physical-accomplishments.store', ['sector' => 'cobb']));
         const deletePhysicalRowUrl = @json(route('admin.cobb_physical.rows.destroy'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);

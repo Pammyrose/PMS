@@ -74,7 +74,7 @@ class EngpController extends Controller
         $entries = Schema::hasTable('gass_physical')
             ? Gass_Physical::whereIn('programs_id', $programIds)
                 ->where('year', $year)
-                ->where('office_id', $office_id)
+                ->whereIn('office_id', $this->officeIdsForPhysicalPageScope($office_id))
                 ->get()
             : collect();
 
@@ -85,10 +85,10 @@ class EngpController extends Controller
         $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
 
         $targets = Engp_Target::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
         $accomplishments = Engp_Accomplishment::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
 
         $programs = $programsRaw
@@ -781,7 +781,6 @@ class EngpController extends Controller
         $typeId = $this->getEngpTypeId();
         $recordTypeIds = $this->getEngpRecordTypeIds();
         $papYear = isset($papData['year']) ? (int) $papData['year'] : null;
-        $sourceOrder = max(0, (int) ($papData['source_order'] ?? 0));
         $forceDuplicateLeaf = !empty($papData['duplicate_leaf']);
 
         $levels = [
@@ -840,25 +839,11 @@ class EngpController extends Controller
             if ($existingNode) {
                 $detailId = (int) $existingNode->detail_id;
                 $ppaId = (int) $existingNode->id;
-
-                if ($sourceOrder > 0) {
-                    DB::table('ppa_details')
-                        ->where('id', $detailId)
-                        ->where(function ($query) use ($sourceOrder) {
-                            $query->whereNull('source_order')
-                                ->orWhere('source_order', '>', $sourceOrder);
-                        })
-                        ->update([
-                            'source_order' => $sourceOrder,
-                            'updated_at' => now(),
-                        ]);
-                }
             } else {
                 $isNewHierarchy = false;
                 $detailId = DB::table('ppa_details')->insertGetId([
                     'parent_id' => $parentDetailId,
                     'column_order' => $index + 1,
-                    'source_order' => $sourceOrder > 0 ? $sourceOrder : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);

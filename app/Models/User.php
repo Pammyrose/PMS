@@ -51,7 +51,12 @@ class User extends Authenticatable
         return $this->role === 'penro';
     }
 
-    public function requiresPenroApproval(): bool
+    public function isCenro(): bool
+    {
+        return $this->role === 'cenro';
+    }
+
+    public function hasAccomplishmentOnlyAccess(): bool
     {
         return in_array($this->role, ['user', 'cenro'], true);
     }

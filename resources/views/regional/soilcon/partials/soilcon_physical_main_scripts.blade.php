@@ -129,7 +129,7 @@
         const currentYear = Number(@json($year ?? now()->year));
         const currentOfficeId = Number(@json($office_id ?? 1));
         const targetStoreUrl = @json(route('admin.soilcon_physical.targets.store'));
-        const accompStoreUrl = @json(route('admin.soilcon_physical.accomplishments.store'));
+        const accompStoreUrl = @json(route('regional.physical-accomplishments.store', ['sector' => 'soilcon']));
         const deletePhysicalRowUrl = @json(route('admin.soilcon_physical.rows.destroy'));
         const existingTargetsByIndicator = @json($targets ?? []);
         const existingAccompByIndicator = @json($accomplishments ?? []);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PENRO Notifications - PMS</title>
+    <title>Notifications - PMS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('css/notifications.css') }}?v=4">
@@ -18,7 +18,7 @@
             <div class="mb-4">
                 <div>
                     <h2 class="mb-1"><i class="fa-solid fa-bell me-2"></i>Notifications</h2>
-                    <p class="text-muted mb-0">Review submissions assigned to {{ auth()->user()->office?->name ?? 'your PENRO' }}.</p>
+                    <p class="text-muted mb-0">Track PENRO or CENRO requested to edit the locked accomplishments.</p>
                 </div>
             </div>
 
@@ -35,7 +35,7 @@
 
             <div class="btn-group mb-3" role="group" aria-label="Submission status">
                 @foreach(['pending' => 'Pending', 'approved' => 'Approved', 'declined' => 'Declined'] as $value => $label)
-                    <a href="{{ route('penro.submissions.index', ['status' => $value]) }}"
+                    <a href="{{ route('accomplishment-requests.index', ['status' => $value]) }}"
                        class="btn {{ $status === $value ? 'btn-primary' : 'btn-outline-primary' }}">
                         {{ $label }}
                     </a>
@@ -124,10 +124,13 @@
                                         @if(filled($payload['remarks'] ?? null))
                                             <div class="small mt-1 text-start"><strong>Remarks:</strong> {{ $payload['remarks'] }}</div>
                                         @endif
+                                        <div class="small mt-2 text-start text-dark">
+                                            <strong>Reason for change:</strong> {{ $submission->request_reason ?: 'No reason provided (legacy request).' }}
+                                        </div>
                                     </td>
                                     <td class="text-end" style="min-width: 210px">
                                         @if($submission->status === 'pending')
-                                            <form method="POST" action="{{ route('penro.submissions.approve', $submission) }}" class="d-inline">
+                                            <form method="POST" action="{{ route('accomplishment-requests.approve', $submission) }}" class="d-inline">
                                                 @csrf
                                                 @method('PATCH')
                                                 <button class="btn btn-success btn-sm" type="submit"
@@ -142,7 +145,7 @@
                                             </button>
                                             <div class="mt-2 text-start {{ (int) old('submission_id') === (int) $submission->id ? '' : 'd-none' }}"
                                                  id="decline-{{ $submission->id }}">
-                                                <form method="POST" action="{{ route('penro.submissions.decline', $submission) }}">
+                                                <form method="POST" action="{{ route('accomplishment-requests.decline', $submission) }}">
                                                     @csrf
                                                     @method('PATCH')
                                                     <input type="hidden" name="submission_id" value="{{ $submission->id }}">

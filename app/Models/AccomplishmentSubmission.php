@@ -18,6 +18,7 @@ class AccomplishmentSubmission extends Model
         'indicator_id',
         'year',
         'payload',
+        'request_reason',
         'status',
         'reviewed_by',
         'review_notes',

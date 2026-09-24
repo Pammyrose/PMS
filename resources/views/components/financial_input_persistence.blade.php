@@ -24,6 +24,44 @@
     color: #000 !important;
   }
 
+  #performanceTable .group-financial-pending {
+    background: #f3e8ff;
+    color: #581c87;
+  }
+
+  #performanceTable th.month-header[data-dynamic-section="financial-pending"] {
+    background: #e9d5ff !important;
+    border-color: #d8b4fe !important;
+    color: #581c87 !important;
+  }
+
+  #performanceTable td[data-dynamic-section="financial-pending"] .month-box {
+    background: #faf5ff;
+    border-color: #e9d5ff;
+    color: #581c87;
+  }
+
+  #performanceTable td[data-dynamic-section="financial-pending"] .month-box.car-total-box {
+    background: #eef2ff !important;
+    border-color: #000;
+    color: #1e3a8a;
+    font-weight: 700;
+  }
+
+  #performanceTable .month-box.car-total-box,
+  #performanceTable .month-box.group-total-box {
+    border-color: #000 !important;
+  }
+
+  #performanceTable .month-box.target-not-accomplished {
+    border: 2px solid #dc2626 !important;
+  }
+
+  #performanceTable .month-box.locked-change-request:not(.target-not-accomplished) {
+    border-style: dashed;
+    border-color: #b45309 !important;
+  }
+
   #performanceTable th.summary-header {
     width: 96px !important;
     min-width: 96px !important;
@@ -111,6 +149,40 @@
   }
 </style>
 
+@unless(
+  (auth()->user()?->isAdmin() ?? false)
+  || (auth()->user()?->isRegionalOffice() ?? false)
+)
+<div class="modal fade" id="lockedMonthEditConfirmModal" tabindex="-1"
+     aria-labelledby="lockedMonthEditConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-primary">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="lockedMonthEditConfirmModalLabel">
+          <i class="fa-solid fa-lock me-2"></i>Edit Locked Accomplishment
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Are you sure you want to edit this locked accomplishment month?</p>
+        <div id="lockedMonthEditDescription" class="small text-muted"></div>
+        <div id="lockedMonthReasonGroup" class="mt-3">
+          <label for="lockedMonthEditReason" class="form-label fw-semibold">Reason for change</label>
+          <textarea id="lockedMonthEditReason" class="form-control" rows="3" maxlength="1000"></textarea>
+          <div class="invalid-feedback">Please enter a reason before continuing.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmLockedMonthEditBtn">
+          <i class="fa-solid fa-lock-open me-1"></i> Yes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+@endunless
+
 <script>
   (() => {
     const config = {
@@ -118,15 +190,30 @@
       storeUrl: @json(route('financial_inputs.store', ['sector' => $financialSector ?? 'unknown'])),
       existing: @json($financials ?? []),
       existingAccomplishments: @json($financialAccomplishments ?? []),
-      accomplishmentsOnly: @json(auth()->user()?->requiresPenroApproval() ?? false),
+      accomplishmentsOnly: @json(auth()->user()?->hasAccomplishmentOnlyAccess() ?? false),
+      selectedYear: @json((int) ($year ?? now('Asia/Manila')->year)),
+      currentYear: @json((int) now('Asia/Manila')->year),
+      currentMonth: @json((int) now('Asia/Manila')->month),
+      bypassLockedMonths: @json(
+        (auth()->user()?->isAdmin() ?? false)
+        || (auth()->user()?->isRegionalOffice() ?? false)
+      ),
+      canRequestLockedChanges: @json(
+        auth()->check()
+        && ! (auth()->user()?->isAdmin() ?? false)
+        && ! (auth()->user()?->isRegionalOffice() ?? false)
+      ),
     };
-
-    window.requiresPenroApproval = config.accomplishmentsOnly;
 
     const lockTargetInputs = (root = document) => {
       if (!config.accomplishmentsOnly) return;
 
-      const selector = '.month-box[data-section="target"], .month-box[data-section="financial"]';
+      const selector = [
+        '.month-box[data-section="target"]',
+        '.month-box[data-section="financial"]',
+        '.month-box[data-section="pending"][data-source-section="target"]',
+        '.month-box[data-section="financial-pending"][data-source-section="financial"]',
+      ].join(', ');
       const inputs = [
         ...(root.matches?.(selector) ? [root] : []),
         ...(root.querySelectorAll?.(selector) || []),
@@ -151,6 +238,133 @@
       }).observe(document.body, { childList: true, subtree: true });
     }
 
+    const monthColumnIndexes = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14];
+    const passedMonthCount = config.selectedYear < config.currentYear
+      ? 12
+      : (config.selectedYear === config.currentYear ? config.currentMonth - 1 : 0);
+    const lockedMonthColumns = new Set(monthColumnIndexes.slice(0, passedMonthCount));
+
+    const lockPassedAccomplishmentMonths = (root = document) => {
+      if (config.bypassLockedMonths || lockedMonthColumns.size === 0) return;
+
+      const selector = [
+        '.month-box[data-section="accomp"]',
+        '.month-box[data-section="financial-accomp"]',
+      ].join(', ');
+      const inputs = [
+        ...(root.matches?.(selector) ? [root] : []),
+        ...(root.querySelectorAll?.(selector) || []),
+      ];
+
+      inputs.forEach((input) => {
+        if (!lockedMonthColumns.has(Number(input.dataset.col))) return;
+        const isAggregate = input.dataset.carTotal === '1' || input.dataset.groupTotal === '1';
+        const canOpenLockedMonth = config.canRequestLockedChanges;
+        if (!isAggregate) {
+          input.readOnly = true;
+          input.setAttribute('aria-readonly', 'true');
+          if (canOpenLockedMonth) {
+            input.classList.add('locked-change-request');
+          } else {
+            input.classList.remove('locked-change-request');
+          }
+        }
+        input.title = !canOpenLockedMonth
+          ? 'This month is locked. Admin and Regional Office accounts review change requests from Notifications.'
+          : 'This month has passed. Click to confirm the edit and provide a reason.';
+        input.classList.add('bg-light');
+      });
+    };
+
+    lockPassedAccomplishmentMonths();
+    new MutationObserver((mutations) => {
+      mutations.forEach(mutation => mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) lockPassedAccomplishmentMonths(node);
+      }));
+    }).observe(document.body, { childList: true, subtree: true });
+
+    const lockedMonthModalElement = document.getElementById('lockedMonthEditConfirmModal');
+    const lockedMonthModal = lockedMonthModalElement && window.bootstrap
+      ? bootstrap.Modal.getOrCreateInstance(lockedMonthModalElement)
+      : null;
+    const lockedMonthDescription = document.getElementById('lockedMonthEditDescription');
+    const lockedMonthReasonGroup = document.getElementById('lockedMonthReasonGroup');
+    const lockedMonthReasonInput = document.getElementById('lockedMonthEditReason');
+    const lockedChangeReasons = new Map();
+    let pendingLockedMonthInput = null;
+
+    if (lockedMonthReasonGroup && !config.canRequestLockedChanges) {
+      lockedMonthReasonGroup.classList.add('d-none');
+    }
+
+    document.getElementById('performanceTable')?.addEventListener('click', (event) => {
+      const input = event.target;
+      if (!input?.classList?.contains('locked-change-request') || !input.readOnly) return;
+
+      pendingLockedMonthInput = input;
+      const monthName = periodKeys[Number(input.dataset.col)] || 'selected month';
+      const sectionName = input.dataset.section === 'financial-accomp' ? 'Financial' : 'Physical';
+      if (lockedMonthDescription) {
+        lockedMonthDescription.textContent = `${sectionName} accomplishment · ${monthName.toUpperCase()} ${config.selectedYear}`;
+      }
+      if (lockedMonthReasonInput) {
+        const row = input.closest('tr[data-row-id]');
+        const reasonKey = touchedEntryKey(
+          input.dataset.section,
+          row?.dataset?.rowId,
+          row?.dataset?.indicatorId,
+          input.dataset.officeId,
+        );
+        lockedMonthReasonInput.value = lockedChangeReasons.get(reasonKey) || '';
+        lockedMonthReasonInput.classList.remove('is-invalid');
+      }
+      lockedMonthModal?.show();
+    });
+
+    document.getElementById('confirmLockedMonthEditBtn')?.addEventListener('click', () => {
+      const input = pendingLockedMonthInput;
+      if (!input) return;
+
+      if (!config.canRequestLockedChanges) {
+        pendingLockedMonthInput = null;
+        lockedMonthModal?.hide();
+        return;
+      }
+
+      if (config.canRequestLockedChanges) {
+        const reason = String(lockedMonthReasonInput?.value || '').trim();
+        if (!reason) {
+          lockedMonthReasonInput?.classList.add('is-invalid');
+          lockedMonthReasonInput?.focus();
+          return;
+        }
+
+        const row = input.closest('tr[data-row-id]');
+        const reasonKey = touchedEntryKey(
+          input.dataset.section,
+          row?.dataset?.rowId,
+          row?.dataset?.indicatorId,
+          input.dataset.officeId,
+        );
+        lockedChangeReasons.set(reasonKey, reason);
+      }
+
+      input.readOnly = false;
+      input.removeAttribute('aria-readonly');
+      input.dataset.lockedEditConfirmed = '1';
+      input.title = 'Locked month opened for editing. Your reason will be submitted when you save.';
+      pendingLockedMonthInput = null;
+      lockedMonthModal?.hide();
+      window.setTimeout(() => {
+        input.focus();
+        input.select?.();
+      }, 200);
+    });
+
+    lockedMonthModalElement?.addEventListener('hidden.bs.modal', () => {
+      pendingLockedMonthInput = null;
+    });
+
     const periodKeys = [
       'jan', 'feb', 'mar', 'q1',
       'apr', 'may', 'jun', 'q2',
@@ -173,6 +387,24 @@
         entry?.office_id,
       )) || []),
     }));
+
+    const lockedMonthKeys = new Set(
+      Array.from(lockedMonthColumns).map(column => periodKeys[column]).filter(Boolean)
+    );
+    const entryChangesLockedMonth = entry => Array.from(entry?.changed_periods || [])
+      .some(period => lockedMonthKeys.has(period));
+    const addLockedChangeReasons = (entries, section) => entries.map((entry) => {
+      if (!entryChangesLockedMonth(entry)) return entry;
+
+      const reasonKey = touchedEntryKey(
+        section,
+        entry?.row_id || entry?.program_id,
+        entry?.indicator_id,
+        entry?.office_id,
+      );
+
+      return { ...entry, change_reason: lockedChangeReasons.get(reasonKey) || '' };
+    });
 
     document.getElementById('performanceTable')?.addEventListener('input', event => {
       const input = event.target;
@@ -208,6 +440,138 @@
       const parsed = Number(String(value ?? '').replace(/,/g, '').replace(/%/g, '').trim());
       return Number.isFinite(parsed) ? parsed : 0;
     };
+
+    const dueMonthCount = config.selectedYear < config.currentYear
+      ? 12
+      : (config.selectedYear === config.currentYear ? config.currentMonth : 0);
+    const dueMonthColumns = new Set(monthColumnIndexes.slice(0, dueMonthCount));
+
+    const targetSectionFor = accomplishmentSection => accomplishmentSection === 'financial-accomp'
+      ? 'financial'
+      : 'target';
+
+    const targetSourceFor = targetSection => targetSection === 'financial'
+      ? config.existing
+      : (typeof existingTargetsByIndicator !== 'undefined' ? existingTargetsByIndicator : {});
+
+    const storedTargetValue = (row, targetSection, officeId, column) => {
+      const rowId = String(row?.dataset?.rowId || row?.dataset?.programId || '').trim();
+      const indicatorId = String(row?.dataset?.indicatorId || '').trim();
+      const period = periodKeys[column] || '';
+      if (!rowId || !indicatorId || !officeId || !period) return 0;
+
+      return numericValue(targetSourceFor(targetSection)?.[rowId]?.[indicatorId]?.[officeId]?.[period]);
+    };
+
+    const targetOfficeIdsForInput = (row, input) => {
+      if (input.dataset.groupTotal === '1') {
+        return String(input.dataset.groupOfficeIds || '')
+          .split(',')
+          .map(value => value.trim())
+          .filter(Boolean);
+      }
+
+      if (input.dataset.carTotal === '1') {
+        const assignedIds = typeof getAssignedOfficeIdsForRow === 'function'
+          ? getAssignedOfficeIdsForRow(row).map(String)
+          : [];
+        if (assignedIds.length > 0) return assignedIds;
+
+        const rowId = String(row?.dataset?.rowId || row?.dataset?.programId || '').trim();
+        const indicatorId = String(row?.dataset?.indicatorId || '').trim();
+        const source = targetSourceFor(targetSectionFor(input.dataset.section));
+        return Object.keys(source?.[rowId]?.[indicatorId] || {});
+      }
+
+      const officeId = String(input.dataset.officeId || '').trim();
+      return officeId ? [officeId] : [];
+    };
+
+    const liveTargetInput = (row, accomplishmentInput, targetSection) => {
+      const column = Number(accomplishmentInput.dataset.col);
+      return Array.from(row.querySelectorAll(`.month-box[data-section="${targetSection}"]`))
+        .find((candidate) => {
+          if (Number(candidate.dataset.col) !== column) return false;
+          if ((candidate.dataset.carTotal === '1') !== (accomplishmentInput.dataset.carTotal === '1')) return false;
+          if ((candidate.dataset.groupTotal === '1') !== (accomplishmentInput.dataset.groupTotal === '1')) return false;
+
+          if (accomplishmentInput.dataset.groupTotal === '1') {
+            return String(candidate.dataset.groupKey || '') === String(accomplishmentInput.dataset.groupKey || '');
+          }
+
+          return String(candidate.dataset.officeId || '') === String(accomplishmentInput.dataset.officeId || '');
+        }) || null;
+    };
+
+    const targetValueForAccomplishment = (row, input) => {
+      const targetSection = targetSectionFor(input.dataset.section);
+      const liveInput = liveTargetInput(row, input, targetSection);
+      if (liveInput) return numericValue(liveInput.value);
+
+      const column = Number(input.dataset.col);
+      const officeValues = targetOfficeIdsForInput(row, input)
+        .map(officeId => storedTargetValue(row, targetSection, officeId, column));
+
+      if (input.dataset.carTotal !== '1' && input.dataset.groupTotal !== '1') {
+        return officeValues[0] || 0;
+      }
+
+      const isSemiCumulativePhysical = targetSection === 'target'
+        && typeof getIndicatorTypeForRow === 'function'
+        && getIndicatorTypeForRow(row) === 'semi-cumulative';
+
+      return isSemiCumulativePhysical
+        ? Math.max(0, ...officeValues)
+        : officeValues.reduce((total, value) => total + value, 0);
+    };
+
+    const refreshTargetMissBorders = () => {
+      document.querySelectorAll([
+        '#performanceTable .month-box[data-section="accomp"]',
+        '#performanceTable .month-box[data-section="financial-accomp"]',
+      ].join(', ')).forEach((input) => {
+        const column = Number(input.dataset.col);
+        const row = input.closest('tr[data-row-id]');
+        const isDueMonth = dueMonthColumns.has(column);
+        const target = row && isDueMonth ? targetValueForAccomplishment(row, input) : 0;
+        const accomplishment = numericValue(input.value);
+        const missedTarget = target > 0 && accomplishment + 0.000001 < target;
+
+        input.classList.toggle('target-not-accomplished', missedTarget);
+        if (missedTarget) {
+          if (input.dataset.defaultStatusTitle === undefined) {
+            input.dataset.defaultStatusTitle = input.getAttribute('title') || '';
+          }
+          input.title = `Target not accomplished: ${accomplishment} of ${target}`;
+        } else if (input.dataset.defaultStatusTitle !== undefined) {
+          const defaultTitle = input.dataset.defaultStatusTitle;
+          delete input.dataset.defaultStatusTitle;
+          if (defaultTitle) {
+            input.title = defaultTitle;
+          } else {
+            input.removeAttribute('title');
+          }
+        }
+      });
+    };
+
+    let targetMissRefreshQueued = false;
+    const scheduleTargetMissBorderRefresh = () => {
+      if (targetMissRefreshQueued) return;
+      targetMissRefreshQueued = true;
+      queueMicrotask(() => {
+        targetMissRefreshQueued = false;
+        refreshTargetMissBorders();
+      });
+    };
+
+    document.getElementById('performanceTable')?.addEventListener('input', (event) => {
+      if (!event.target?.classList?.contains('month-box')) return;
+      scheduleTargetMissBorderRefresh();
+    });
+
+    new MutationObserver(scheduleTargetMissBorderRefresh)
+      .observe(document.getElementById('performanceTable'), { childList: true, subtree: true });
 
     const summaryMonthIndex = Math.max(0, Math.min(11, Number(@json(now()->month)) - 1));
     const summaryMonthColumns = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14];
@@ -622,6 +986,45 @@
       }
     };
 
+    const savePhysicalAccomplishments = async (entries) => {
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return { success: true, skipped: true, message: 'No physical accomplishment rows to save.' };
+      }
+
+      const token = document.querySelector('input[name="_token"]')?.value || '';
+
+      try {
+        const response = await fetch(accompStoreUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ entries }),
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'Failed to save physical accomplishments.');
+        }
+
+        if (!data.pending_approval && typeof applySavedEntriesToExisting === 'function') {
+          applySavedEntriesToExisting('accomp', entries);
+        }
+
+        return {
+          success: true,
+          pending_approval: Boolean(data.pending_approval),
+          message: data.message || 'Physical accomplishments saved.',
+        };
+      } catch (error) {
+        console.error('Physical accomplishment save error:', error);
+        return { success: false, message: error?.message || 'Error saving physical accomplishments.' };
+      }
+    };
+
     const hydrateInputs = (section, source) => {
       document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach((row) => {
         const rowId = String(row.dataset.rowId || row.dataset.programId || '').trim();
@@ -838,6 +1241,138 @@
       refreshSummaryCards();
     };
 
+    const pendingMonthColumn = () => getCurrentMonthPeriodIndex();
+    const pendingOffices = row => {
+      const assigned = getAssignedOfficesForRow(row);
+      return assigned.length > 0 ? assigned : [{ id: currentOfficeId || null, name: 'Office' }];
+    };
+    const pendingSectionValue = (row, section, officeId) => {
+      const summarySection = summarySections.find(item => item.inputSection === section);
+      return summarySection ? summaryColumnValue(row, summarySection, officeId, pendingMonthColumn()) : 0;
+    };
+    const financialPendingTotal = (row, section) => pendingOffices(row).reduce((total, office) => {
+      const officeId = String(office?.id || '').trim();
+      return total + (officeId ? pendingSectionValue(row, section, officeId) : 0);
+    }, 0);
+    const financialSourcePendingAmount = row => {
+      const target = financialPendingTotal(row, 'financial');
+      const accomplishment = financialPendingTotal(row, 'financial-accomp');
+      return target > 0 && target > accomplishment ? target - accomplishment : 0;
+    };
+    const financialPendingAmount = row => {
+      const targetInput = row?.querySelector('.financial-pending-box[data-pending-kind="target"][data-car-total="1"]');
+      const accomplishmentInput = row?.querySelector('.financial-pending-box[data-pending-kind="accomp"][data-car-total="1"]');
+      if (!targetInput || !accomplishmentInput) return financialSourcePendingAmount(row);
+      const target = numericValue(targetInput.value);
+      const accomplishment = numericValue(accomplishmentInput.value);
+      return target > 0 && target > accomplishment ? target - accomplishment : 0;
+    };
+    const originalPhysicalPendingRowMatcher = rowHasCurrentMonthPending;
+    rowHasCurrentMonthPending = function (row) {
+      if (!row) return false;
+      return originalPhysicalPendingRowMatcher(row)
+        || financialPendingAmount(row) > 0;
+    };
+
+    const addFinancialPendingColumns = () => {
+      const table = document.getElementById('performanceTable');
+      const mainHeader = table.querySelector('thead tr:not(.group-row)');
+      const groupRow = document.getElementById('groupHeaders');
+      const physicalGroup = groupRow.querySelector('.group-pending');
+      if (!physicalGroup) return;
+      physicalGroup.textContent = 'Physical Pending';
+      const financialGroup = physicalGroup.cloneNode(true);
+      financialGroup.classList.add('group-financial-pending');
+      financialGroup.textContent = 'Financial Pending';
+      const remarksGroup = groupRow.querySelector('.group-remarks');
+      groupRow.insertBefore(financialGroup, remarksGroup || null);
+
+      mainHeader.querySelectorAll('th[data-dynamic-section="pending"]').forEach(physicalHeader => {
+        const header = physicalHeader.cloneNode(true);
+        header.classList.add('dynamic-header-financial-pending');
+        header.dataset.dynamicSection = 'financial-pending';
+        const remarksHeader = mainHeader.querySelector('th[data-dynamic-section="remarks"]');
+        mainHeader.insertBefore(header, remarksHeader || null);
+      });
+
+      document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach(row => {
+        row.querySelectorAll('td[data-dynamic-section="pending"]').forEach(physicalCell => {
+          const section = physicalCell.dataset.pendingKind === 'target' ? 'financial' : 'financial-accomp';
+          const cell = physicalCell.cloneNode(true);
+          cell.classList.add('dynamic-cell-financial-pending');
+          cell.dataset.dynamicSection = 'financial-pending';
+          cell.querySelectorAll('.month-box').forEach(input => {
+            input.classList.add('financial-pending-box');
+            input.value = '0';
+            input.dataset.section = 'financial-pending';
+            input.dataset.sourceSection = section;
+            input.setAttribute('aria-label', section === 'financial' ? 'Financial Target' : 'Financial Accomplishment');
+          });
+          lockTargetInputs(cell);
+          const remarksCell = row.querySelector('td[data-dynamic-section="remarks"]');
+          row.insertBefore(cell, remarksCell || null);
+        });
+      });
+    };
+
+    const refreshFinancialPendingInputs = () => {
+      if (!pendingVisible) return;
+      document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach(row => {
+        const hasFinancialPending = financialSourcePendingAmount(row) > 0;
+        row.querySelectorAll('.financial-pending-box').forEach(input => {
+          const section = input.dataset.sourceSection;
+          const officeId = String(input.dataset.officeId || '').trim();
+          input.value = hasFinancialPending
+            ? (input.dataset.carTotal === '1'
+                ? financialPendingTotal(row, section)
+                : pendingSectionValue(row, section, officeId))
+            : 0;
+        });
+      });
+    };
+
+    document.getElementById('performanceTable')?.addEventListener('input', event => {
+      const input = event.target;
+      if (input?.dataset?.section !== 'financial-pending') return;
+      event.stopPropagation();
+      if (input.readOnly) return;
+      const row = input.closest('tr[data-row-id]');
+      if (!row) return;
+      const sectionInputs = Array.from(row.querySelectorAll(
+        `.financial-pending-box[data-source-section="${input.dataset.sourceSection}"]`
+      ));
+      const carInput = sectionInputs.find(candidate => candidate.dataset.carTotal === '1');
+      if (carInput) {
+        carInput.value = sectionInputs
+          .filter(candidate => candidate.dataset.carTotal !== '1' && candidate.dataset.groupTotal !== '1')
+          .reduce((total, candidate) => total + numericValue(candidate.value), 0);
+      }
+      applyPendingRowFilter();
+    }, true);
+
+    const originalRefreshSummaryCards = refreshSummaryCards;
+    refreshSummaryCards = function () {
+      originalRefreshSummaryCards();
+      refreshFinancialPendingInputs();
+      refreshTargetMissBorders();
+      if (pendingVisible) applyPendingRowFilter();
+    };
+
+    const originalTogglePendingColumns = togglePendingColumns;
+    togglePendingColumns = function () {
+      const opening = !pendingVisible;
+      originalTogglePendingColumns();
+      if (opening) {
+        addFinancialPendingColumns();
+        refreshFinancialPendingInputs();
+        applyPendingRowFilter();
+      } else {
+        document.querySelectorAll('#performanceTable [data-dynamic-section="financial-pending"], #performanceTable .group-financial-pending')
+          .forEach(cell => cell.remove());
+      }
+      refreshGroupHeaderColspans();
+    };
+
     const financialButton = document.getElementById('financialBtn');
     const financialListItem = financialButton?.closest('li');
     if (financialListItem && !document.getElementById('financialMenuBtn')) {
@@ -874,9 +1409,9 @@
         const saveAllBtn = document.getElementById('saveAllBtn');
         const originalSaveBtnHtml = saveAllBtn ? saveAllBtn.innerHTML : '';
         const targetEntries = config.accomplishmentsOnly ? [] : collectChangedTargetEntries();
-        const accompEntries = attachTouchedPeriods(collectChangedAccomplishmentEntries(), 'accomp');
+        let accompEntries = attachTouchedPeriods(collectChangedAccomplishmentEntries(), 'accomp');
         const financialTargetEntries = config.accomplishmentsOnly ? [] : collectChangedEntries('financial', 'target');
-        const financialAccompEntries = attachTouchedPeriods(
+        let financialAccompEntries = attachTouchedPeriods(
           collectChangedEntries('financial-accomp', 'accomplishment'),
           'financial-accomp',
         );
@@ -885,6 +1420,20 @@
           && financialTargetEntries.length === 0 && financialAccompEntries.length === 0) {
           showTopRightErrorAlert('No input rows available to save.');
           return;
+        }
+
+        const hasLockedChanges = [...accompEntries, ...financialAccompEntries]
+          .some(entryChangesLockedMonth);
+        if (hasLockedChanges && config.canRequestLockedChanges) {
+          accompEntries = addLockedChangeReasons(accompEntries, 'accomp');
+          financialAccompEntries = addLockedChangeReasons(financialAccompEntries, 'financial-accomp');
+
+          const missingReason = [...accompEntries, ...financialAccompEntries]
+            .some(entry => entryChangesLockedMonth(entry) && !String(entry.change_reason || '').trim());
+          if (missingReason) {
+            showTopRightErrorAlert('Please enter a reason in the locked-accomplishment modal before saving.');
+            return;
+          }
         }
 
         if (saveAllBtn) {
@@ -899,11 +1448,7 @@
               showAlerts: false,
               precomputedEntries: targetEntries,
             }),
-            saveSectionEntries('accomp', {
-              requireVisible: false,
-              showAlerts: false,
-              precomputedEntries: accompEntries,
-            }),
+            savePhysicalAccomplishments(accompEntries),
             saveEntries(financialTargetEntries, 'target'),
             saveEntries(financialAccompEntries, 'accomplishment'),
           ]);
@@ -918,8 +1463,9 @@
             return;
           }
 
-          showTopRightSuccessAlert(config.accomplishmentsOnly
-            ? 'Accomplishments submitted to PENRO for approval.'
+          const hasPendingApproval = results.some(result => result.pending_approval);
+          showTopRightSuccessAlert(hasPendingApproval
+            ? 'Locked-month change request submitted for Regional Office/admin approval.'
             : 'Data saved successfully.');
         } finally {
           if (saveAllBtn) {

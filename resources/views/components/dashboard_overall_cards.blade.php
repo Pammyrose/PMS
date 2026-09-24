@@ -1,10 +1,14 @@
 <div class="mb-4">
-  <h3 class="text-xl font-bold text-gray-800 mb-3 flex items-center gap-3">
-    <span class="d-inline-flex align-items-center justify-content-center rounded-circle text-white bg-primary" style="width: 36px; height: 36px;">
-      <i class="fa-solid fa-chart-pie"></i>
-    </span>
-    Overall Performance
-  </h3>
+  <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3 mb-3">
+    <h3 class="text-xl font-bold text-gray-800 mb-0 d-flex align-items-center gap-3">
+      <span class="d-inline-flex align-items-center justify-content-center rounded-circle text-white bg-primary" style="width: 36px; height: 36px;">
+        <i class="fa-solid fa-chart-pie"></i>
+      </span>
+      Overall Performance
+    </h3>
+
+    @include('components.dashboard_filters')
+  </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
     <div class="bg-white rounded-2xl shadow-lg p-6 border border-primary-subtle position-relative overflow-hidden group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
@@ -39,7 +43,6 @@
       </div>
       <div class="d-flex align-items-end justify-content-center gap-3">
         <p class="text-7xl font-extrabold text-emerald-600 mb-0">{{ number_format((float) ($totalPap ?? 0), 0) }}</p>
-   
       </div>
     </button>
 
@@ -95,6 +98,9 @@
         <div class="modal-body p-0">
           @php
             $dashboardIndicatorList = collect($indicatorList ?? []);
+            $dashboardIndicatorGroups = $dashboardIndicatorList
+              ->groupBy(fn ($indicator) => (string) ($indicator['sector'] ?: 'N/A'))
+              ->sortKeys();
           @endphp
 
           @if($dashboardIndicatorList->isEmpty())
@@ -110,25 +116,75 @@
                     <th class="ps-4" style="width: 70px;">#</th>
                     <th>Indicator</th>
                     <th>PAP</th>
+                    <th style="width: 220px;">Office</th>
                     <th style="width: 130px;">Sector</th>
                     <th style="width: 120px;">Year</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @foreach($dashboardIndicatorList as $indicator)
-                    <tr class="dashboard-link-row" data-href="{{ $indicator['url'] ?? '#' }}" tabindex="0" role="link" aria-label="Open {{ $indicator['name'] ?: 'Untitled Indicator' }}">
-                      <td class="ps-4 text-muted fw-semibold">{{ $loop->iteration }}</td>
-                      <td class="fw-semibold">
-                        <a href="{{ $indicator['url'] ?? '#' }}" class="text-gray-900 text-decoration-none">
-                          {{ $indicator['name'] ?: 'Untitled Indicator' }}
-                        </a>
+                  @php
+                    $indicatorRowNumber = 0;
+                  @endphp
+                  @foreach($dashboardIndicatorGroups as $sector => $sectorIndicators)
+                    @php
+                      $indicatorSectorGroupId = 'indicator-sector-group-' . $loop->index;
+                      $sectorPapCount = $sectorIndicators
+                        ->pluck('pap_name')
+                        ->filter()
+                        ->unique()
+                        ->count();
+                    @endphp
+                    <tr class="indicator-sector-heading">
+                      <td colspan="6" class="p-0">
+                        <button
+                          type="button"
+                          class="indicator-sector-toggle"
+                          data-indicator-sector-toggle="{{ $indicatorSectorGroupId }}"
+                          aria-expanded="false"
+                          aria-controls="{{ $indicatorSectorGroupId }}"
+                        >
+                          <span class="d-flex align-items-center gap-3">
+                            <span class="indicator-sector-chevron" aria-hidden="true">
+                              <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                            <span class="badge text-bg-info">{{ $sector }}</span>
+                          </span>
+                          <span class="indicator-sector-summary">
+                            {{ number_format($sectorIndicators->count()) }} indicator{{ $sectorIndicators->count() === 1 ? '' : 's' }}
+                            <span aria-hidden="true">&bull;</span>
+                            {{ number_format($sectorPapCount) }} PAP{{ $sectorPapCount === 1 ? '' : 's' }}
+                          </span>
+                        </button>
                       </td>
-                      <td class="text-muted small">{{ $indicator['pap_name'] ?: 'Untitled PAP' }}</td>
-                      <td>
-                        <span class="badge text-bg-info">{{ $indicator['sector'] ?: 'N/A' }}</span>
-                      </td>
-                      <td>{{ $indicator['year'] ?: 'N/A' }}</td>
                     </tr>
+
+                    @foreach($sectorIndicators as $indicator)
+                      @php
+                        $indicatorRowNumber++;
+                      @endphp
+                      <tr
+                        @if($loop->first) id="{{ $indicatorSectorGroupId }}" @endif
+                        class="dashboard-link-row indicator-sector-row d-none"
+                        data-indicator-sector-row="{{ $indicatorSectorGroupId }}"
+                        data-href="{{ $indicator['url'] ?? '#' }}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Open {{ $indicator['name'] ?: 'Untitled Indicator' }}"
+                      >
+                        <td class="ps-4 text-muted fw-semibold">{{ $indicatorRowNumber }}</td>
+                        <td class="fw-semibold">
+                          <a href="{{ $indicator['url'] ?? '#' }}" class="text-gray-900 text-decoration-none">
+                            {{ $indicator['name'] ?: 'Untitled Indicator' }}
+                          </a>
+                        </td>
+                        <td class="text-muted small">{{ $indicator['pap_name'] ?: 'Untitled PAP' }}</td>
+                        <td class="text-muted small">{{ !empty($indicator['offices']) ? implode(', ', $indicator['offices']) : 'N/A' }}</td>
+                        <td>
+                          <span class="badge text-bg-info">{{ $indicator['sector'] ?: 'N/A' }}</span>
+                        </td>
+                        <td>{{ $indicator['year'] ?: 'N/A' }}</td>
+                      </tr>
+                    @endforeach
                   @endforeach
                 </tbody>
               </table>
@@ -155,6 +211,9 @@
         <div class="modal-body p-0">
           @php
             $dashboardPapList = collect($papList ?? []);
+            $dashboardPapGroups = $dashboardPapList
+              ->groupBy(fn ($pap) => (string) ($pap['sector'] ?: 'N/A'))
+              ->sortKeys();
           @endphp
 
           @if($dashboardPapList->isEmpty())
@@ -169,26 +228,70 @@
                   <tr>
                     <th class="ps-4" style="width: 70px;">#</th>
                     <th>PAP</th>
+                    <th style="width: 220px;">Office</th>
                     <th style="width: 130px;">Sector</th>
                     <th style="width: 120px;">Year</th>
                     <th style="width: 150px;">Indicators</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @foreach($dashboardPapList as $pap)
-                    <tr class="dashboard-link-row" data-href="{{ $pap['url'] ?? '#' }}" tabindex="0" role="link" aria-label="Open {{ $pap['name'] ?: 'Untitled PAP' }}">
-                      <td class="ps-4 text-muted fw-semibold">{{ $loop->iteration }}</td>
-                      <td class="fw-semibold">
-                        <a href="{{ $pap['url'] ?? '#' }}" class="text-gray-900 text-decoration-none">
-                          {{ $pap['name'] ?: 'Untitled PAP' }}
-                        </a>
+                  @php
+                    $papRowNumber = 0;
+                  @endphp
+                  @foreach($dashboardPapGroups as $sector => $sectorPaps)
+                    @php
+                      $papSectorGroupId = 'pap-sector-group-' . $loop->index;
+                      $sectorIndicatorCount = $sectorPaps->sum(fn ($pap) => (int) ($pap['indicator_count'] ?? 0));
+                    @endphp
+                    <tr class="pap-sector-heading">
+                      <td colspan="6" class="p-0">
+                        <button
+                          type="button"
+                          class="pap-sector-toggle"
+                          data-pap-sector-toggle="{{ $papSectorGroupId }}"
+                          aria-expanded="false"
+                          aria-controls="{{ $papSectorGroupId }}"
+                        >
+                          <span class="d-flex align-items-center gap-3">
+                            <span class="pap-sector-chevron" aria-hidden="true">
+                              <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                            <span class="badge text-bg-success">{{ $sector }}</span>
+                          </span>
+                          <span class="pap-sector-summary">
+                            {{ number_format($sectorPaps->count()) }} PAP{{ $sectorPaps->count() === 1 ? '' : 's' }}
+                            <span aria-hidden="true">&bull;</span>
+                            {{ number_format($sectorIndicatorCount) }} indicator{{ $sectorIndicatorCount === 1 ? '' : 's' }}
+                          </span>
+                        </button>
                       </td>
-                      <td>
-                        <span class="badge text-bg-success">{{ $pap['sector'] ?: 'N/A' }}</span>
-                      </td>
-                      <td>{{ $pap['year'] ?: 'N/A' }}</td>
-                      <td>{{ number_format((int) ($pap['indicator_count'] ?? 0)) }}</td>
                     </tr>
+
+                    @foreach($sectorPaps as $pap)
+                      @php($papRowNumber++)
+                      <tr
+                        @if($loop->first) id="{{ $papSectorGroupId }}" @endif
+                        class="dashboard-link-row pap-sector-row d-none"
+                        data-pap-sector-row="{{ $papSectorGroupId }}"
+                        data-href="{{ $pap['url'] ?? '#' }}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Open {{ $pap['name'] ?: 'Untitled PAP' }}"
+                      >
+                        <td class="ps-4 text-muted fw-semibold">{{ $papRowNumber }}</td>
+                        <td class="fw-semibold">
+                          <a href="{{ $pap['url'] ?? '#' }}" class="text-gray-900 text-decoration-none">
+                            {{ $pap['name'] ?: 'Untitled PAP' }}
+                          </a>
+                        </td>
+                        <td class="text-muted small">{{ !empty($pap['offices']) ? implode(', ', $pap['offices']) : 'N/A' }}</td>
+                        <td>
+                          <span class="badge text-bg-success">{{ $pap['sector'] ?: 'N/A' }}</span>
+                        </td>
+                        <td>{{ $pap['year'] ?: 'N/A' }}</td>
+                        <td>{{ number_format((int) ($pap['indicator_count'] ?? 0)) }}</td>
+                      </tr>
+                    @endforeach
                   @endforeach
                 </tbody>
               </table>
@@ -210,10 +313,145 @@
       outline: 2px solid #059669;
       outline-offset: -2px;
     }
+
+    #papListModal .pap-sector-heading td {
+      background: #f0fdf4;
+      border-bottom-color: #d1fae5;
+    }
+
+    #papListModal .pap-sector-toggle {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: #1f2937;
+      display: flex;
+      font-weight: 700;
+      justify-content: space-between;
+      padding: 0.9rem 1.5rem;
+      text-align: left;
+      width: 100%;
+    }
+
+    #papListModal .pap-sector-toggle:hover,
+    #papListModal .pap-sector-toggle:focus-visible {
+      background: #dcfce7;
+      outline: none;
+    }
+
+    #papListModal .pap-sector-chevron {
+      align-items: center;
+      color: #059669;
+      display: inline-flex;
+      justify-content: center;
+      transition: transform 160ms ease;
+      width: 1rem;
+    }
+
+    #papListModal .pap-sector-toggle[aria-expanded="true"] .pap-sector-chevron {
+      transform: rotate(90deg);
+    }
+
+    #papListModal .pap-sector-summary {
+      color: #64748b;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    #papListModal .pap-sector-row td:first-child {
+      border-left: 3px solid #86efac;
+    }
+
+    #indicatorListModal .indicator-sector-heading td {
+      background: #ecfeff;
+      border-bottom-color: #cffafe;
+    }
+
+    #indicatorListModal .indicator-sector-toggle {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: #1f2937;
+      display: flex;
+      font-weight: 700;
+      justify-content: space-between;
+      padding: 0.9rem 1.5rem;
+      text-align: left;
+      width: 100%;
+    }
+
+    #indicatorListModal .indicator-sector-toggle:hover,
+    #indicatorListModal .indicator-sector-toggle:focus-visible {
+      background: #cffafe;
+      outline: none;
+    }
+
+    #indicatorListModal .indicator-sector-chevron {
+      align-items: center;
+      color: #0891b2;
+      display: inline-flex;
+      justify-content: center;
+      transition: transform 160ms ease;
+      width: 1rem;
+    }
+
+    #indicatorListModal .indicator-sector-toggle[aria-expanded="true"] .indicator-sector-chevron {
+      transform: rotate(90deg);
+    }
+
+    #indicatorListModal .indicator-sector-summary {
+      color: #64748b;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    #indicatorListModal .indicator-sector-row td:first-child {
+      border-left: 3px solid #67e8f9;
+    }
+
+    @media (max-width: 575.98px) {
+      #papListModal .pap-sector-toggle,
+      #indicatorListModal .indicator-sector-toggle {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-inline: 1rem;
+      }
+
+      #papListModal .pap-sector-summary,
+      #indicatorListModal .indicator-sector-summary {
+        padding-left: 1.75rem;
+      }
+    }
   </style>
 
   <script>
     document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('[data-pap-sector-toggle]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const groupId = button.dataset.papSectorToggle;
+          const isExpanded = button.getAttribute('aria-expanded') === 'true';
+
+          document.querySelectorAll(`[data-pap-sector-row="${groupId}"]`).forEach(function (row) {
+            row.classList.toggle('d-none', isExpanded);
+          });
+
+          button.setAttribute('aria-expanded', String(!isExpanded));
+        });
+      });
+
+      document.querySelectorAll('[data-indicator-sector-toggle]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const groupId = button.dataset.indicatorSectorToggle;
+          const isExpanded = button.getAttribute('aria-expanded') === 'true';
+
+          document.querySelectorAll(`[data-indicator-sector-row="${groupId}"]`).forEach(function (row) {
+            row.classList.toggle('d-none', isExpanded);
+          });
+
+          button.setAttribute('aria-expanded', String(!isExpanded));
+        });
+      });
+
       document.querySelectorAll('.dashboard-link-row').forEach(function (row) {
         const openRow = function () {
           const href = row.dataset.href;

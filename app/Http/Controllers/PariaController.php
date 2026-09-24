@@ -31,15 +31,15 @@ class PariaController extends Controller
         $programId = $program !== null ? (int) $program : null;
 
         $sortProgramHierarchy = function ($row) {
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         };
 
         $programsRaw = $this->getPariaPrograms($programId, $search, (int) $year)
@@ -74,7 +74,7 @@ class PariaController extends Controller
         $entries = Schema::hasTable('gass_physical')
             ? Gass_Physical::whereIn('programs_id', $programIds)
                 ->where('year', $year)
-                ->where('office_id', $office_id)
+                ->whereIn('office_id', $this->officeIdsForPhysicalPageScope($office_id))
                 ->get()
             : collect();
 
@@ -85,10 +85,10 @@ class PariaController extends Controller
         $programs = $this->filterProgramRowsForOffice($programs, $indicators, $office_id);
 
         $targets = Paria_Target::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
         $accomplishments = Paria_Accomplishment::where('years', $year)
-            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->where('office_ids', $office_id))
+            ->when($this->shouldScopeToUserOffice(), fn ($query) => $query->whereIn('office_ids', $this->officeIdsForPhysicalPageScope($office_id)))
             ->get();
 
         $programs = $programsRaw
@@ -187,16 +187,16 @@ class PariaController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -300,12 +300,12 @@ class PariaController extends Controller
         })
         ->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -320,16 +320,16 @@ class PariaController extends Controller
         // Also expand programsRaw for consistency (already expanded above)
         $programsRaw = $programsRaw->sortBy(function ($row) {
             $priority = $row->_sort_priority ?? 5;
-            return $this->hierarchySortValue($row->title ?? '')
-                . '|' . $this->hierarchySortValue($row->program ?? '')
-                . '|' . $this->hierarchySortValue($row->project ?? '')
-                . '|' . $this->hierarchySortValue($row->activities ?? '')
+            return $this->sourceOrderedHierarchySortValue($row->title_source_order ?? null, $row->title ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->program_source_order ?? null, $row->program ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->project_source_order ?? null, $row->project ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->activities_source_order ?? null, $row->activities ?? '')
                 . '|' . $priority
-                . '|' . $this->hierarchySortValue($row->subactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->subsubactivities ?? '')
-                . '|' . $this->hierarchySortValue($row->level_6 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_7 ?? '')
-                . '|' . $this->hierarchySortValue($row->level_8 ?? '');
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subactivities_source_order ?? null, $row->subactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->subsubactivities_source_order ?? null, $row->subsubactivities ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_6_source_order ?? null, $row->level_6 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_7_source_order ?? null, $row->level_7 ?? '')
+                . '|' . $this->sourceOrderedHierarchySortValue($row->level_8_source_order ?? null, $row->level_8 ?? '');
         }, SORT_NATURAL | SORT_FLAG_CASE)
         ->unique(function ($row) {
             return strtolower(trim((string) ($row->title ?? ''))) . '|'
@@ -924,6 +924,17 @@ class PariaController extends Controller
         }
 
         return '3|' . $normalized;
+    }
+
+    private function sourceOrderedHierarchySortValue($sourceOrder, $value): string
+    {
+        $sourceOrder = (int) ($sourceOrder ?? 0);
+        if ($sourceOrder > 0 && trim((string) ($value ?? '')) !== '') {
+            return '0|' . str_pad((string) $sourceOrder, 10, '0', STR_PAD_LEFT)
+                . '|' . $this->hierarchySortValue($value);
+        }
+
+        return '1|' . $this->hierarchySortValue($value);
     }
 
     private function romanToInteger(string $roman): int
@@ -2229,14 +2240,23 @@ private function getPariaPrograms(?int $programId = null, string $search = '', ?
             'program_ppa.created_at',
             'program_ppa.updated_at',
             'program_ppa.name as title',
+            'program_detail.source_order as title_source_order',
             'project_ppa.name as program',
+            'project_detail.source_order as program_source_order',
             'main_activity_ppa.name as project',
+            'main_activity_detail.source_order as project_source_order',
             'sub_activity_ppa.name as activities',
+            'sub_activity_detail.source_order as activities_source_order',
             'sub_sub_activity_ppa.name as subactivities',
+            'sub_sub_activity_detail.source_order as subactivities_source_order',
             'sub_sub_sub_activity_ppa.name as subsubactivities',
+            'sub_sub_sub_activity_detail.source_order as subsubactivities_source_order',
             'level_7_ppa.name as level_6',
+            'level_7_detail.source_order as level_6_source_order',
             'level_8_ppa.name as level_7',
+            'level_8_detail.source_order as level_7_source_order',
             'level_9_ppa.name as level_8',
+            'level_9_detail.source_order as level_8_source_order',
         ])
         ->orderBy('program_ppa.created_at')
         ->orderBy('program_ppa.id');

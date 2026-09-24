@@ -94,6 +94,51 @@ class StoFinancialImportTest extends TestCase
         $this->assertTrue($this->invoke('hasFinancialAccomplishmentColumns', [$reader, $template, 'STO']));
     }
 
+    public function test_default_excel_upload_imports_both_physical_sections(): void
+    {
+        $template = dirname(__DIR__, 2).'/resources/templates/DENR-CAR-2026-WFP-GAA-MIP.xlsx';
+        $controller = (new PhysicalExcelUploadController)->forSector('sto');
+        $resolveType = new ReflectionMethod(PhysicalExcelUploadController::class, 'resolvePhysicalImportType');
+        $importTypes = new ReflectionMethod(PhysicalExcelUploadController::class, 'physicalImportTypes');
+
+        $resolvedType = $resolveType->invoke($controller, $template, 'STO', null);
+
+        $this->assertSame('both', $resolvedType);
+        $this->assertSame(
+            ['target', 'accomplishment'],
+            $importTypes->invoke($controller, $resolvedType)
+        );
+    }
+
+    public function test_combined_physical_import_result_reports_each_dataset_separately(): void
+    {
+        $controller = (new PhysicalExcelUploadController)->forSector('sto');
+        $combine = new ReflectionMethod(PhysicalExcelUploadController::class, 'combinePhysicalImportResults');
+        $result = $combine->invoke($controller, [
+            'target' => [
+                'imported' => 8,
+                'financial_imported' => 8,
+                'financial_accomplishment_imported' => 8,
+                'skipped' => 2,
+                'placeholders' => 1,
+            ],
+            'accomplishment' => [
+                'imported' => 6,
+                'financial_imported' => 0,
+                'financial_accomplishment_imported' => 0,
+                'skipped' => 3,
+                'placeholders' => 0,
+            ],
+        ]);
+
+        $this->assertSame(14, $result['imported']);
+        $this->assertSame(8, $result['target_imported']);
+        $this->assertSame(6, $result['accomplishment_imported']);
+        $this->assertSame(8, $result['financial_imported']);
+        $this->assertSame(8, $result['financial_accomplishment_imported']);
+        $this->assertSame(5, $result['skipped']);
+    }
+
     public function test_all_physical_sector_importers_share_the_financial_column_mappings(): void
     {
         $sectors = ['enf', 'pa', 'engp', 'lands', 'soilcon', 'nra', 'paria', 'cobb', 'continuing'];

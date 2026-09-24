@@ -20,14 +20,12 @@ class PenroSubmissionController extends Controller
 
         $submissions = AccomplishmentSubmission::query()
             ->with(['submitter:id,name', 'office:id,name', 'program:id,name', 'indicator:id,name', 'reviewer:id,name'])
-            ->where('penro_office_id', (int) $request->user()->office_id)
             ->where('status', $status)
             ->latest()
             ->paginate(25)
             ->withQueryString();
 
         $pendingCount = AccomplishmentSubmission::query()
-            ->where('penro_office_id', (int) $request->user()->office_id)
             ->where('status', 'pending')
             ->count();
 
@@ -84,18 +82,16 @@ class PenroSubmissionController extends Controller
         abort_if($updated === 0, 409, 'This submission has already been reviewed.');
 
         return redirect()
-            ->route('penro.submissions.index', ['status' => 'declined'])
+            ->route('accomplishment-requests.index', ['status' => 'declined'])
             ->withFragment('submission-'.$submission->id)
             ->with('success', 'The accomplishment submission was declined. The reason has been saved.');
     }
 
     private function authorizeSubmission(Request $request, AccomplishmentSubmission $submission): void
     {
-        abort_unless($request->user()?->isPenro(), 403);
         abort_unless(
-            (int) $submission->penro_office_id === (int) $request->user()->office_id,
-            403,
-            'This submission belongs to another PENRO.'
+            $request->user()?->isAdmin() || $request->user()?->isRegionalOffice(),
+            403
         );
     }
 }

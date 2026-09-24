@@ -13,7 +13,7 @@ class NotificationCountService
     {
         $counts = [
             'unreadSubmissionNotifications' => 0,
-            'pendingPenroNotifications' => 0,
+            'pendingReviewNotifications' => 0,
             'notificationVersion' => '0',
         ];
 
@@ -21,7 +21,7 @@ class NotificationCountService
             return $counts;
         }
 
-        if ($user->requiresPenroApproval()
+        if (! ($user->isAdmin() || $user->isRegionalOffice())
             && Schema::hasColumn('accomplishment_submissions', 'user_read_at')) {
             $userNotifications = AccomplishmentSubmission::query()
                 ->where('user_id', $user->id);
@@ -36,17 +36,15 @@ class NotificationCountService
             );
         }
 
-        if ($user->isPenro()
-            && Schema::hasColumn('accomplishment_submissions', 'penro_office_id')) {
-            $penroNotifications = AccomplishmentSubmission::query()
-                ->where('penro_office_id', $user->office_id);
+        if ($user->isAdmin() || $user->isRegionalOffice()) {
+            $reviewNotifications = AccomplishmentSubmission::query();
 
-            $counts['pendingPenroNotifications'] = (clone $penroNotifications)
+            $counts['pendingReviewNotifications'] = (clone $reviewNotifications)
                 ->where('status', 'pending')
                 ->count();
             $counts['notificationVersion'] = $this->versionFor(
-                $penroNotifications,
-                $counts['pendingPenroNotifications']
+                $reviewNotifications,
+                $counts['pendingReviewNotifications']
             );
         }
 
