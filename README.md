@@ -1,59 +1,205 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
-
 <p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+  <img src="public/denr_logo.png" alt="DENR logo" width="110">
 </p>
 
-## About Laravel
+<h1 align="center">DENR-CAR Performance Management System</h1>
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+<p align="center">
+  A role-based web application for recording, monitoring, reviewing, and reporting the physical and financial performance of DENR-CAR programs, activities, and projects.
+</p>
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+<p align="center">
+  <img alt="PHP 8.2+" src="https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white">
+  <img alt="Laravel 12" src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white">
+  <img alt="Vite 7" src="https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-122%20passing-brightgreen">
+</p>
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## About the project
 
-## Learning Laravel
+The DENR-CAR Performance Management System (PMS) centralizes Work and Financial Plan data across sectors, reporting years, and offices. It gives administrators, Regional Office personnel, PENROs, and CENRO/users interfaces suited to their responsibilities while preserving office-level access controls and an audit trail of changes.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+The application is a server-rendered Laravel modular monolith. Blade provides the user interface, Laravel controllers and services coordinate the workflows, and Eloquent persists performance data to a relational database.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Features
 
-## Laravel Sponsors
+- Role-based authentication and office-scoped access
+- Dashboard summaries, performance rankings, and delay trends
+- Monthly, quarterly, and annual physical target/accomplishment monitoring
+- Financial target and accomplishment entry
+- Work and Financial Plan (WFP) Excel import previews and transactional imports
+- Official WFP Excel exports
+- Approval workflow for corrections to locked reporting periods
+- User notifications for approval decisions
+- User management and a predefined Regional Office/PENRO/CENRO hierarchy
+- Filterable edit-history and audit records
+- Eleven program areas: GASS, STO, ENF, PA, ENGP, LANDS, SOILCON, NRA, PARIA, COBB, and Continuing Activities
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Technology stack
 
-### Premium Partners
+| Layer | Technologies |
+| --- | --- |
+| Backend | PHP 8.2+, Laravel 12, Eloquent ORM |
+| Frontend | Blade, Bootstrap 5, Tailwind CSS 4, JavaScript |
+| Build tooling | Vite 7, Laravel Vite Plugin, npm |
+| Database | SQLite for local setup; MySQL-compatible databases are also supported |
+| Spreadsheet handling | Application-level XLSX reader/writer using PHP ZIP and XML extensions |
+| Testing | PHPUnit 11, Laravel test utilities |
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Requirements
+
+Install the following before setting up the project:
+
+- PHP 8.2 or newer
+- Composer 2
+- Node.js 20.19+ and npm
+- SQLite, or a MySQL-compatible database
+- PHP extensions required by Laravel, plus `pdo_sqlite` or `pdo_mysql`, `zip`, `xml`, and `xmlreader`
+
+## Local installation
+
+1. Clone the repository and enter the project directory.
+
+   ```bash
+   git clone https://github.com/Pammyrose/PMS.git
+   cd PMS
+   ```
+
+2. Install the PHP dependencies and create the environment file.
+
+   ```bash
+   composer install
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+   On Windows PowerShell, replace the `cp` command with:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+3. Create the local SQLite database.
+
+   macOS/Linux:
+
+   ```bash
+   touch database/database.sqlite
+   ```
+
+   Windows PowerShell:
+
+   ```powershell
+   New-Item database/database.sqlite -ItemType File -Force
+   ```
+
+   The default `.env.example` is already configured to use SQLite. To use MySQL instead, update the database section in `.env`:
+
+   ```dotenv
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=pms
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+
+4. Create the database tables and seed the reference data.
+
+   ```bash
+   php artisan migrate --seed
+   ```
+
+5. Install and build the frontend assets.
+
+   ```bash
+   npm install
+   npm run build
+   ```
+
+6. Start the application.
+
+   ```bash
+   php artisan serve
+   ```
+
+   Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
+
+### Development mode
+
+To run the Laravel server, queue listener, application log viewer, and Vite development server together:
+
+```bash
+composer run dev
+```
+
+## Development login
+
+Running the seeders creates an administrator account for local development:
+
+```text
+Email:    admin@denr.gov.ph
+Password: password
+```
+
+> **Important:** These credentials are public development defaults. Change or remove every seeded password before deploying the application or using real data.
+
+Additional sample roles are defined in `database/seeders/UsersSeeder.php`. PENRO and CENRO accounts should be assigned to the appropriate office before they are used for office-scoped workflows.
+
+## Testing
+
+Run the complete automated test suite with:
+
+```bash
+composer test
+```
+
+Run Laravel Pint to check or fix PHP formatting:
+
+```bash
+./vendor/bin/pint
+```
+
+On Windows PowerShell, use `vendor/bin/pint` if the shell does not recognize the Unix-style path.
+
+## Project structure
+
+```text
+app/                 Controllers, middleware, models, services, and XLSX utilities
+bootstrap/           Laravel application bootstrapping
+config/              Application and service configuration
+database/            Migrations, factories, and seeders
+public/              Web entry point and public assets
+resources/           Blade views, source CSS/JS, and the official WFP template
+routes/               Web and console routes
+specs/                Architecture, frontend, backend, and Excel specifications
+tests/                PHPUnit unit and feature tests
+tools/                Project maintenance scripts
+```
+
+More detailed technical documentation is available in [`specs/global.md`](specs/global.md), with dedicated architecture, backend, frontend, and Excel-import specifications in the same directory.
+
+## Production notes
+
+Before deployment:
+
+- Set `APP_ENV=production`, `APP_DEBUG=false`, and the correct `APP_URL`.
+- Generate a unique application key and use strong database credentials.
+- Replace all seeded credentials and keep `.env` out of version control.
+- Configure the web server document root to `public/`.
+- Build optimized assets with `npm run build`.
+- Run `php artisan migrate --force` during a controlled deployment.
+- Configure a persistent queue worker if queued jobs are introduced or enabled.
+- Use HTTPS, regular backups, and access controls appropriate for operational government data.
 
 ## Contributing
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+1. Create a feature branch from the current main branch.
+2. Keep changes consistent across every affected sector and role-specific view.
+3. Add or update automated tests for behavioral changes.
+4. Run `composer test` and Laravel Pint before opening a pull request.
+5. Update the files in `specs/` when behavior, data structures, roles, or deployment requirements change.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This repository does not currently include a software license. Add an appropriate license before allowing third parties to copy, modify, or redistribute the project.
