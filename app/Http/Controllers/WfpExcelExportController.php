@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Office;
+use App\Support\GassUiReport;
 use App\Support\OfficialWfpTemplateWriter;
+use App\Support\PhysicalPerformanceSectionFormatter;
 use App\Support\SimpleXlsxWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -13,6 +15,19 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class WfpExcelExportController extends Controller
 {
+    private const OFFICIAL_TEMPLATE_SECTORS = [];
+
+    private const FINANCIAL_SUMMARY_OFFICES = [
+        'CAR' => null,
+        'RO' => ['RO'],
+        'ABRA' => ['ABRA', 'BANGUED', 'LAGANGILANG'],
+        'APAYAO' => ['APAYAO', 'CALANASAN', 'CONNER'],
+        'BENGUET' => ['BENGUET', 'BAGUIO', 'BUGUIAS'],
+        'IFUGAO' => ['IFUGAO', 'ALFONSOLISTA', 'LAMUT'],
+        'KALINGA' => ['KALINGA', 'PINUKPUK', 'TABUK'],
+        'MT.PROVINCE' => ['MOUNTAINPROVINCE', 'MTPROVINCE', 'PARACELIS', 'SABANGAN'],
+    ];
+
     private const SECTORS = [
         'gass' => ['type' => 'GASS', 'sheet' => 'GASS', 'label' => 'GENERAL ADMINISTRATION AND SUPPORT SERVICES (GASS)'],
         'sto' => ['type' => 'STO', 'sheet' => 'STO', 'label' => 'SUPPORT TO OPERATIONS (STO)'],
@@ -43,7 +58,8 @@ class WfpExcelExportController extends Controller
         Request $request,
         string $sector,
         SimpleXlsxWriter $writer,
-        OfficialWfpTemplateWriter $officialWriter
+        OfficialWfpTemplateWriter $officialWriter,
+        PhysicalPerformanceSectionFormatter $physicalFormatter
     ): BinaryFileResponse {
         $sector = strtolower(trim($sector));
         abort_unless(isset(self::SECTORS[$sector]), 404);
@@ -54,7 +70,7 @@ class WfpExcelExportController extends Controller
         $year = (int) ($validated['year'] ?? now()->year);
         $config = self::SECTORS[$sector];
         $officeIds = $this->scopedOfficeIds();
-        $rows = $this->exportRows($sector, $config['type'], $year, $officeIds);
+        $rows = app(GassUiReport::class)->rows($request, $year, $sector);
         $allowedOfficeNames = $officeIds === null
             ? null
             : Office::query()->whereIn('id', $officeIds)->pluck('name')->all();
@@ -67,7 +83,7 @@ class WfpExcelExportController extends Controller
         $xlsxPath = $path.'.xlsx';
         @unlink($path);
         $templatePath = resource_path('templates/DENR-CAR-2026-WFP-GAA-MIP.xlsx');
-        if (in_array($sector, ['gass', 'sto'], true) && is_file($templatePath)) {
+        if (in_array($sector, self::OFFICIAL_TEMPLATE_SECTORS, true) && is_file($templatePath)) {
             $officialWriter->write(
                 $templatePath,
                 $xlsxPath,
@@ -77,8 +93,24 @@ class WfpExcelExportController extends Controller
                 now(),
                 $allowedOfficeNames
             );
+            $physicalFormatter->format(
+                $xlsxPath,
+                $config['sheet'],
+                ['I', 'J', 'K'],
+                ['AU', 'AV', 'AW'],
+                11,
+                ['AB', 'AC', 'AD'],
+                ['BN', 'BO', 'BP']
+            );
         } else {
-            $writer->writeWfp($xlsxPath, $config['sheet'], $config['label'], $year, $rows, now());
+            $writer->writePerformanceReport(
+                $xlsxPath,
+                $config['sheet'],
+                $config['label'],
+                $year,
+                $rows,
+                now()
+            );
         }
 
         $filename = sprintf(
@@ -126,13 +158,18 @@ class WfpExcelExportController extends Controller
                 continue;
             }
 
+            $columns = array_merge(
+                ['program_id', 'row_id', 'indicator_id', 'office_id', 'car_totals'],
+                self::PERIODS
+            );
+            if ($kind === 'physical_accomplishment' && Schema::hasColumn($table, 'remarks')) {
+                $columns[] = 'remarks';
+            }
+
             $query = DB::table($table)
                 ->where('sector', $sector)
                 ->where('year', $year)
-                ->select(array_merge(
-                    ['program_id', 'row_id', 'indicator_id', 'office_id', 'car_totals'],
-                    self::PERIODS
-                ));
+                ->select($columns);
 
             if ($officeIds !== null) {
                 $query->whereIn('office_id', $officeIds);
@@ -150,12 +187,13 @@ class WfpExcelExportController extends Controller
                 ];
                 $records[$key]['values'][$kind] = $this->periodValues($record);
                 $records[$key]['car_totals'][$kind] = $this->decodeTotals($record->car_totals ?? null);
+                if ($kind === 'physical_accomplishment' && filled($record->remarks ?? null)) {
+                    $records[$key]['remarks'] = trim((string) $record->remarks);
+                }
             }
         }
 
-        if ($officeIds !== null) {
-            $records = $this->addDefaultOfficeRows($records, $ppaRows, $officeIds, $year);
-        }
+        $records = $this->alignRecordsWithUiAssignments($records, $ppaRows, $officeIds, $year);
 
         if ($records === []) {
             return [];
@@ -185,6 +223,7 @@ class WfpExcelExportController extends Controller
             ->whereIn('id', collect($records)->pluck('office_id')->filter()->unique()->all())
             ->get()
             ->keyBy(fn ($row) => (int) $row->id);
+        $uiOfficeGroups = Office::groupedForUi();
 
         $logicalGroups = collect($records)->groupBy(fn (array $record) => implode('|', [
             $record['program_id'], $record['row_id'], $record['indicator_id'],
@@ -203,29 +242,27 @@ class WfpExcelExportController extends Controller
             $indicator = trim((string) ($indicatorNames[$first['indicator_id']] ?? ''));
             $indicatorType = trim((string) ($indicatorTypes[$first['indicator_id']] ?? ''));
 
-            if ($officeIds === null) {
-                $output[] = $this->outputRow(
+            foreach ($this->uiOfficeRowsForGroup($group, $offices, $uiOfficeGroups) as $officeIndex => $officeRow) {
+                $outputRow = $this->outputRow(
                     $pap,
                     $indicator,
                     $indicatorType,
-                    'CAR',
-                    $this->carValuesForGroup($group)
+                    $officeRow['office'],
+                    $officeRow['values'],
+                    $officeRow['remarks']
                 );
-            }
-
-            foreach ($group->sortBy(function (array $record) use ($offices) {
-                $office = $offices[$record['office_id']] ?? null;
-
-                return sprintf('%03d|%s', (int) ($office->office_types_id ?? 999), (string) ($office->name ?? ''));
-            }, SORT_NATURAL | SORT_FLAG_CASE) as $record) {
-                $officeName = $record['office_id'] === null
-                    ? 'CAR'
-                    : (string) ($offices[$record['office_id']]->name ?? 'Office '.$record['office_id']);
-                $output[] = $this->outputRow($pap, $indicator, $indicatorType, $officeName, $record['values']);
+                $outputRow['_sort'] = implode('|', [
+                    $pap,
+                    $indicator,
+                    str_pad((string) $officeIndex, 4, '0', STR_PAD_LEFT),
+                ]);
+                $outputRow['_financial_office'] = $officeRow['financial_office'];
+                $outputRow['_office_aggregate'] = $officeRow['is_aggregate'];
+                $output[] = $outputRow;
             }
         }
 
-        return collect($output)
+        $output = collect($output)
             ->sortBy(fn (array $row) => mb_strtolower((string) ($row['_sort'] ?? '')), SORT_NATURAL)
             ->map(function (array $row) {
                 unset($row['_sort']);
@@ -234,38 +271,36 @@ class WfpExcelExportController extends Controller
             })
             ->values()
             ->all();
+
+        return $sector === 'gass' ? $this->withSystemFinancialSummaryRows($output) : $output;
     }
 
     /**
-     * Ensure every scoped office is represented for each P/A/P and indicator,
-     * even before target or accomplishment values have been entered.
+     * Use the same P/A/P, indicator, and office assignments that build the UI.
+     * Saved values belonging to an office that is no longer assigned must not
+     * reappear in Excel, while newly assigned offices must still export blank.
      *
      * @param  array<string, array<string, mixed>>  $records
      * @param  Collection<int, object>  $ppaRows
-     * @param  array<int, int>  $officeIds
+     * @param  array<int, int>|null  $officeIds
      * @return array<string, array<string, mixed>>
      */
-    private function addDefaultOfficeRows(array $records, Collection $ppaRows, array $officeIds, int $year): array
+    private function alignRecordsWithUiAssignments(
+        array $records,
+        Collection $ppaRows,
+        ?array $officeIds,
+        int $year
+    ): array
     {
-        $officeIds = collect($officeIds)
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn (int $id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
-
-        if ($officeIds === []) {
-            return $records;
-        }
-
-        $groups = collect($records)
-            ->map(fn (array $record): array => [
-                'program_id' => (int) ($record['program_id'] ?? 0),
-                'row_id' => (int) ($record['row_id'] ?? 0),
-                'indicator_id' => (int) ($record['indicator_id'] ?? 0),
-            ])
-            ->filter(fn (array $group): bool => $group['row_id'] > 0 && $group['indicator_id'] > 0)
-            ->keyBy(fn (array $group): string => implode('|', $group));
+        $scope = $officeIds === null
+            ? null
+            : collect($officeIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        $assignments = [];
 
         foreach ($ppaRows as $ppa) {
             $ppaYear = filled($ppa->year ?? null) ? (int) $ppa->year : null;
@@ -275,35 +310,128 @@ class WfpExcelExportController extends Controller
             }
 
             $rowId = (int) ($ppa->id ?? 0);
-            $alreadyRepresented = $groups->contains(
-                fn (array $group): bool => $group['row_id'] === $rowId
-                    && $group['indicator_id'] === $indicatorId
-            );
-            if (! $alreadyRepresented) {
-                $group = [
-                    'program_id' => $rowId,
-                    'row_id' => $rowId,
-                    'indicator_id' => $indicatorId,
-                ];
-                $groups->put(implode('|', $group), $group);
+            if ($rowId <= 0) {
+                continue;
+            }
+
+            $assignedOfficeIds = $this->parseOfficeIds($ppa->office_id ?? null);
+            if ($scope !== null) {
+                $assignedOfficeIds = array_values(array_intersect($assignedOfficeIds, $scope));
+            }
+
+            $key = $rowId.'|'.$indicatorId;
+            $assignments[$key] = [
+                'program_id' => $rowId,
+                'row_id' => $rowId,
+                'indicator_id' => $indicatorId,
+                'office_ids' => $assignedOfficeIds,
+            ];
+        }
+
+        if ($assignments === []) {
+            return [];
+        }
+
+        $validPpaIds = $ppaRows
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->flip();
+        $aligned = [];
+        $groupsByAssignment = [];
+
+        foreach ($records as $record) {
+            $programId = (int) ($record['program_id'] ?? 0);
+            $rowId = (int) ($record['row_id'] ?? 0);
+            $indicatorId = (int) ($record['indicator_id'] ?? 0);
+            $officeId = (int) ($record['office_id'] ?? 0);
+            $assignmentKey = null;
+
+            foreach ([$programId.'|'.$indicatorId, $rowId.'|'.$indicatorId] as $candidate) {
+                if (isset($assignments[$candidate])) {
+                    $assignmentKey = $candidate;
+                    break;
+                }
+            }
+
+            if (
+                $assignmentKey === null
+                || $officeId <= 0
+                || ! in_array($officeId, $assignments[$assignmentKey]['office_ids'], true)
+                || ($rowId > 0 && ! $validPpaIds->has($rowId))
+            ) {
+                continue;
+            }
+
+            $key = implode('|', [$programId, $rowId, $indicatorId, $officeId]);
+            $aligned[$key] = $record;
+            $groupKey = implode('|', [$programId, $rowId, $indicatorId]);
+            $groupsByAssignment[$assignmentKey][$groupKey] = [
+                'program_id' => $programId,
+                'row_id' => $rowId,
+                'indicator_id' => $indicatorId,
+            ];
+        }
+
+        foreach ($assignments as $assignmentKey => $assignment) {
+            $groups = array_values($groupsByAssignment[$assignmentKey] ?? [[
+                'program_id' => $assignment['program_id'],
+                'row_id' => $assignment['row_id'],
+                'indicator_id' => $assignment['indicator_id'],
+            ]]);
+
+            foreach ($groups as $group) {
+                foreach ($assignment['office_ids'] as $officeId) {
+                    $key = implode('|', [
+                        $group['program_id'], $group['row_id'], $group['indicator_id'], $officeId,
+                    ]);
+                    $aligned[$key] ??= [
+                        ...$group,
+                        'office_id' => $officeId,
+                        'values' => [],
+                        'car_totals' => [],
+                        'remarks' => '',
+                    ];
+                }
+            }
+
+            if ($assignment['office_ids'] === []) {
+                foreach ($groups as $group) {
+                    $key = implode('|', [
+                        $group['program_id'], $group['row_id'], $group['indicator_id'], 'none',
+                    ]);
+                    $aligned[$key] ??= [
+                        ...$group,
+                        'office_id' => null,
+                        'values' => [],
+                        'car_totals' => [],
+                        'remarks' => '',
+                    ];
+                }
             }
         }
 
-        foreach ($groups as $group) {
-            foreach ($officeIds as $officeId) {
-                $key = implode('|', [
-                    $group['program_id'], $group['row_id'], $group['indicator_id'], $officeId,
-                ]);
-                $records[$key] ??= [
-                    ...$group,
-                    'office_id' => $officeId,
-                    'values' => [],
-                    'car_totals' => [],
-                ];
-            }
+        return $aligned;
+    }
+
+    /** @return array<int, int> */
+    private function parseOfficeIds(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
         }
 
-        return $records;
+        if (! is_array($value)) {
+            $value = is_numeric($value) ? [$value] : [];
+        }
+
+        return collect($value)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -379,16 +507,8 @@ class WfpExcelExportController extends Controller
     {
         $result = [];
         foreach (array_keys(self::TABLES) as $kind) {
-            $saved = $group
-                ->map(fn (array $record) => $record['car_totals'][$kind] ?? [])
-                ->first(fn (array $totals) => $this->hasValues($totals));
-
-            if (is_array($saved) && $saved !== []) {
-                $result[$kind] = $saved;
-
-                continue;
-            }
-
+            // The UI calculates CAR from its currently assigned office rows.
+            // Stored CAR totals can include offices that were later unassigned.
             $result[$kind] = array_fill_keys(self::PERIODS, 0.0);
             foreach ($group as $record) {
                 foreach (self::PERIODS as $period) {
@@ -398,6 +518,116 @@ class WfpExcelExportController extends Controller
         }
 
         return $result;
+    }
+
+    /**
+     * Build the same office-line hierarchy shown in the UI: CAR, RO, then a
+     * province subtotal followed by its selected PENRO and CENRO offices.
+     *
+     * @param  Collection<int, array<string, mixed>>  $group
+     * @param  Collection<int, object>  $officesById
+     * @param  Collection<int, Office>  $uiOfficeGroups
+     * @return array<int, array{office:string, values:array<string, mixed>, remarks:string, financial_office:?string, is_aggregate:bool}>
+     */
+    private function uiOfficeRowsForGroup(
+        Collection $group,
+        Collection $officesById,
+        Collection $uiOfficeGroups
+    ): array {
+        $rows = [[
+            'office' => 'CAR',
+            'values' => $this->carValuesForGroup($group),
+            'remarks' => '',
+            'financial_office' => null,
+            'is_aggregate' => true,
+        ]];
+        $recordsByOffice = $group
+            ->filter(fn (array $record): bool => (int) ($record['office_id'] ?? 0) > 0)
+            ->keyBy(fn (array $record): int => (int) $record['office_id']);
+        $usedOfficeIds = [];
+
+        foreach ($uiOfficeGroups as $parent) {
+            $parentId = (int) ($parent->id ?? 0);
+            $children = collect($parent->children ?? []);
+            $selectedIds = collect([$parentId, ...$children->pluck('id')->map(fn ($id) => (int) $id)->all()])
+                ->filter(fn (int $id): bool => $recordsByOffice->has($id))
+                ->values();
+
+            if ($selectedIds->isEmpty()) {
+                continue;
+            }
+
+            $isPenro = (int) ($parent->office_types_id ?? 0) === 2
+                || preg_match('/\bPENRO\b/i', (string) ($parent->name ?? '')) === 1;
+            if ($isPenro) {
+                $province = preg_replace('/\b(?:PENRO|CENRO|TOTAL)\b/i', '', (string) ($parent->name ?? '')) ?? '';
+                $province = trim(preg_replace('/\s+/', ' ', $province) ?? $province);
+                $provinceRecords = $selectedIds
+                    ->map(fn (int $id) => $recordsByOffice->get($id))
+                    ->filter()
+                    ->values();
+                $rows[] = [
+                    'office' => $province !== '' ? $province : (string) ($parent->name ?? ''),
+                    'values' => $this->carValuesForGroup($provinceRecords),
+                    'remarks' => '',
+                    'financial_office' => null,
+                    'is_aggregate' => true,
+                ];
+            }
+
+            if ($recordsByOffice->has($parentId)) {
+                $rows[] = [
+                    'office' => $isPenro ? 'PENRO' : (string) ($parent->name ?? ''),
+                    'values' => $recordsByOffice->get($parentId)['values'] ?? [],
+                    'remarks' => (string) ($recordsByOffice->get($parentId)['remarks'] ?? ''),
+                    'financial_office' => (string) ($parent->name ?? ''),
+                    'is_aggregate' => false,
+                ];
+                $usedOfficeIds[$parentId] = true;
+            }
+
+            foreach ($children as $child) {
+                $childId = (int) ($child->id ?? 0);
+                if (! $recordsByOffice->has($childId)) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'office' => (string) ($child->name ?? ''),
+                    'values' => $recordsByOffice->get($childId)['values'] ?? [],
+                    'remarks' => (string) ($recordsByOffice->get($childId)['remarks'] ?? ''),
+                    'financial_office' => (string) ($child->name ?? ''),
+                    'is_aggregate' => false,
+                ];
+                $usedOfficeIds[$childId] = true;
+            }
+        }
+
+        foreach ($recordsByOffice as $officeId => $record) {
+            if (isset($usedOfficeIds[(int) $officeId])) {
+                continue;
+            }
+
+            $rows[] = [
+                'office' => (string) ($officesById->get((int) $officeId)->name ?? 'Office '.$officeId),
+                'values' => $record['values'] ?? [],
+                'remarks' => (string) ($record['remarks'] ?? ''),
+                'financial_office' => (string) ($officesById->get((int) $officeId)->name ?? ''),
+                'is_aggregate' => false,
+            ];
+        }
+
+        if ($recordsByOffice->isEmpty()) {
+            $rows[] = [
+                'office' => 'N/A',
+                'values' => [],
+                'remarks' => '',
+                'financial_office' => null,
+                'is_aggregate' => true,
+            ];
+        }
+
+        return $rows;
     }
 
     /** @param array<string, mixed> $values */
@@ -452,9 +682,19 @@ class WfpExcelExportController extends Controller
         string $indicator,
         string $indicatorType,
         string $office,
-        array $values
+        array $values,
+        string $remarks = ''
     ): array {
         $officeSort = strcasecmp($office, 'CAR') === 0 ? '000|CAR' : '100|'.$office;
+        $hierarchy = collect(preg_split('/\R/', trim($pap)) ?: [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->values();
+        $programHierarchy = $hierarchy->take(3);
+        $programLabel = $programHierarchy->implode("\n");
+        $programKey = $programHierarchy
+            ->map(fn (string $value) => mb_strtolower(preg_replace('/\s+/', ' ', $value) ?? $value))
+            ->implode('|');
 
         return [
             'pap' => $pap,
@@ -466,7 +706,99 @@ class WfpExcelExportController extends Controller
             'financial_target' => $values['financial_target'] ?? [],
             'physical_accomplishment' => $values['physical_accomplishment'] ?? [],
             'financial_accomplishment' => $values['financial_accomplishment'] ?? [],
+            'remarks' => $remarks,
             '_sort' => implode('|', [$pap, $indicator, $officeSort]),
+            '_program_key' => $programKey,
+            '_program_label' => $programLabel,
         ];
+    }
+
+    /** @param array<int, array<string, mixed>> $rows */
+    private function withSystemFinancialSummaryRows(array $rows): array
+    {
+        return collect($rows)
+            ->groupBy('_program_key', preserveKeys: true)
+            ->flatMap(function (Collection $group): array {
+                $detailRows = $group->values()->all();
+                $label = (string) ($detailRows[0]['_program_label'] ?? $detailRows[0]['pap'] ?? '');
+                $summaryRows = [];
+
+                foreach (self::FINANCIAL_SUMMARY_OFFICES as $office => $members) {
+                    $matchingRows = collect($detailRows)->filter(function (array $row) use ($members): bool {
+                        if ((bool) ($row['_office_aggregate'] ?? false)) {
+                            return false;
+                        }
+
+                        $normalized = $this->normalizeExportOffice((string) (
+                            $row['_financial_office'] ?? $row['office'] ?? ''
+                        ));
+                        if ($members === null) {
+                            return $normalized !== 'CAR';
+                        }
+
+                        return in_array($normalized, $members, true);
+                    });
+                    if ($members === null && $matchingRows->isEmpty()) {
+                        $matchingRows = collect($detailRows)->filter(
+                            fn (array $row): bool => ! (bool) ($row['_office_aggregate'] ?? false)
+                                && $this->normalizeExportOffice((string) (
+                                    $row['_financial_office'] ?? $row['office'] ?? ''
+                                )) === 'CAR'
+                        );
+                    }
+
+                    $summaryRows[] = [
+                        'pap' => $label,
+                        'indicator' => '',
+                        'indicator_type' => 'Cumulative',
+                        'office' => $office,
+                        'physical_target' => [],
+                        'physical_accomplishment' => [],
+                        'financial_target' => $this->sumFinancialPeriods($matchingRows, 'financial_target'),
+                        'financial_accomplishment' => $this->sumFinancialPeriods($matchingRows, 'financial_accomplishment'),
+                        '_program_key' => $detailRows[0]['_program_key'] ?? '',
+                        '_program_label' => $label,
+                        'is_financial_summary' => true,
+                    ];
+                }
+
+                $detailRows = array_map(function (array $row): array {
+                    $row['financial_target'] = [];
+                    $row['financial_accomplishment'] = [];
+
+                    return $row;
+                }, $detailRows);
+
+                return [...$summaryRows, ...$detailRows];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function sumFinancialPeriods(Collection $rows, string $kind): array
+    {
+        $totals = array_fill_keys(self::PERIODS, 0.0);
+        $hasFinancialData = false;
+        foreach ($rows as $row) {
+            $periods = $row[$kind] ?? [];
+            if (! is_array($periods) || $periods === [] || ! $this->hasValues($periods)) {
+                continue;
+            }
+
+            $hasFinancialData = true;
+            foreach (self::PERIODS as $period) {
+                $totals[$period] += (float) ($periods[$period] ?? 0);
+            }
+        }
+
+        return $hasFinancialData ? $totals : [];
+    }
+
+    private function normalizeExportOffice(string $office): string
+    {
+        $office = strtoupper($office);
+        $office = preg_replace('/\b(?:PENRO|CENRO|TOTAL)\b/', '', $office) ?? '';
+
+        return preg_replace('/[^A-Z0-9]+/', '', $office) ?? '';
     }
 }

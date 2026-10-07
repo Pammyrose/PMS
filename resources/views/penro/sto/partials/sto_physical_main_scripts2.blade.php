@@ -302,7 +302,7 @@
             refreshGroupHeaderColspans();
         }
 
-        function addInputCells(sectionType) {
+        function addInputCells(sectionType, selectedRows = null) {
             // For summary, only show current quarter, this month, and annual columns
             let periodIndexes = [];
             if (sectionType === 'summary') {
@@ -319,7 +319,11 @@
                 // Order: annual, quarter, month
                 periodIndexes = [annualCol, quarterCol, monthCol];
             }
-            document.querySelectorAll("tbody tr[data-row-id]").forEach(row => {
+            const inputRows = Array.from(selectedRows || window.pmsRowsNearViewport(document.querySelectorAll("#performanceTable tbody tr[data-row-id]")))
+                .filter(row => row.style.display !== 'none' && !row.classList.contains('d-none')
+                    && !row.querySelector(`td[data-dynamic-section="${sectionType}"]`));
+            if (inputRows.length === 0) return;
+            inputRows.forEach(row => {
                 const programId = row.dataset.rowId;
                 const indicatorId = row.dataset.indicatorId;
                 const sourceData = sectionType === 'target'
@@ -1417,19 +1421,19 @@
                 }
 
                 const q1 = !isFinancialSection && indicatorType === 'non-cumulative'
-                    ? Math.max(totals[0] || 0, totals[1] || 0, totals[2] || 0)
+                    ? window.pmsMostFrequentTotal([totals[0] || 0, totals[1] || 0, totals[2] || 0])
                     : (totals[0] || 0) + (totals[1] || 0) + (totals[2] || 0);
 
                 const q2 = !isFinancialSection && indicatorType === 'non-cumulative'
-                    ? Math.max(totals[4] || 0, totals[5] || 0, totals[6] || 0)
+                    ? window.pmsMostFrequentTotal([totals[4] || 0, totals[5] || 0, totals[6] || 0])
                     : (totals[4] || 0) + (totals[5] || 0) + (totals[6] || 0);
 
                 const q3 = !isFinancialSection && indicatorType === 'non-cumulative'
-                    ? Math.max(totals[8] || 0, totals[9] || 0, totals[10] || 0)
+                    ? window.pmsMostFrequentTotal([totals[8] || 0, totals[9] || 0, totals[10] || 0])
                     : (totals[8] || 0) + (totals[9] || 0) + (totals[10] || 0);
 
                 const q4 = !isFinancialSection && indicatorType === 'non-cumulative'
-                    ? Math.max(totals[12] || 0, totals[13] || 0, totals[14] || 0)
+                    ? window.pmsMostFrequentTotal([totals[12] || 0, totals[13] || 0, totals[14] || 0])
                     : (totals[12] || 0) + (totals[13] || 0) + (totals[14] || 0);
 
                 totals[3] = q1;
@@ -1437,7 +1441,7 @@
                 totals[11] = q3;
                 totals[15] = q4;
                 totals[16] = !isFinancialSection && indicatorType === 'non-cumulative'
-                    ? Math.max(q1, q2, q3, q4)
+                    ? window.pmsMostFrequentTotal([q1, q2, q3, q4])
                     : q1 + q2 + q3 + q4;
 
                 return totals;
@@ -1579,7 +1583,20 @@
             })();
 
             const computedCarTotals = buildCarTotalsFromDisplayedRows();
-            const carTotals = mergeStoredTotalsWithComputedFallback(storedCarTotals, computedCarTotals, true);
+            const carTotals = preferStoredTotals && sectionType !== 'accomp' && (isFinancialSection || indicatorType !== 'non-cumulative')
+                ? mergeStoredTotalsWithComputedFallback(storedCarTotals, computedCarTotals, true)
+                : computedCarTotals;
+
+            if (!preferStoredTotals && programId && indicatorId) {
+                const source = sectionType === 'target'
+                    ? existingTargetCarTotalsByRow
+                    : sectionType === 'accomp'
+                        ? existingAccompCarTotalsByRow
+                        : null;
+                PERIOD_KEYS.forEach((periodKey, colIndex) => {
+                    source?.set(`${programId}|${indicatorId}|${periodKey}`, carTotals[colIndex]);
+                });
+            }
             applyTotalsToInputs(carInputs, carTotals);
         }
 
@@ -1684,7 +1701,8 @@
         }
 
         function updateSection(monthInputs, allInputs, section, indicatorType = 'cumulative', officeId = null, preferStoredValues = false) {
-            if (preferStoredValues && restoreStoredOfficePeriodValues(allInputs, section, officeId)) {
+            if (preferStoredValues && restoreStoredOfficePeriodValues(allInputs, section, officeId)
+                && (indicatorType !== 'non-cumulative' || section === 'financial' || section === 'financial-accomp')) {
                 return;
             }
 
@@ -1703,11 +1721,11 @@
                 q4 = values[9] + values[10] + values[11];
                 annual = q1 + q2 + q3 + q4;
             } else if (indicatorType === 'non-cumulative') {
-                q1 = Math.max(values[0] || 0, values[1] || 0, values[2] || 0);
-                q2 = Math.max(values[3] || 0, values[4] || 0, values[5] || 0);
-                q3 = Math.max(values[6] || 0, values[7] || 0, values[8] || 0);
-                q4 = Math.max(values[9] || 0, values[10] || 0, values[11] || 0);
-                annual = q1 + q2 + q3 + q4;
+                q1 = window.pmsMostFrequentTotal([values[0] || 0, values[1] || 0, values[2] || 0]);
+                q2 = window.pmsMostFrequentTotal([values[3] || 0, values[4] || 0, values[5] || 0]);
+                q3 = window.pmsMostFrequentTotal([values[6] || 0, values[7] || 0, values[8] || 0]);
+                q4 = window.pmsMostFrequentTotal([values[9] || 0, values[10] || 0, values[11] || 0]);
+                annual = window.pmsMostFrequentTotal([q1, q2, q3, q4]);
             } else if (indicatorType === 'semi-cumulative') {
                 q1 = values[0] + values[1] + values[2];
                 q2 = values[3] + values[4] + values[5];
@@ -1910,22 +1928,8 @@
         function populateFilteredPapOptions(datalistId, itemField, parentFieldIds = []) {
             const datalist = document.getElementById(datalistId);
             if (!datalist) return;
-
-            const seen = new Set();
-            datalist.innerHTML = '';
-
-            (papPrefillData || []).forEach(item => {
-                if (!papMatchesParents(item, parentFieldIds)) return;
-
-                const value = String(item?.[itemField] || '').trim();
-                const key = normalizePapField(value);
-                if (!key || seen.has(key)) return;
-
-                seen.add(key);
-                const option = document.createElement('option');
-                option.value = value;
-                datalist.appendChild(option);
-            });
+            window.pmsPopulatePapOptions(datalist, papPrefillData || [], itemField,
+                parentFieldIds.map(getPapInputValue), item => papMatchesParents(item, parentFieldIds));
         }
 
         function clearPapDescendantFields(parentFieldId) {
@@ -1956,22 +1960,7 @@
             populateFilteredPapOptions('pap_level_8_options', 'level_8', ['pap_title', 'pap_program', 'pap_project', 'pap_activities', 'pap_subactivities', 'pap_subsubactivities', 'pap_level_6', 'pap_level_7']);
         }
         function populatePapTitleDropdown() {
-            const titleOptions = document.getElementById('pap_title_options');
-            if (!titleOptions) return;
-
-            const seen = new Set();
-            titleOptions.innerHTML = '';
-
-            (papPrefillData || []).forEach(item => {
-                const value = buildPapDropdownValue(item);
-                const key = normalizePapField(value);
-                if (!key || seen.has(key)) return;
-
-                seen.add(key);
-                const option = document.createElement('option');
-                option.value = value;
-                titleOptions.appendChild(option);
-            });
+            populateFilteredPapOptions('pap_title_options', 'title');
         }
 
         function findMatchingPapFromModal() {

@@ -84,6 +84,82 @@ class OfficialWfpTemplateWriterTest extends TestCase
         $this->assertSame([0.0, 0.0, 0.0], $summary);
     }
 
+    public function test_program_financial_summary_is_written_to_the_system_total_rows(): void
+    {
+        $updates = [];
+        $hiddenRows = [];
+        $method = new ReflectionMethod(OfficialWfpTemplateWriter::class, 'collectProgramFinancialSummaryUpdates');
+        $updated = $method->invokeArgs(new OfficialWfpTemplateWriter, [
+            &$updates,
+            [
+                51 => ['A' => 'GENERAL MANAGEMENT', 'C' => 'CAR'],
+                56 => ['C' => 'RO'],
+                61 => ['C' => 'ABRA'],
+                76 => ['C' => 'ABRA'],
+                81 => ['C' => 'MOUNTAIN PROVINCE'],
+            ],
+            [
+                [
+                    'is_financial_summary' => true,
+                    '_program_key' => 'general management',
+                    '_program_label' => 'GENERAL MANAGEMENT',
+                    'office' => 'ABRA',
+                    'financial_target' => ['jan' => 10, 'jul' => 20],
+                    'financial_accomplishment' => ['jan' => 5, 'jul' => 10],
+                ],
+                [
+                    'is_financial_summary' => true,
+                    '_program_key' => 'general management',
+                    '_program_label' => 'GENERAL MANAGEMENT',
+                    'office' => 'MOUNTAIN PROVINCE',
+                    'financial_target' => ['jan' => 1],
+                    'financial_accomplishment' => ['jan' => 1],
+                ],
+            ],
+            new DateTimeImmutable('2026-09-01'),
+            &$hiddenRows,
+        ]);
+
+        $this->assertSame(2, $updated);
+        $this->assertSame(30.0, $updates['AB61']);
+        $this->assertSame(20.0, $updates['AC61']);
+        $this->assertSame(30.0, $updates['AD61']);
+        $this->assertSame(15.0, $updates['BN61']);
+        $this->assertSame(10.0, $updates['BO61']);
+        $this->assertSame(15.0, $updates['BP61']);
+        $this->assertArrayNotHasKey('AB76', $updates);
+        $this->assertArrayNotHasKey('BN76', $updates);
+        $this->assertContains(76, $hiddenRows);
+        $this->assertNotContains(61, $hiddenRows);
+        $this->assertNotContains(81, $hiddenRows);
+    }
+
+    public function test_program_financial_summary_is_not_treated_as_an_indicator_office_group(): void
+    {
+        $method = new ReflectionMethod(OfficialWfpTemplateWriter::class, 'dataGroups');
+        $groups = $method->invoke(new OfficialWfpTemplateWriter, [
+            [
+                'pap' => 'GENERAL MANAGEMENT',
+                'indicator' => '',
+                'office' => 'ABRA',
+                'financial_target' => ['jan' => 100],
+                'is_financial_summary' => true,
+            ],
+            [
+                'pap' => "GENERAL MANAGEMENT\nREPAIR",
+                'indicator' => 'Buildings repaired',
+                'indicator_type' => 'Cumulative',
+                'office' => 'ABRA',
+                'physical_target' => ['jan' => 1],
+                'financial_target' => [],
+            ],
+        ]);
+
+        $this->assertCount(1, $groups);
+        $this->assertSame('Buildings repaired', $groups[0]['indicator']);
+        $this->assertSame([], $groups[0]['offices']['ABRA']['financial_target']);
+    }
+
     public function test_penro_layout_hides_offices_outside_its_service_area(): void
     {
         $writer = new OfficialWfpTemplateWriter;

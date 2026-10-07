@@ -1,6 +1,7 @@
 <div class="flex items-center justify-between mt-2">
     <!-- Left side -->
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <x-wfp-excel-export-button sector="lands" />
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal"
             data-bs-target="#addIndicatorModal">
             <i class="fa fa-plus me-1"></i> Add PAP

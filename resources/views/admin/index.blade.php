@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - {{ config('app.name', 'Laravel') }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="{{ asset('vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('vendor/fontawesome/css/all.min.css') }}">
     <style>
         .progress-trend-chart {
             display: grid;
@@ -123,50 +123,11 @@
 
         <!-- Main content wrapper -->
         <main class="flex-grow-1 p-4 bg-gradient-to-b from-gray-50 to-white">
-
-
-      <!-- Section Header -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 animate-fade-in">
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-bold text-gray-900">Performance Overview</h2>
-        </div>
-      </div>
-
-      @include('components.dashboard_overall_cards')
-
-      <div class="mb-12">
-        @include('components.dashboard_performance_rankings')
-      </div>
-
-      <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 animate-fade-in mb-12">
-        <div class="px-6 py-5 border-b border-gray-100 d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 flex items-center gap-3 mb-1">
-              <i class="fa-solid fa-triangle-exclamation text-danger"></i> Monthly / Quarterly Delays Chart
-            </h3>
-            <p class="text-sm text-gray-500 mb-0">
-              Delayed physical inputs for {{ (int) ($year ?? now()->year) }}{{ ($selectedSector ?? 'all') !== 'all' ? ' - ' . strtoupper((string) $selectedSector) : '' }}
-            </p>
-          </div>
-          <div class="btn-group progress-trend-toggle" role="group" aria-label="Progress chart range">
-            <button type="button" class="btn btn-outline-primary active" data-progress-view="monthly">Monthly</button>
-            <button type="button" class="btn btn-outline-primary" data-progress-view="quarterly">Quarterly</button>
-          </div>
-        </div>
-
-        <div class="p-6">
-          <div id="progressTrendChart" class="progress-trend-chart" aria-label="Monthly delays chart"></div>
-          <div class="d-flex flex-wrap gap-4 justify-content-between align-items-center mt-4 text-sm text-gray-500">
-            <span><span class="d-inline-block rounded me-2" style="width: 12px; height: 12px; background: #dc2626;"></span>Delayed outputs</span>
-            <span>Each bar counts inputs where accomplishment is below target.</span>
-          </div>
-        </div>
-      </div>
-
+            @include('components.dashboard_content')
         </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ asset('vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 
     <!-- Optional: mobile sidebar toggle script -->
     <script>
@@ -174,52 +135,8 @@
             document.querySelector('.sidebar').classList.toggle('d-none');
         });
     </script>
-    <script>
-        const progressTrendData = @json($progressTrend ?? ['monthly' => [], 'quarterly' => []]);
-        const progressTrendChart = document.getElementById('progressTrendChart');
-        const progressTrendButtons = document.querySelectorAll('[data-progress-view]');
-
-        function renderProgressTrend(view) {
-            if (!progressTrendChart) {
-                return;
-            }
-
-            const rows = progressTrendData[view] || [];
-            const hasDelays = rows.some((row) => Number(row.delay || 0) > 0);
-
-            progressTrendChart.classList.toggle('is-quarterly', view === 'quarterly');
-            progressTrendChart.setAttribute('aria-label', `${view === 'quarterly' ? 'Quarterly' : 'Monthly'} delays chart`);
-
-            if (!hasDelays) {
-                progressTrendChart.innerHTML = '<div class="progress-trend-empty" style="grid-column: 1 / -1;">No delayed physical outputs for this selection.</div>';
-                return;
-            }
-
-            progressTrendChart.innerHTML = rows.map((row) => {
-                const barHeight = Math.max(0, Math.min(100, Number(row.progress || 0)));
-                const delay = Number(row.delay || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-
-                return `
-                    <div class="progress-trend-item" title="${row.label}: ${delay} delayed">
-                        <div class="progress-trend-value">${delay}</div>
-                        <div class="progress-trend-bar-track" aria-hidden="true">
-                            <div class="progress-trend-bar" style="height: ${Math.max(barHeight, 1)}%;"></div>
-                        </div>
-                        <div class="progress-trend-label">${row.label}</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        progressTrendButtons.forEach((button) => {
-            button.addEventListener('click', () => {
-                progressTrendButtons.forEach((item) => item.classList.remove('active'));
-                button.classList.add('active');
-                renderProgressTrend(button.dataset.progressView);
-            });
-        });
-
-        renderProgressTrend('monthly');
-    </script>
+    <script src="{{ asset('js/dashboard-performance.js') }}"></script>
+    <script src="{{ asset('js/dashboard-trend.js') }}"></script>
+    <script src="{{ asset('js/dashboard-filters.js') }}"></script>
 </body>
 </html>

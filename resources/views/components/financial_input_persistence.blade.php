@@ -128,6 +128,50 @@
     color: #1e3a8a !important;
   }
 
+  #performanceTable .group-summary[data-summary-kind="physical-percentage"],
+  #performanceTable th.summary-header[data-summary-kind="physical-percentage"] {
+    background: #fff !important;
+    color: #111827 !important;
+  }
+
+  #performanceTable td[data-summary-kind="physical-percentage"] .summary-box {
+    font-weight: 700;
+  }
+
+  #performanceTable .physical-performance-title-row th {
+    position: sticky;
+    top: calc(var(--table-sticky-top, 0px) + var(--table-header-row-height, 46px));
+    z-index: 11;
+    height: 28px;
+    padding: 4px 6px;
+    line-height: 1.2;
+  }
+
+  #performanceTable .physical-performance-title-row + tr.group-row th {
+    top: calc(
+      var(--table-sticky-top, 0px)
+      + var(--table-header-row-height, 46px)
+      + var(--physical-performance-title-row-height, 28px)
+    );
+    z-index: 10;
+  }
+
+  #performanceTable .physical-performance-title-row .physical-performance-title,
+  #performanceTable .physical-performance-title-row .financial-performance-title {
+    background: #fff !important;
+    color: #111827 !important;
+    border: 1px solid #111827 !important;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  #performanceTable .physical-performance-title-row .physical-performance-title-spacer {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
   #performanceTable .group-summary[data-summary-kind="financial-target"] {
     background: #fef3c7 !important;
     color: #92400e !important;
@@ -147,6 +191,13 @@
     background: #ede9fe !important;
     color: #5b21b6 !important;
   }
+
+  #performanceTable .group-summary[data-summary-kind="financial-bur"],
+  #performanceTable th.summary-header[data-summary-kind="financial-bur"] {
+    background: #e0f2fe !important;
+    color: #075985 !important;
+  }
+
 </style>
 
 @unless(
@@ -183,6 +234,9 @@
 </div>
 @endunless
 
+<script src="{{ asset('js/pap-options.js') }}"></script>
+<script src="{{ asset('js/performance-viewport.js') }}"></script>
+<script src="{{ asset('js/physical-totals.js') }}"></script>
 <script>
   (() => {
     const config = {
@@ -487,20 +541,29 @@
       return officeId ? [officeId] : [];
     };
 
+    let targetInputIndexes = new WeakMap();
+    const targetInputKey = input => JSON.stringify([
+      Number(input.dataset.col),
+      input.dataset.carTotal === '1',
+      input.dataset.groupTotal === '1',
+      String(input.dataset.groupTotal === '1' ? (input.dataset.groupKey || '') : (input.dataset.officeId || '')),
+    ]);
+
     const liveTargetInput = (row, accomplishmentInput, targetSection) => {
-      const column = Number(accomplishmentInput.dataset.col);
-      return Array.from(row.querySelectorAll(`.month-box[data-section="${targetSection}"]`))
-        .find((candidate) => {
-          if (Number(candidate.dataset.col) !== column) return false;
-          if ((candidate.dataset.carTotal === '1') !== (accomplishmentInput.dataset.carTotal === '1')) return false;
-          if ((candidate.dataset.groupTotal === '1') !== (accomplishmentInput.dataset.groupTotal === '1')) return false;
-
-          if (accomplishmentInput.dataset.groupTotal === '1') {
-            return String(candidate.dataset.groupKey || '') === String(accomplishmentInput.dataset.groupKey || '');
-          }
-
-          return String(candidate.dataset.officeId || '') === String(accomplishmentInput.dataset.officeId || '');
-        }) || null;
+      let sections = targetInputIndexes.get(row);
+      if (!sections) {
+        sections = new Map();
+        targetInputIndexes.set(row, sections);
+      }
+      if (!sections.has(targetSection)) {
+        const inputs = new Map();
+        row.querySelectorAll(`.month-box[data-section="${targetSection}"]`).forEach(candidate => {
+          const key = targetInputKey(candidate);
+          if (!inputs.has(key)) inputs.set(key, candidate);
+        });
+        sections.set(targetSection, inputs);
+      }
+      return sections.get(targetSection).get(targetInputKey(accomplishmentInput)) || null;
     };
 
     const targetValueForAccomplishment = (row, input) => {
@@ -526,6 +589,7 @@
     };
 
     const refreshTargetMissBorders = () => {
+      targetInputIndexes = new WeakMap();
       document.querySelectorAll([
         '#performanceTable .month-box[data-section="accomp"]',
         '#performanceTable .month-box[data-section="financial-accomp"]',
@@ -559,7 +623,7 @@
     const scheduleTargetMissBorderRefresh = () => {
       if (targetMissRefreshQueued) return;
       targetMissRefreshQueued = true;
-      queueMicrotask(() => {
+      requestAnimationFrame(() => {
         targetMissRefreshQueued = false;
         refreshTargetMissBorders();
       });
@@ -582,32 +646,76 @@
       { key: 'quarter', label: `Q${summaryQuarterIndex + 1}`, column: summaryQuarterColumns[summaryQuarterIndex] },
       { key: 'to-date', label: 'TO DATE', column: null },
     ];
+    const financialTargetSummaryPeriods = summaryPeriods.map(period => ({
+      ...period,
+      label: period.key === 'annual'
+        ? 'Allotment'
+        : period.key === 'quarter'
+          ? 'This Quarter'
+          : 'To Date',
+    }));
+    const financialAccomplishmentSummaryPeriods = financialTargetSummaryPeriods
+      .filter(period => period.key !== 'annual');
+    const financialBurSummaryPeriods = [
+      {
+        key: 'obligation-allotment',
+        label: '(Oblig/Allot) *100',
+        numeratorSection: 'financial-target',
+        numeratorPeriod: 'to-date',
+        denominatorSection: 'financial-target',
+        denominatorPeriod: 'annual',
+      },
+      {
+        key: 'disbursement-allotment',
+        label: '(Disb/Allot) *100',
+        numeratorSection: 'financial-accomplishment',
+        numeratorPeriod: 'to-date',
+        denominatorSection: 'financial-target',
+        denominatorPeriod: 'annual',
+      },
+      {
+        key: 'disbursement-obligation',
+        label: '(Disb/Oblig) *100',
+        numeratorSection: 'financial-accomplishment',
+        numeratorPeriod: 'to-date',
+        denominatorSection: 'financial-target',
+        denominatorPeriod: 'to-date',
+      },
+    ];
+    const physicalSummarySections = @json(\App\Support\PhysicalPerformanceSummaryLayout::sections());
+    const physicalSummarySources = {
+      'physical-target': () => existingTargetsByIndicator,
+      'physical-accomplishment': () => existingAccompByIndicator,
+      'physical-percentage': () => ({}),
+    };
     const summarySections = [
-      {
-        key: 'physical-target',
-        label: 'Physical Target',
-        inputSection: 'target',
-        source: () => existingTargetsByIndicator,
-      },
-      {
-        key: 'physical-accomplishment',
-        label: 'Physical Accomplishment',
-        inputSection: 'accomp',
-        source: () => existingAccompByIndicator,
-      },
+      ...physicalSummarySections.map(section => ({
+        ...section,
+        source: physicalSummarySources[section.key],
+      })),
       {
         key: 'financial-target',
-        label: 'Financial Target',
+        label: 'Obligation',
         inputSection: 'financial',
         source: () => config.existing,
+        periods: financialTargetSummaryPeriods,
       },
       {
         key: 'financial-accomplishment',
-        label: 'Financial Accomplishment',
+        label: 'Disbursement',
         inputSection: 'financial-accomp',
         source: () => config.existingAccomplishments,
+        periods: financialAccomplishmentSummaryPeriods,
+      },
+      {
+        key: 'financial-bur',
+        label: '% Budget Utilization Rate (BUR)',
+        isPercentage: true,
+        isFinancialPercentage: true,
+        periods: financialBurSummaryPeriods,
       },
     ];
+    const summaryPeriodsForSection = section => section.periods || summaryPeriods;
 
     const summaryStoredValue = (source, rowId, indicatorId, officeId, column) => {
       const periodKey = periodKeys[column] || '';
@@ -642,7 +750,7 @@
     const summaryValueFromMonthlyValues = (row, summarySection, monthlyValues, period) => {
       const indicatorType = summaryIndicatorType(row, summarySection);
       const quarterValue = values => indicatorType === 'non-cumulative'
-        ? Math.max(0, ...values)
+        ? window.pmsMostFrequentTotal(values)
         : values.reduce((total, value) => total + value, 0);
       const quarterValues = [0, 1, 2, 3].map(quarterIndex => {
         const start = quarterIndex * 3;
@@ -654,6 +762,7 @@
       }
 
       if (period.key === 'annual') {
+        if (indicatorType === 'non-cumulative') return window.pmsMostFrequentTotal(quarterValues);
         return indicatorType === 'semi-cumulative'
           ? Math.max(0, ...quarterValues)
           : quarterValues.reduce((total, value) => total + value, 0);
@@ -680,6 +789,45 @@
       );
 
       return summaryValueFromMonthlyValues(row, summarySection, monthlyValues, period);
+    };
+
+    const physicalPercentageValue = (row, period, officeId = '', aggregateOfficeIds = []) => {
+      const targetSection = summarySections.find(section => section.key === 'physical-target');
+      const accomplishmentSection = summarySections.find(section => section.key === 'physical-accomplishment');
+      const accomplishmentPeriod = summaryPeriods.find(summaryPeriod => summaryPeriod.key === 'to-date');
+      const targetPeriod = summaryPeriods.find(summaryPeriod => summaryPeriod.key === period.targetPeriod);
+      if (!targetSection || !accomplishmentSection || !accomplishmentPeriod || !targetPeriod) return 0;
+
+      const isAggregate = aggregateOfficeIds.length > 0;
+      const accomplishment = isAggregate
+        ? summaryAggregateValue(row, accomplishmentSection, aggregateOfficeIds, accomplishmentPeriod)
+        : summaryValue(row, accomplishmentSection, officeId, accomplishmentPeriod);
+      const target = isAggregate
+        ? summaryAggregateValue(row, targetSection, aggregateOfficeIds, targetPeriod)
+        : summaryValue(row, targetSection, officeId, targetPeriod);
+
+      return target > 0 ? (accomplishment / target) * 100 : 0;
+    };
+
+    const formatSummaryPercentage = value => `${numericValue(value).toFixed(2)}%`;
+
+    const financialBurValue = (row, period, officeId = '', aggregateOfficeIds = []) => {
+      const sectionValue = (sectionKey, periodKey) => {
+        const section = summarySections.find(item => item.key === sectionKey);
+        const sourcePeriod = summaryPeriodsForSection(section || {}).find(
+          item => item.key === periodKey
+        );
+        if (!section || !sourcePeriod) return 0;
+
+        return aggregateOfficeIds.length > 0
+          ? summaryAggregateValue(row, section, aggregateOfficeIds, sourcePeriod)
+          : summaryValue(row, section, officeId, sourcePeriod);
+      };
+
+      const numerator = sectionValue(period.numeratorSection, period.numeratorPeriod);
+      const denominator = sectionValue(period.denominatorSection, period.denominatorPeriod);
+
+      return denominator > 0 ? (numerator / denominator) * 100 : 0;
     };
 
     const summaryAggregateValue = (row, summarySection, officeIds, period) => {
@@ -753,7 +901,7 @@
     const createSummaryInput = (section, period, options = {}) => {
       const { officeId = '', aggregate = null } = options;
       const input = document.createElement('input');
-      input.type = 'number';
+      input.type = section.isPercentage ? 'text' : 'number';
       input.className = 'month-box summary-box';
       input.style.width = '100%';
       input.readOnly = true;
@@ -781,8 +929,9 @@
       }
 
       summarySections.forEach((section) => {
+        const sectionPeriods = summaryPeriodsForSection(section);
         const summaryGroup = document.createElement('th');
-        summaryGroup.colSpan = summaryPeriods.length;
+        summaryGroup.colSpan = sectionPeriods.length;
         summaryGroup.className = 'group-header group-summary';
         summaryGroup.dataset.summaryKind = section.key;
         summaryGroup.textContent = section.label;
@@ -793,7 +942,7 @@
           groupHeader.appendChild(summaryGroup);
         }
 
-        summaryPeriods.forEach((period, periodIndex) => {
+        sectionPeriods.forEach((period, periodIndex) => {
           const header = document.createElement('th');
           header.className = 'month-header text-center dynamic-header-summary summary-header';
           if (periodIndex === 0) header.classList.add('summary-section-start');
@@ -810,10 +959,108 @@
           }
         });
       });
+
     };
 
-    const addSummaryCells = () => {
-      document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach((row) => {
+    let physicalPerformanceTitleObserver = null;
+
+    const removePhysicalPerformanceTitleRow = (table) => {
+      if (physicalPerformanceTitleObserver) {
+        physicalPerformanceTitleObserver.disconnect();
+        physicalPerformanceTitleObserver = null;
+      }
+      table.querySelector('thead .physical-performance-title-row')?.remove();
+      table.closest('.table-container')?.style.removeProperty('--physical-performance-title-row-height');
+    };
+
+    const addPhysicalPerformanceTitleRow = (table, mainHeader, groupHeader) => {
+      table.querySelector('thead .physical-performance-title-row')?.remove();
+
+      let leadingColumns = 0;
+      let physicalColumns = 0;
+      let betweenPerformanceColumns = 0;
+      let financialColumns = 0;
+      let trailingColumns = 0;
+      let physicalSectionStarted = false;
+      let financialSectionStarted = false;
+
+      Array.from(mainHeader.children).forEach((header) => {
+        const columnCount = Number(header.colSpan) || 1;
+        const isPhysicalSummary = header.dataset.dynamicSection === 'summary'
+          && String(header.dataset.summaryKind || '').startsWith('physical-');
+        const isFinancialSummary = header.dataset.dynamicSection === 'summary'
+          && String(header.dataset.summaryKind || '').startsWith('financial-');
+
+        if (isPhysicalSummary) {
+          physicalSectionStarted = true;
+          physicalColumns += columnCount;
+        } else if (isFinancialSummary) {
+          financialSectionStarted = true;
+          financialColumns += columnCount;
+        } else if (financialSectionStarted) {
+          trailingColumns += columnCount;
+        } else if (physicalSectionStarted) {
+          betweenPerformanceColumns += columnCount;
+        } else {
+          leadingColumns += columnCount;
+        }
+      });
+
+      if (physicalColumns === 0) return;
+
+      const titleRow = document.createElement('tr');
+      titleRow.className = 'group-row physical-performance-title-row';
+
+      const appendSpacer = (columnCount) => {
+        if (columnCount === 0) return;
+        const spacer = document.createElement('th');
+        spacer.colSpan = columnCount;
+        spacer.className = 'physical-performance-title-spacer';
+        spacer.setAttribute('aria-hidden', 'true');
+        titleRow.appendChild(spacer);
+      };
+
+      appendSpacer(leadingColumns);
+
+      const title = document.createElement('th');
+      title.colSpan = physicalColumns;
+      title.className = 'physical-performance-title';
+      title.textContent = @json(\App\Support\PhysicalPerformanceSummaryLayout::title());
+      titleRow.appendChild(title);
+
+      appendSpacer(betweenPerformanceColumns);
+
+      if (financialColumns > 0) {
+        const financialTitle = document.createElement('th');
+        financialTitle.colSpan = financialColumns;
+        financialTitle.className = 'financial-performance-title';
+        financialTitle.textContent = 'Financial Performance';
+        titleRow.appendChild(financialTitle);
+      }
+
+      appendSpacer(trailingColumns);
+      groupHeader.parentNode.insertBefore(titleRow, groupHeader);
+
+      const titleRowHeight = Math.ceil(titleRow.getBoundingClientRect().height) || 28;
+      table.closest('.table-container')?.style.setProperty(
+        '--physical-performance-title-row-height',
+        `${titleRowHeight}px`
+      );
+    };
+
+    const showPhysicalPerformanceTitleRow = (table, mainHeader, groupHeader) => {
+      addPhysicalPerformanceTitleRow(table, mainHeader, groupHeader);
+      physicalPerformanceTitleObserver?.disconnect();
+      physicalPerformanceTitleObserver = new MutationObserver(() => {
+        addPhysicalPerformanceTitleRow(table, mainHeader, groupHeader);
+      });
+      physicalPerformanceTitleObserver.observe(mainHeader, { childList: true });
+    };
+
+    const addSummaryCells = (selectedRows = null) => {
+      Array.from(selectedRows || window.pmsRowsNearViewport(document.querySelectorAll('#performanceTable tbody tr[data-row-id]')))
+        .filter(row => row.style.display !== 'none' && !row.classList.contains('d-none')
+          && !row.querySelector('td[data-dynamic-section="summary"]')).forEach((row) => {
         const officeEntries = getAssignedOfficesForRow(row);
         const offices = officeEntries.length > 0
           ? officeEntries
@@ -827,7 +1074,7 @@
         );
 
         summarySections.forEach((section) => {
-          summaryPeriods.forEach((period, periodIndex) => {
+          summaryPeriodsForSection(section).forEach((period, periodIndex) => {
             const cell = document.createElement('td');
             cell.className = 'p-1 text-center dynamic-cell-summary';
             if (periodIndex === 0) cell.classList.add('summary-section-start');
@@ -835,8 +1082,14 @@
             cell.dataset.summaryKind = section.key;
             cell.dataset.summaryPeriod = period.key;
 
-            let aggregateLineIndex = 0;
+            if (section.key.startsWith('financial-')) {
+              cell.classList.add('financial-summary-detail-empty');
+              cell.setAttribute('aria-hidden', 'true');
+              insertBeforeRemarks(row, cell);
+              return;
+            }
 
+            let aggregateLineIndex = 0;
             const wrapper = buildAlignedOfficeLines({
               officeEntries: offices,
               groupBreakIndices,
@@ -855,6 +1108,182 @@
           });
         });
       });
+
+      addDefaultFinancialSummaryCells();
+    };
+
+    const normalizeDefaultOfficeUnit = value => String(value || '')
+      .toUpperCase()
+      .replace(/\b(PENRO|CENRO|TOTAL)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const officeIdsForDefaultFinancialUnit = (row, officeUnit) => {
+      const normalizedOfficeUnit = normalizeDefaultOfficeUnit(officeUnit);
+      const offices = getAssignedOfficesForRow(row);
+
+      if (normalizedOfficeUnit === 'CAR') {
+        return offices.map(office => String(office?.id || '')).filter(Boolean);
+      }
+
+      if (normalizedOfficeUnit === 'RO') {
+        return offices
+          .filter(office => normalizeDefaultOfficeUnit(office?.name) === 'RO')
+          .map(office => String(office?.id || ''))
+          .filter(Boolean);
+      }
+
+      const sortedBreaks = getInputBreakIndicesForRow(row)
+        .map(index => Number(index))
+        .filter(index => Number.isInteger(index) && index >= 0)
+        .sort((left, right) => left - right);
+      const groupRanges = [];
+      let rangeStart = 0;
+
+      sortedBreaks.forEach((breakIndex) => {
+        if (breakIndex >= rangeStart && breakIndex < offices.length) {
+          groupRanges.push({ start: rangeStart, end: breakIndex });
+          rangeStart = breakIndex + 1;
+        }
+      });
+      if (rangeStart < offices.length) {
+        groupRanges.push({ start: rangeStart, end: offices.length - 1 });
+      }
+
+      const groupNames = String(row.dataset.officeNames || '')
+        .split('|')
+        .map(normalizeDefaultOfficeUnit);
+      const groupPenroFlags = getInputGroupPenroFlagsForRow(row);
+      const groupIndex = groupNames.findIndex((name, index) => (
+        Boolean(groupPenroFlags[index]) && name === normalizedOfficeUnit
+      ));
+      const groupRange = groupRanges[groupIndex];
+      if (!groupRange) return [];
+
+      return offices
+        .slice(groupRange.start, groupRange.end + 1)
+        .map(office => String(office?.id || ''))
+        .filter(Boolean);
+    };
+
+    const defaultFinancialUnitValue = (defaultRow, sectionKey, periodKey, officeUnit) => {
+      const coreKey = String(defaultRow.dataset.coreKey || '');
+      const section = summarySections.find(item => item.key === sectionKey);
+      const period = summaryPeriodsForSection(section || {}).find(item => item.key === periodKey);
+      if (!section || !period) return 0;
+
+      const programRows = Array.from(document.querySelectorAll('#performanceTable tbody tr[data-row-id]'))
+        .filter(row => String(row.dataset.coreKey || '') === coreKey);
+
+      return programRows.reduce((total, row) => {
+        const officeIds = officeIdsForDefaultFinancialUnit(row, officeUnit);
+        return officeIds.length > 0
+          ? total + summaryAggregateValue(row, section, officeIds, period)
+          : total;
+      }, 0);
+    };
+
+    const createDefaultFinancialSummaryInput = (section, period, officeUnit, isProvince) => {
+      const input = document.createElement('input');
+      input.type = section.isPercentage ? 'text' : 'number';
+      input.className = 'month-box summary-box program-financial-summary-box';
+      input.style.width = '100%';
+      input.value = section.isPercentage ? '0.00%' : '0';
+      input.readOnly = true;
+      input.setAttribute('aria-readonly', 'true');
+      input.setAttribute('aria-label', `${officeUnit} ${section.label} ${period.label}`);
+      input.dataset.summaryKind = section.key;
+      input.dataset.summaryPeriod = period.key;
+      input.dataset.defaultFinancialUnit = officeUnit;
+
+      if (officeUnit === 'CAR') input.classList.add('car-total-box');
+      if (isProvince) input.classList.add('group-total-box');
+
+      return input;
+    };
+
+    const addDefaultFinancialSummaryCells = () => {
+      document.querySelectorAll('#performanceTable tbody tr.default-office-unit-row').forEach((row) => {
+        if (row.querySelector('td[data-dynamic-section="summary"]')) return;
+
+        const officeUnits = Array.from(row.querySelectorAll('[data-default-office-unit]'))
+          .map(label => String(label.dataset.defaultOfficeUnit || '').trim())
+          .filter(Boolean);
+
+        summarySections.forEach((section) => {
+          summaryPeriodsForSection(section).forEach((period, periodIndex) => {
+            const cell = document.createElement('td');
+            cell.className = 'p-1 text-center dynamic-cell-summary';
+            if (periodIndex === 0) cell.classList.add('summary-section-start');
+            cell.dataset.dynamicSection = 'summary';
+            cell.dataset.summaryKind = section.key;
+            cell.dataset.summaryPeriod = period.key;
+
+            if (section.key.startsWith('financial-')) {
+              const wrapper = document.createElement('div');
+              wrapper.className = 'office-lines';
+
+              officeUnits.forEach((officeUnit) => {
+                const line = document.createElement('div');
+                line.className = 'input-line';
+                const isProvince = !['CAR', 'RO'].includes(officeUnit);
+                line.appendChild(createDefaultFinancialSummaryInput(
+                  section,
+                  period,
+                  officeUnit,
+                  isProvince
+                ));
+                wrapper.appendChild(line);
+              });
+
+              cell.appendChild(wrapper);
+            } else {
+              cell.setAttribute('aria-hidden', 'true');
+            }
+
+            insertBeforeRemarks(row, cell);
+          });
+        });
+      });
+    };
+
+    const refreshDefaultFinancialSummaryInputs = () => {
+      document.querySelectorAll('#performanceTable .program-financial-summary-box').forEach((input) => {
+        const defaultRow = input.closest('tr.default-office-unit-row');
+        if (!defaultRow) return;
+
+        const section = summarySections.find(item => item.key === input.dataset.summaryKind);
+        const period = summaryPeriodsForSection(section || {}).find(
+          item => item.key === input.dataset.summaryPeriod
+        );
+        if (!section || !period) return;
+
+        if (section.isFinancialPercentage) {
+          const numerator = defaultFinancialUnitValue(
+            defaultRow,
+            period.numeratorSection,
+            period.numeratorPeriod,
+            input.dataset.defaultFinancialUnit
+          );
+          const denominator = defaultFinancialUnitValue(
+            defaultRow,
+            period.denominatorSection,
+            period.denominatorPeriod,
+            input.dataset.defaultFinancialUnit
+          );
+          input.value = formatSummaryPercentage(
+            denominator > 0 ? (numerator / denominator) * 100 : 0
+          );
+          return;
+        }
+
+        input.value = defaultFinancialUnitValue(
+          defaultRow,
+          section.key,
+          period.key,
+          input.dataset.defaultFinancialUnit
+        );
+      });
     };
 
     window.refreshSummaryInputs = function () {
@@ -863,7 +1292,9 @@
       document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach((row) => {
         row.querySelectorAll('.month-box.summary-box').forEach((input) => {
           const section = summarySections.find(item => item.key === input.dataset.summaryKind);
-          const period = summaryPeriods.find(item => item.key === input.dataset.summaryPeriod);
+          const period = summaryPeriodsForSection(section || {}).find(
+            item => item.key === input.dataset.summaryPeriod
+          );
           const aggregateOfficeIds = String(input.dataset.summaryOfficeIds || '')
             .split(',')
             .map(value => value.trim())
@@ -871,6 +1302,26 @@
           const officeId = String(input.dataset.officeId || '').trim();
           if (!section || !period) {
             input.value = 0;
+            return;
+          }
+
+          if (section.isFinancialPercentage) {
+            input.value = formatSummaryPercentage(financialBurValue(
+              row,
+              period,
+              officeId,
+              aggregateOfficeIds
+            ));
+            return;
+          }
+
+          if (section.isPercentage) {
+            input.value = formatSummaryPercentage(physicalPercentageValue(
+              row,
+              period,
+              officeId,
+              aggregateOfficeIds
+            ));
             return;
           }
 
@@ -887,6 +1338,8 @@
           input.value = summaryValue(row, section, officeId, period);
         });
       });
+
+      refreshDefaultFinancialSummaryInputs();
     };
 
     window.toggleSummaryColumns = function () {
@@ -901,12 +1354,16 @@
         document.getElementById('summaryBtn').innerHTML = '<i class="fa fa-eye-slash me-1"></i> Hide Summary';
         document.getElementById('summaryBtn').classList.replace('btn-info', 'btn-outline-info');
         addSummaryHeaders(headerRow, groupRow);
+        showPhysicalPerformanceTitleRow(table, headerRow, groupRow);
         addSummaryCells();
       } else {
         summaryVisible = false;
         document.getElementById('summaryBtn').innerHTML = '<i class="fa fa-chart-bar me-1"></i> Summary';
         document.getElementById('summaryBtn').classList.replace('btn-outline-info', 'btn-info');
+        removePhysicalPerformanceTitleRow(table);
         removeSectionColumns(groupRow, headerRow, 'summary');
+        table.querySelectorAll('tbody td[data-dynamic-section="summary"]')
+          .forEach(cell => cell.remove());
         groupRow.querySelectorAll('.group-summary').forEach(group => group.remove());
         if (groupRow.querySelectorAll('.group-header').length === 0) {
           groupRow.replaceChildren();
@@ -1025,8 +1482,8 @@
       }
     };
 
-    const hydrateInputs = (section, source) => {
-      document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach((row) => {
+    const hydrateInputs = (section, source, selectedRows = null) => {
+      Array.from(selectedRows || document.querySelectorAll('#performanceTable tbody tr[data-row-id]')).forEach((row) => {
         const rowId = String(row.dataset.rowId || row.dataset.programId || '').trim();
         const indicatorId = String(row.dataset.indicatorId || '').trim();
         if (!rowId || !indicatorId) return;
@@ -1280,6 +1737,7 @@
       const groupRow = document.getElementById('groupHeaders');
       const physicalGroup = groupRow.querySelector('.group-pending');
       if (!physicalGroup) return;
+      if (!groupRow.querySelector('.group-financial-pending')) {
       physicalGroup.textContent = 'Physical Pending';
       const financialGroup = physicalGroup.cloneNode(true);
       financialGroup.classList.add('group-financial-pending');
@@ -1294,8 +1752,11 @@
         const remarksHeader = mainHeader.querySelector('th[data-dynamic-section="remarks"]');
         mainHeader.insertBefore(header, remarksHeader || null);
       });
+      }
 
-      document.querySelectorAll('#performanceTable tbody tr[data-row-id]').forEach(row => {
+      window.pmsRowsNearViewport(document.querySelectorAll('#performanceTable tbody tr[data-row-id]')).forEach(row => {
+        if (row.style.display === 'none' || row.classList.contains('d-none')
+          || row.querySelector('td[data-dynamic-section="financial-pending"]')) return;
         row.querySelectorAll('td[data-dynamic-section="pending"]').forEach(physicalCell => {
           const section = physicalCell.dataset.pendingKind === 'target' ? 'financial' : 'financial-accomp';
           const cell = physicalCell.cloneNode(true);
@@ -1354,7 +1815,7 @@
     refreshSummaryCards = function () {
       originalRefreshSummaryCards();
       refreshFinancialPendingInputs();
-      refreshTargetMissBorders();
+      scheduleTargetMissBorderRefresh();
       if (pendingVisible) applyPendingRowFilter();
     };
 
@@ -1373,36 +1834,69 @@
       refreshGroupHeaderColspans();
     };
 
-    const financialButton = document.getElementById('financialBtn');
-    const financialListItem = financialButton?.closest('li');
-    if (financialListItem && !document.getElementById('financialMenuBtn')) {
-      financialListItem.className = 'dropend';
-      financialListItem.innerHTML = `
-        <button class="dropdown-item dropdown-toggle" id="financialMenuBtn" type="button"
-          data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="fa fa-peso-sign me-1"></i> Financial
-        </button>
-        <ul class="dropdown-menu">
-          <li>
-            <button onclick="toggleFinancialColumns()" class="dropdown-item" id="financialBtn" type="button">
-              <i class="fa fa-bullseye me-1"></i> Target
-            </button>
-          </li>
-          <li>
-            <button onclick="toggleFinancialAccomplishmentColumns()" class="dropdown-item"
-              id="financialAccompBtn" type="button">
-              <i class="fa fa-list-check me-1"></i> Accomplishment
-            </button>
-          </li>
-        </ul>`;
-    }
-
     document.getElementById('performanceTable')?.addEventListener('input', event => {
       const input = event.target;
       if (!input.classList?.contains('month-box') || input.dataset.section !== 'financial-accomp') return;
       const row = input.closest('tr[data-row-id]');
       if (row) recalculateFinancialAccomplishments(row);
     });
+
+    // Collapsed PAP groups keep their records in the existing JSON data. Only
+    // expanded rows need thousands of editable DOM nodes.
+    const initializeVisiblePerformanceInputs = () => {
+      const table = document.getElementById('performanceTable');
+      if (!table) return;
+      const rows = window.pmsRowsNearViewport(table.querySelectorAll('tbody tr[data-row-id]'));
+      if (rows.length === 0) return;
+      let changed = false;
+
+      for (const section of ['target', 'accomp', 'financial', 'financial-accomp', 'pending']) {
+        if (!table.querySelector(`th[data-dynamic-section="${section}"]`)) continue;
+        const newRows = rows.filter(row => !row.querySelector(`td[data-dynamic-section="${section}"]`));
+        if (newRows.length === 0) continue;
+        changed = true;
+        addInputCells(section, newRows);
+        if (section === 'financial') {
+          hydrateInputs(section, config.existing, newRows);
+          recalculateSectionRows(section);
+          recalculateCarTotalsForSection(section);
+        } else if (section === 'financial-accomp') {
+          hydrateInputs(section, config.existingAccomplishments, newRows);
+          newRows.forEach(recalculateFinancialAccomplishmentRow);
+        }
+      }
+      if (summaryVisible && rows.some(row => !row.querySelector('td[data-dynamic-section="summary"]'))) {
+        addSummaryCells(rows);
+        changed = true;
+      }
+      if (pendingVisible && rows.some(row => !row.querySelector('td[data-dynamic-section="financial-pending"]'))) {
+        addFinancialPendingColumns();
+        changed = true;
+      }
+      if (!changed) return;
+      refreshMonthButtonState();
+      refreshSummaryCards();
+    };
+    let visibleInputsQueued = false;
+    const scheduleVisiblePerformanceInputs = () => {
+      if (visibleInputsQueued) return;
+      visibleInputsQueued = true;
+      requestAnimationFrame(() => {
+        visibleInputsQueued = false;
+        initializeVisiblePerformanceInputs();
+      });
+    };
+    const performanceBody = document.querySelector('#performanceTable tbody');
+    if (performanceBody) {
+      new MutationObserver(mutations => {
+        if (mutations.some(mutation => mutation.target.matches('tr[data-row-id]')
+          && mutation.target.style.display !== 'none')) scheduleVisiblePerformanceInputs();
+      }).observe(performanceBody, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
+      document.getElementById('performanceTable').closest('.table-container')
+        ?.addEventListener('scroll', scheduleVisiblePerformanceInputs, { passive: true });
+      window.addEventListener('scroll', scheduleVisiblePerformanceInputs, { passive: true });
+      window.addEventListener('resize', scheduleVisiblePerformanceInputs, { passive: true });
+    }
 
     if (typeof saveAllSectionEntries === 'function') {
       saveAllSectionEntries = async function () {

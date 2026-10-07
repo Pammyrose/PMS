@@ -319,7 +319,7 @@ class AccomplishmentSubmissionService
                 ->value('indicator_types.name'));
 
         $quarterValue = fn (array $values): float => $indicatorType === 'non-cumulative'
-            ? max([0, ...$values])
+            ? \App\Support\NonCumulativeAnnualTotal::calculate($values)
             : array_sum($values);
         $quarters = [
             $quarterValue(array_slice($months, 0, 3)),
@@ -333,9 +333,11 @@ class AccomplishmentSubmissionService
             'q2' => $quarters[1],
             'q3' => $quarters[2],
             'q4' => $quarters[3],
-            'annual_total' => $indicatorType === 'semi-cumulative'
+            'annual_total' => $indicatorType === 'non-cumulative'
+                ? \App\Support\NonCumulativeAnnualTotal::calculate($quarters)
+                : ($indicatorType === 'semi-cumulative'
                 ? max([0, ...$quarters])
-                : array_sum($quarters),
+                : array_sum($quarters)),
         ];
     }
 

@@ -35,7 +35,7 @@ $userRole = 'role:user,penro,cenro';
 $reviewRoles = 'role:super-admin,admin,ro-office,ro office';
 $notificationRoles = 'role:super-admin,admin,user,penro,cenro,ro-office,ro office';
 $historyRoles = 'role:super-admin,admin,penro,ro-office,ro office';
-$wfpExportRoles = 'role:super-admin,admin,penro,ro-office,ro office';
+$wfpExportRoles = $viewRoles;
 
 // admin pages
 Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', $viewRoles])->name('dashboard');

@@ -8,6 +8,16 @@ This document defines the frontend structure, conventions, and user-interface be
 
 PMS uses a server-rendered frontend built with Laravel Blade. Controllers prepare the page data, Blade templates generate the initial HTML, and browser JavaScript adds interactive tables, filters, charts, modals, asynchronous saves, and user preferences.
 
+Dashboard office, sector, and year filters fetch shared result markup in place through the authenticated dashboard route. Rapid selections are debounced, older requests are cancelled, and stale responses cannot overwrite the latest selection. Successful updates preserve browser history; failed requests leave existing results visible. Without JavaScript, the Apply filters button submits the form normally. Chart and modal-row handlers support replaced content across all four role views.
+
+PAP and indicator detail tables load when their cards open. A modal shares its in-flight request and reuses successful results until the filters replace the dashboard. Failed list requests offer Retry, and responses for removed modals are ignored. The initial page and filter responses include counts and empty modal shells rather than hidden record tables.
+
+PAP dropdowns use `public/js/pap-options.js` across all role/sector forms. The helper reuses options when parent values are unchanged and replaces changed options in one DOM operation. Physical/financial target highlighting indexes target inputs once per row and section and coalesces refreshes into animation frames.
+
+Physical and financial inputs are created only for expanded PAP rows within or near the visible table viewport. Expanding or scrolling to a row hydrates its enabled sections from the existing scoped JSON data; reopening it reuses its inputs, preserving unsaved edits. Summary and financial pending cells follow the same rule. A scoped row-visibility observer and passive scroll/resize listeners handle normal expansion, dashboard highlights, and pending filters. Save collection continues to submit changed, initialized rows; unopened records remain untouched.
+
+Run `node --test tests/Frontend/*.test.cjs` for dropdown caching, input matching, request ordering, failure recovery, browser-history checks, and save-workflow regression checks. Save tests cover confirmed versus pending changes, failed/expired/offline responses, retries, partial Save All failure, and locked-period reasons. These run the JavaScript save handlers in a simulated browser environment; PHP feature tests separately verify save/reload persistence, office access, and approval decisions.
+
 The browser is not a separate single-page application. Laravel routes remain the source of navigation, authorization, validation, and persistent state.
 
 ### Technology Stack

@@ -70,6 +70,7 @@ class OfficialWfpTemplateWriter
         $updates = [];
         $matchedBlocks = 0;
         $updatedRows = 0;
+        $financialSummaryHiddenRows = [];
         $lastTemplateRow = empty($templateRows) ? 0 : max(array_keys($templateRows));
         $officeRowScope = $this->officeRowScope($templateRows, $allowedOfficeNames);
 
@@ -122,12 +123,23 @@ class OfficialWfpTemplateWriter
             }
         }
 
+        $updatedRows += $this->collectProgramFinancialSummaryUpdates(
+            $updates,
+            $templateRows,
+            $rows,
+            $asOf,
+            $financialSummaryHiddenRows
+        );
+
         $this->applyUpdates(
             $outputPath,
             $sheetName,
             $updates,
             $asOf,
-            $officeRowScope['hidden'],
+            array_values(array_unique([
+                ...$officeRowScope['hidden'],
+                ...$financialSummaryHiddenRows,
+            ])),
             $officeRowScope['clear_location']
         );
 
@@ -146,6 +158,13 @@ class OfficialWfpTemplateWriter
     {
         $groups = [];
         foreach ($rows as $row) {
+            // Program-level financial totals have their own placement pass below.
+            // Treating them as ordinary P/A/P rows makes the same CAR/RO/province
+            // total flow into every matching office row inside the program block.
+            if ((bool) ($row['is_financial_summary'] ?? false)) {
+                continue;
+            }
+
             $pap = (string) ($row['pap'] ?? '');
             $indicator = (string) ($row['indicator'] ?? '');
             $key = $this->normalizeText($pap).'|'.$this->normalizeText($indicator);
@@ -290,6 +309,75 @@ class OfficialWfpTemplateWriter
         }
     }
 
+    private function collectProgramFinancialSummaryUpdates(
+        array &$updates,
+        array $templateRows,
+        array $rows,
+        DateTimeInterface $asOf,
+        array &$hiddenRows = []
+    ): int {
+        $groups = collect($rows)
+            ->filter(fn (array $row): bool => (bool) ($row['is_financial_summary'] ?? false))
+            ->groupBy('_program_key');
+        $updated = 0;
+
+        foreach ($groups as $group) {
+            $label = $this->normalizeText((string) ($group->first()['_program_label'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $headerRow = collect($templateRows)->search(function (array $row) use ($label): bool {
+                $cell = $this->normalizeText((string) ($row['A'] ?? ''));
+
+                return $cell !== '' && ($cell === $label || $this->containsEither($cell, $label));
+            });
+            if ($headerRow === false) {
+                continue;
+            }
+
+            $visibleRows = [(int) $headerRow => true];
+
+            foreach ($group as $summary) {
+                $office = $this->officeAlias($this->normalizeOffice((string) ($summary['office'] ?? '')));
+                $targetRow = null;
+                for ($rowNumber = (int) $headerRow; $rowNumber <= min((int) $headerRow + 100, max(array_keys($templateRows))); $rowNumber++) {
+                    $candidate = $this->officeAlias($this->normalizeOffice((string) ($templateRows[$rowNumber]['C'] ?? '')));
+                    if ($candidate === $office) {
+                        $targetRow = $rowNumber;
+                        break;
+                    }
+                }
+                if ($targetRow === null) {
+                    continue;
+                }
+                $visibleRows[$targetRow] = true;
+                $this->collectCellUpdates($updates, $targetRow, [
+                    'financial_target' => $summary['financial_target'] ?? [],
+                    'financial_accomplishment' => $summary['financial_accomplishment'] ?? [],
+                ], 'cumulative', $asOf);
+                $updated++;
+            }
+
+            $lastSummaryRow = max(array_keys($visibleRows));
+            for ($rowNumber = (int) $headerRow; $rowNumber <= $lastSummaryRow; $rowNumber++) {
+                if (isset($visibleRows[$rowNumber])) {
+                    continue;
+                }
+
+                $templateRow = $templateRows[$rowNumber] ?? [];
+                $hasPapOrIndicator = trim((string) ($templateRow['A'] ?? '')) !== ''
+                    || trim((string) ($templateRow['B'] ?? '')) !== '';
+                if (! $hasPapOrIndicator) {
+                    $hiddenRows[] = $rowNumber;
+                }
+            }
+        }
+
+        $hiddenRows = array_values(array_unique($hiddenRows));
+
+        return $updated;
+    }
+
     /**
      * @param  array<string, mixed>  $periods
      * @return array{0:float,1:float,2:float}
@@ -307,16 +395,18 @@ class OfficialWfpTemplateWriter
             default => 'cumulative',
         };
         $quarterValue = static fn (array $values): float => $type === 'non-cumulative'
-            ? max([0.0, ...$values])
+            ? NonCumulativeAnnualTotal::calculate($values)
             : array_sum($values);
         $quarterValues = [];
         for ($start = 0; $start < 12; $start += 3) {
             $quarterValues[] = $quarterValue(array_slice($monthlyValues, $start, 3));
         }
 
-        $annual = $type === 'semi-cumulative'
+        $annual = $type === 'non-cumulative'
+            ? NonCumulativeAnnualTotal::calculate($quarterValues)
+            : ($type === 'semi-cumulative'
             ? max([0.0, ...$quarterValues])
-            : array_sum($quarterValues);
+            : array_sum($quarterValues));
         $month = max(1, min(12, $month));
         $quarter = $quarterValues[intdiv($month - 1, 3)];
         $monthsToDate = array_slice($monthlyValues, 0, $month);
@@ -370,7 +460,7 @@ class OfficialWfpTemplateWriter
                         if ($this->isSummaryDataReference($reference)) {
                             $attributes = preg_replace('/\s+t="[^"]*"/', '', $matches[1]) ?? $matches[1];
 
-                            return '<c'.$attributes.'><v>0</v></c>';
+                            return '<c'.$attributes.'/>';
                         }
 
                         // The official workbook uses shared formula groups. Replacing only
@@ -500,6 +590,10 @@ class OfficialWfpTemplateWriter
     private function transformSummaryLayout(string $xml, DateTimeInterface $asOf): string
     {
         $xml = $this->collapseMonthlyColumns($xml);
+        $headerRange = $this->summaryHeaderRange($xml);
+        $headerXml = $headerRange === null
+            ? $xml
+            : substr($xml, $headerRange['offset'], $headerRange['length']);
         $quarter = (int) ceil(((int) $asOf->format('n')) / 3);
         $labels = ['ANNUAL', 'Q'.$quarter, 'TO DATE'];
         $year = $asOf->format('Y');
@@ -513,23 +607,47 @@ class OfficialWfpTemplateWriter
         foreach (self::SUMMARY_COLUMNS as $kind => $columns) {
             $titleReferences = array_map(fn (string $column): string => $column.'7', $columns);
             $periodReferences = array_map(fn (string $column): string => $column.'8', $columns);
-            $titleStyleSource = $this->firstPopulatedCell($xml, $titleReferences) ?? $titleReferences[0];
-            $periodStyleSource = $this->firstPopulatedCell($xml, $periodReferences) ?? $periodReferences[0];
+            $titleStyleSource = $this->firstPopulatedCell($headerXml, $titleReferences) ?? $titleReferences[0];
+            $periodStyleSource = $this->firstPopulatedCell($headerXml, $periodReferences) ?? $periodReferences[0];
 
-            $xml = $this->copyCellStyle($xml, $titleStyleSource, $titleReferences);
-            $xml = $this->setInlineCell($xml, $titleReferences[0], $sectionTitles[$kind]);
+            $headerXml = $this->copyCellStyle($headerXml, $titleStyleSource, $titleReferences);
+            $headerXml = $this->setInlineCell($headerXml, $titleReferences[0], $sectionTitles[$kind]);
             foreach (array_slice($titleReferences, 1) as $reference) {
-                $xml = $this->clearCell($xml, $reference);
+                $headerXml = $this->clearCell($headerXml, $reference);
             }
 
-            $xml = $this->copyCellStyle($xml, $periodStyleSource, $periodReferences);
+            $headerXml = $this->copyCellStyle($headerXml, $periodStyleSource, $periodReferences);
             foreach ($columns as $index => $column) {
-                $xml = $this->setInlineCell($xml, $column.'8', $labels[$index]);
-                $xml = $this->clearCell($xml, $column.'9');
+                $headerXml = $this->setInlineCell($headerXml, $column.'8', $labels[$index]);
+                $headerXml = $this->clearCell($headerXml, $column.'9');
             }
         }
 
+        if ($headerRange !== null) {
+            $xml = substr_replace($xml, $headerXml, $headerRange['offset'], $headerRange['length']);
+        } else {
+            $xml = $headerXml;
+        }
+
         return $this->replaceSummaryHeaderMerges($xml);
+    }
+
+    /** @return array{offset:int,length:int}|null */
+    private function summaryHeaderRange(string $xml): ?array
+    {
+        $rowPattern = static fn (int $row): string => '/<row\b(?=[^>]*\br="'.$row.'")[^>]*(?:\/>|>.*?<\/row>)/s';
+        if (! preg_match($rowPattern(7), $xml, $first, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $offset = (int) $first[0][1];
+        if (! preg_match($rowPattern(9), $xml, $last, PREG_OFFSET_CAPTURE, $offset)) {
+            return null;
+        }
+
+        $end = (int) $last[0][1] + strlen($last[0][0]);
+
+        return ['offset' => $offset, 'length' => $end - $offset];
     }
 
     /** @param array<int, string> $references */

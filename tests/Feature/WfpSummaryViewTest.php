@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Support\PhysicalPerformanceSummaryLayout;
 use Tests\TestCase;
 
 class WfpSummaryViewTest extends TestCase
@@ -16,9 +17,10 @@ class WfpSummaryViewTest extends TestCase
         ]);
 
         $view
-            ->assertSee('Physical Target', false)
+            ->assertSee('"label":"Target"', false)
             ->assertSee('Financial Target', false)
-            ->assertSee('Physical Accomplishment', false)
+            ->assertSee('"label":"Accomp"', false)
+            ->assertSee('%Accomp', false)
             ->assertSee('Financial Accomplishment', false)
             ->assertSee("key: 'annual'", false)
             ->assertSee("key: 'quarter'", false)
@@ -69,7 +71,7 @@ class WfpSummaryViewTest extends TestCase
         );
     }
 
-    public function test_each_summary_section_has_a_distinct_three_column_header(): void
+    public function test_physical_accomplishment_omits_annual_while_other_summary_sections_keep_their_periods(): void
     {
         $html = (string) $this->view('components.financial_input_persistence', [
             'financialSector' => 'gass',
@@ -77,14 +79,28 @@ class WfpSummaryViewTest extends TestCase
             'financialAccomplishments' => [],
         ]);
 
-        $this->assertStringContainsString('summaryGroup.colSpan = summaryPeriods.length', $html);
+        $sections = collect(PhysicalPerformanceSummaryLayout::sections())->keyBy('key');
+        $this->assertSame(
+            ['annual', 'quarter', 'to-date'],
+            array_column($sections['physical-target']['periods'], 'key')
+        );
+        $this->assertSame(
+            ['quarter', 'to-date'],
+            array_column($sections['physical-accomplishment']['periods'], 'key')
+        );
+        $this->assertStringContainsString('const physicalSummarySections =', $html);
+        $this->assertStringContainsString('...physicalSummarySections.map(section => ({', $html);
+        $this->assertStringContainsString('const summaryPeriodsForSection = section => section.periods || summaryPeriods', $html);
+        $this->assertStringContainsString('summaryGroup.colSpan = sectionPeriods.length', $html);
         $this->assertStringContainsString('summaryGroup.textContent = section.label', $html);
 
         foreach ([
             'physical-target',
             'physical-accomplishment',
+            'physical-percentage',
             'financial-target',
             'financial-accomplishment',
+            'financial-bur',
         ] as $section) {
             $this->assertStringContainsString(
                 ".group-summary[data-summary-kind=\"{$section}\"]",
@@ -95,6 +111,104 @@ class WfpSummaryViewTest extends TestCase
                 $html
             );
         }
+    }
+
+    public function test_financial_accomplishment_summary_omits_the_annual_column(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString(
+            'const financialAccomplishmentSummaryPeriods = financialTargetSummaryPeriods',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            "/key:\s*'financial-accomplishment',[\s\S]*?periods:\s*financialAccomplishmentSummaryPeriods/",
+            $html
+        );
+    }
+
+    public function test_financial_performance_uses_allotment_obligation_and_disbursement_labels(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString("? 'Allotment'", $html);
+        $this->assertStringContainsString("? 'This Quarter'", $html);
+        $this->assertMatchesRegularExpression(
+            "/key:\s*'financial-target',[\s\S]*?label:\s*'Obligation'/",
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            "/key:\s*'financial-accomplishment',[\s\S]*?label:\s*'Disbursement'/",
+            $html
+        );
+    }
+
+    public function test_financial_performance_includes_the_three_budget_utilization_rates(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString("label: '% Budget Utilization Rate (BUR)'", $html);
+        $this->assertStringContainsString("label: '(Oblig/Allot) *100'", $html);
+        $this->assertStringContainsString("label: '(Disb/Allot) *100'", $html);
+        $this->assertStringContainsString("label: '(Disb/Oblig) *100'", $html);
+        $this->assertStringContainsString('const financialBurValue =', $html);
+        $this->assertStringContainsString('return denominator > 0 ? (numerator / denominator) * 100 : 0', $html);
+        $this->assertStringContainsString('if (section.isFinancialPercentage)', $html);
+    }
+
+    public function test_physical_percentage_columns_compare_to_date_accomplishment_with_to_date_and_annual_targets(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $percentageSection = collect(PhysicalPerformanceSummaryLayout::sections())
+            ->firstWhere('key', 'physical-percentage');
+        $this->assertSame('%Accomp', $percentageSection['label']);
+        $this->assertSame('to-date', $percentageSection['periods'][0]['denominatorPeriod']);
+        $this->assertSame('annual', $percentageSection['periods'][1]['denominatorPeriod']);
+        $this->assertStringContainsString('"key":"physical-percentage"', $html);
+        $this->assertStringContainsString('"label":"%Accomp"', $html);
+        $this->assertStringContainsString('const physicalPercentageValue = (row, period, officeId = \'\', aggregateOfficeIds = []) =>', $html);
+        $this->assertStringContainsString('return target > 0 ? (accomplishment / target) * 100 : 0;', $html);
+        $this->assertStringContainsString('formatSummaryPercentage', $html);
+        $this->assertStringContainsString("input.type = section.isPercentage ? 'text' : 'number'", $html);
+    }
+
+    public function test_physical_performance_title_is_a_separate_row_above_the_summary_groups(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString('title.textContent = "Physical Performance"', $html);
+        $this->assertStringContainsString("title.colSpan = physicalColumns", $html);
+        $this->assertStringContainsString("financialTitle.colSpan = financialColumns", $html);
+        $this->assertStringContainsString("financialTitle.textContent = 'Financial Performance'", $html);
+        $this->assertStringContainsString("financialTitle.className = 'financial-performance-title'", $html);
+        $this->assertStringContainsString('groupHeader.parentNode.insertBefore(titleRow, groupHeader)', $html);
+        $this->assertStringContainsString('showPhysicalPerformanceTitleRow(table, headerRow, groupRow)', $html);
+        $this->assertStringContainsString('removePhysicalPerformanceTitleRow(table)', $html);
+        $this->assertStringContainsString('#performanceTable .physical-performance-title-row + tr.group-row th', $html);
+        $this->assertStringContainsString('var(--physical-performance-title-row-height, 28px)', $html);
+        $this->assertStringContainsString("'--physical-performance-title-row-height'", $html);
+        $this->assertStringContainsString('background: transparent !important;', $html);
     }
 
     public function test_summary_columns_use_the_compact_ui_width(): void
@@ -155,6 +269,42 @@ class WfpSummaryViewTest extends TestCase
         $this->assertStringContainsString("? 'cumulative'", $html);
         $this->assertStringContainsString(
             ': officeValues.reduce((total, value) => total + value, 0)',
+            $html
+        );
+    }
+
+    public function test_financial_summary_populates_the_default_car_ro_and_province_row(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString('addDefaultFinancialSummaryCells()', $html);
+        $this->assertStringContainsString("section.key.startsWith('financial-')", $html);
+        $this->assertStringContainsString(
+            "input.className = 'month-box summary-box program-financial-summary-box'",
+            $html
+        );
+        $this->assertStringContainsString("input.dataset.defaultFinancialUnit = officeUnit", $html);
+        $this->assertStringContainsString('refreshDefaultFinancialSummaryInputs()', $html);
+        $this->assertStringContainsString('const officeIdsForDefaultFinancialUnit =', $html);
+        $this->assertStringContainsString('summaryAggregateValue(row, section, officeIds, period)', $html);
+    }
+
+    public function test_financial_summary_inputs_only_render_in_the_default_office_row(): void
+    {
+        $html = (string) $this->view('components.financial_input_persistence', [
+            'financialSector' => 'gass',
+            'financials' => [],
+            'financialAccomplishments' => [],
+        ]);
+
+        $this->assertStringContainsString("cell.classList.add('financial-summary-detail-empty')", $html);
+        $this->assertStringContainsString("if (section.key.startsWith('financial-'))", $html);
+        $this->assertStringContainsString(
+            "document.querySelectorAll('#performanceTable tbody tr.default-office-unit-row')",
             $html
         );
     }

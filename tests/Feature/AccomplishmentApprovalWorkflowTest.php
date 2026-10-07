@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AccomplishmentSubmission;
 use App\Models\FinancialAccomplishment;
+use App\Models\FinancialTarget;
 use App\Models\Office;
 use App\Models\PhysicalAccomplishment;
 use App\Models\PhysicalTarget;
@@ -417,6 +418,126 @@ class AccomplishmentApprovalWorkflowTest extends TestCase
             ->assertDontSee('highlight_period');
 
         $this->assertNotNull($submission->fresh()->user_read_at);
+    }
+
+    public function test_guests_cannot_save_or_review_accomplishments(): void
+    {
+        $this->postJson(route('users.gass_physical.accomplishments.store'), ['entries' => []])->assertUnauthorized();
+        $this->postJson(route('financial_inputs.store', 'gass'), ['entries' => []])->assertUnauthorized();
+        $this->patchJson(route('accomplishment-requests.approve', 1))->assertUnauthorized();
+        $this->patchJson(route('accomplishment-requests.decline', 1), ['review_notes' => 'Unauthorized'])->assertUnauthorized();
+    }
+
+    public function test_saved_accomplishments_are_available_when_the_page_is_reloaded(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-01-15 08:00:00', 'Asia/Manila'));
+        [$user, , $programId, $indicatorId] = $this->makeApprovalFixtures();
+        foreach (['PROJECT', 'MAIN ACTIVITY', 'SUB-ACTIVITY', 'SUB-SUB-ACTIVITY', 'SUB-SUB-SUB-ACTIVITY', 'LEVEL-7', 'LEVEL-8', 'LEVEL-9'] as $name) {
+            DB::table('record_types')->insert(['name' => $name, 'desc' => $name, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $entry = [
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'office_id' => $user->office_id, 'year' => 2026, 'jan' => 12.5,
+        ];
+        $this->actingAs($user)->postJson(route('users.gass_physical.accomplishments.store'), ['entries' => [$entry]])->assertOk();
+        $this->postJson(route('financial_inputs.store', 'gass'), ['entries' => [array_merge($entry, ['kind' => 'accomplishment', 'jan' => 250])]])->assertOk();
+
+        $this->get(route('gass_physical', ['year' => 2026]))
+            ->assertOk()
+            ->assertViewHas('accomplishments', fn ($data) => (float) $data[$programId][$indicatorId][$user->office_id]['jan'] === 12.5)
+            ->assertViewHas('financialAccomplishments', fn ($data) => (float) $data[$programId][$indicatorId][$user->office_id]['jan'] === 250.0);
+    }
+
+    public function test_invalid_batches_do_not_save_any_physical_or_financial_entries(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-01-15 08:00:00', 'Asia/Manila'));
+        [$user, , $programId, $indicatorId] = $this->makeApprovalFixtures();
+        $entry = [
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'office_id' => $user->office_id, 'year' => 2026, 'kind' => 'accomplishment', 'jan' => 10,
+        ];
+        foreach ([route('users.gass_physical.accomplishments.store'), route('financial_inputs.store', 'gass')] as $url) {
+            $this->actingAs($user)->postJson($url, ['entries' => [$entry, array_merge($entry, ['jan' => -1])]])
+                ->assertUnprocessable()->assertJsonValidationErrors('entries.1.jan');
+        }
+        $this->assertDatabaseCount('physical_accomplishments', 0);
+        $this->assertSame(0, FinancialAccomplishment::query()->count());
+        $this->assertDatabaseCount('accomplishment_submissions', 0);
+    }
+
+    public function test_user_cannot_save_another_offices_accomplishments_or_financial_targets(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-01-15 08:00:00', 'Asia/Manila'));
+        [$user, $penro, $programId, $indicatorId] = $this->makeApprovalFixtures();
+        $entry = [
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'office_id' => $penro->office_id, 'year' => 2026, 'kind' => 'accomplishment', 'jan' => 10,
+        ];
+        foreach ([route('users.gass_physical.accomplishments.store'), route('financial_inputs.store', 'gass')] as $url) {
+            $this->actingAs($user)->postJson($url, ['entries' => [$entry]])->assertForbidden();
+        }
+        $this->postJson(route('financial_inputs.store', 'gass'), ['entries' => [array_merge($entry, ['office_id' => $user->office_id, 'kind' => 'target'])]])->assertForbidden();
+        $this->assertDatabaseCount('physical_accomplishments', 0);
+        $this->assertSame(0, FinancialAccomplishment::query()->count());
+        $this->assertSame(0, FinancialTarget::query()->count());
+    }
+
+    public function test_approved_requests_cannot_be_approved_or_declined_again(): void
+    {
+        [$user, , $programId, $indicatorId, $admin] = $this->makeApprovalFixtures();
+        foreach (['physical', 'financial'] as $type) {
+            app(AccomplishmentSubmissionService::class)->queueLockedChange($user, $type, 'gass', [
+                'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+                'office_id' => $user->office_id, 'year' => 2026, 'jan' => 8,
+            ], ['jan'], 'Corrected source document.');
+            $submission = AccomplishmentSubmission::query()->where('submission_type', $type)->sole();
+            $this->actingAs($admin)->patch(route('accomplishment-requests.approve', $submission))->assertRedirect();
+            $this->patch(route('accomplishment-requests.approve', $submission))->assertStatus(409);
+            $this->patch(route('accomplishment-requests.decline', $submission), ['review_notes' => 'Late decline'])->assertStatus(409);
+            $this->assertSame('approved', $submission->fresh()->status);
+            $model = $type === 'physical' ? PhysicalAccomplishment::class : FinancialAccomplishment::class;
+            $this->assertSame(8.0, $model::query()->sole()->jan);
+        }
+    }
+
+    public function test_declined_requests_require_a_reason_and_cannot_be_approved_later(): void
+    {
+        [$user, , $programId, $indicatorId, $admin] = $this->makeApprovalFixtures();
+        app(AccomplishmentSubmissionService::class)->queueLockedChange($user, 'physical', 'gass', [
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'office_id' => $user->office_id, 'year' => 2026, 'jan' => 8,
+        ], ['jan'], 'Corrected source document.');
+        $submission = AccomplishmentSubmission::query()->sole();
+        $this->actingAs($admin)->patchJson(route('accomplishment-requests.decline', $submission), ['review_notes' => ''])
+            ->assertUnprocessable()->assertJsonValidationErrors('review_notes');
+        $this->assertSame('pending', $submission->fresh()->status);
+        $this->patch(route('accomplishment-requests.decline', $submission), ['review_notes' => 'Missing supporting document.'])->assertRedirect();
+        $this->patch(route('accomplishment-requests.approve', $submission))->assertStatus(409);
+        $this->assertSame('declined', $submission->fresh()->status);
+        $this->assertDatabaseCount('physical_accomplishments', 0);
+    }
+
+    public function test_approved_non_cumulative_correction_uses_the_repeated_quarter_for_annual_total(): void
+    {
+        [$user, , $programId, $indicatorId, $admin] = $this->makeApprovalFixtures();
+        $typeId = DB::table('indicator_types')->insertGetId(['name' => 'non-cumulative', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('indicators')->where('id', $indicatorId)->update(['indicator_type_id' => $typeId]);
+        $months = array_fill_keys(['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'], 11);
+        $record = PhysicalAccomplishment::query()->create(array_merge($months, [
+            'sector' => 'gass', 'user_id' => $user->id, 'office_id' => $user->office_id,
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'year' => 2026, 'annual_total' => 69,
+        ]));
+        app(AccomplishmentSubmissionService::class)->queueLockedChange($user, 'physical', 'gass', [
+            'program_id' => $programId, 'row_id' => $programId, 'indicator_id' => $indicatorId,
+            'office_id' => $user->office_id, 'year' => 2026, 'sep' => 69,
+        ], ['sep'], 'Corrected September source document.');
+        $submission = AccomplishmentSubmission::query()->sole();
+        $this->actingAs($admin)->patch(route('accomplishment-requests.approve', $submission))->assertRedirect();
+        $record->refresh();
+        $this->assertSame(69.0, $record->sep);
+        $this->assertSame(11.0, $record->q3);
+        $this->assertSame(11.0, $record->annual_total);
     }
 
     private function makeApprovalFixtures(): array

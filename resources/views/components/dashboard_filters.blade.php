@@ -15,7 +15,6 @@
             class="form-select form-select-md shadow-sm border-primary-subtle"
             style="width: 190px; min-width: 160px;"
             aria-label="Select dashboard office"
-            onchange="this.form.submit()"
         >
             @if($officeAllowsAll ?? false)
                 <option value="all" {{ ($selectedOffice ?? 'all') === 'all' ? 'selected' : '' }}>
@@ -45,7 +44,6 @@
             class="form-select form-select-md shadow-sm border-primary-subtle"
             style="width: 170px; min-width: 140px;"
             aria-label="Select dashboard sector"
-            onchange="this.form.submit()"
         >
             @php
                 $currentSector = $selectedSector ?? 'all';
@@ -78,7 +76,6 @@
             class="form-select form-select-md shadow-sm border-primary-subtle"
             style="width: 140px; min-width: 120px;"
             aria-label="Select dashboard year"
-            onchange="this.form.submit()"
         >
             @php
                 $currentYear = (int) ($year ?? now()->year);
@@ -95,4 +92,6 @@
             @endforeach
         </select>
     </div>
+<noscript><button type="submit" class="btn btn-primary">Apply filters</button></noscript>
+    <span id="dashboardFilterStatus" role="status" aria-live="polite" class="small text-muted"></span>
 </form>

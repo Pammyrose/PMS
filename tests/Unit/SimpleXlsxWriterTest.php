@@ -44,7 +44,9 @@ class SimpleXlsxWriterTest extends TestCase
         $reader = new SimpleXlsxReader;
         $rows = iterator_to_array($reader->rows($this->path, 'GASS'));
 
-        $this->assertSame('FY 2026 WORK AND FINANCIAL PLAN', $rows[2]['A']);
+        $this->assertSame('PHYSICAL AND FINANCIAL PERFORMANCE', $rows[1]['A']);
+        $this->assertSame('As of Third Quarter 2026', $rows[2]['A']);
+        $this->assertSame('Office: CORDILLERA ADMINISTRATIVE REGION', $rows[4]['A']);
         $this->assertSame('Physical Target', $rows[7]['D']);
         $this->assertSame('Financial Target', $rows[7]['G']);
         $this->assertSame('Physical Accomplishment', $rows[7]['J']);

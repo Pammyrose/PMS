@@ -6,6 +6,8 @@ This document defines the backend architecture, responsibilities, data flow, and
 
 ## Backend Overview
 
+Login counts failed credential attempts in the configured Laravel cache. Five failures for the same normalized email/IP pair, or thirty failures from one IP across different emails, block credential checks until the 60-second window expires. Browser requests return to the login form with a retry message; JSON requests receive HTTP 429. Successful authentication clears the email/IP counter and regenerates the session. Failed login attempts retain the email field only, never the password.
+
 PMS is implemented as a Laravel modular monolith. Web pages and JSON-based interactions use the same Laravel application, route file, session, domain models, and relational database. There is no separate public REST API or independent backend service.
 
 ### Technology Stack
@@ -222,6 +224,10 @@ GASS and STO provide preview and import endpoints. Import processing must:
 
 Import preview requests are intentionally excluded from edit-history logging because they do not persist business data.
 
+### Physical Performance Excel Export
+
+Authorized administrator, regional-office, and PENRO users can generate a sector-specific workbook. The existing P/A/P, performance-indicator, and office columns are retained while the physical-performance section follows the accomplishment-report layout: annual, selected-quarter, and to-date physical targets; selected-quarter and to-date accomplishments; and to-date and annual accomplishment percentages. The report freezes its eleven-row heading, uses Excel percentage number formats, and applies the authenticated user's office scope.
+
 ## Data Model
 
 ### Core Relationships
@@ -345,13 +351,20 @@ Do not expose stack traces, SQL, secrets, or sensitive request data in productio
 ## Caching and Performance
 
 - Dashboard summaries are cached by year, selected sector, and office scope.
+- Authenticated dashboard requests with `X-Dashboard-Partial: 1` return only the shared dashboard content; role middleware and office scoping are identical to full-page requests.
+- `X-Dashboard-List: pap` or `indicator` returns the corresponding modal body from the same authenticated route. Detail lists are cached separately by list type, year, validated sector, and authorized office scope; summaries no longer build them eagerly.
 - Year options are cached separately and for a slightly longer interval.
 - Aggregate queries select only required columns and use composite indexes.
 - Schema/column existence checks are cached within the dashboard controller instance.
+- Multi-sector dashboard summaries reuse physical rows by year and office scope, batch sector monthly totals, and fetch PAP hierarchy assignments once per type set. Single-sector views keep their sector filter.
+- Consolidated monthly summaries reuse fetched identity columns rather than repeating database grouping; legacy JSON-backed tables retain the SQL aggregation path.
+- Dashboard indexes start with `year`, then `office_id` and `sector`, complementing the existing sector-first page indexes.
 - Large legacy migrations process rows in chunks.
 - Large imports should avoid loading unnecessary workbook data into memory.
 
 Any mutation that affects cached dashboard totals must account for cache freshness. The present short cache duration limits staleness; explicit invalidation may be introduced if immediate consistency becomes required.
+
+For local diagnostics, run `php tools/profile-page-loading.php` to compare an uncached and cached administrator dashboard render using an isolated array cache. Add `--persistent-cache` to use the configured cache store. The command requires an existing administrator, prints timings and query counts without user records or connection credentials, and does not change performance records. Its measurements exclude browser/network time and HTTP middleware.
 
 ## Security Requirements
 

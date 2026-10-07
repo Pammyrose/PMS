@@ -247,6 +247,7 @@
             </div>
         </td>
     </tr>
+    @include('components.default_office_unit_row', compact('programCoreKey', 'programSearchText'))
     @php
         $subActivityGroups = $groupPrograms
             ->groupBy(function($row) {

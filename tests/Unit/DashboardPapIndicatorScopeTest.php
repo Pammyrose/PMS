@@ -225,6 +225,38 @@ class DashboardPapIndicatorScopeTest extends TestCase
         $this->assertSame([4, 9, 8, 10], $adminFilter['options']->pluck('id')->all());
     }
 
+    public function test_lazy_lists_enforce_office_scope_and_separate_cached_selections(): void
+    {
+        config(['cache.default' => 'array']);
+        $admin = new User;
+        $admin->forceFill(['id' => 3, 'role' => 'admin', 'office_id' => 4]);
+        auth()->setUser($admin);
+
+        foreach (['pap', 'indicator'] as $list) {
+            $request = \Illuminate\Http\Request::create('/dashboard', 'GET', ['year' => 2026, 'sector' => 'gass', 'office_id' => 'all']);
+            $request->headers->set('X-Dashboard-List', $list);
+            $allHtml = (new DashboardController)->index($request)->render();
+            $this->assertStringContainsString('BENGUET', $allHtml);
+            $this->assertStringContainsString('BUGUIAS', $allHtml);
+
+            $cenro = new User;
+            $cenro->forceFill(['id' => 2, 'role' => 'cenro', 'office_id' => 8]);
+            auth()->setUser($cenro);
+            // An unauthorized office request must fall back to this user's office,
+            // even after an administrator has cached unrestricted detail lists.
+            $request = \Illuminate\Http\Request::create('/dashboard', 'GET', ['year' => 2026, 'sector' => 'gass', 'office_id' => '4']);
+            $request->headers->set('X-Dashboard-List', $list);
+            $scopedHtml = (new DashboardController)->index($request)->render();
+            $this->assertStringContainsString('BUGUIAS', $scopedHtml);
+            $this->assertStringNotContainsString('BENGUET', $scopedHtml);
+            if ($list === 'indicator') {
+                $this->assertStringContainsString('CENRO indicator', $scopedHtml);
+                $this->assertStringNotContainsString('PENRO indicator', $scopedHtml);
+            }
+            auth()->setUser($admin);
+        }
+    }
+
     public function test_all_offices_counts_office_assignments_separately_from_penro(): void
     {
         DB::table('ppa')

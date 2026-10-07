@@ -47,6 +47,38 @@ class DashboardPerformanceComparisonTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_sector_lookups_share_queries_without_mixing_offices_or_years(): void
+    {
+        DB::table('physical_targets')->insert([
+            ['sector' => 'gass', 'office_id' => 7, 'row_id' => 1, 'year' => 2026, 'jan' => 10],
+            ['sector' => 'sto', 'office_id' => 7, 'row_id' => 1, 'year' => 2026, 'jan' => 20],
+            ['sector' => 'gass', 'office_id' => 8, 'row_id' => 1, 'year' => 2026, 'jan' => 900],
+            ['sector' => 'gass', 'office_id' => 7, 'row_id' => 1, 'year' => 2025, 'jan' => 800],
+        ]);
+        $controller = new DashboardController;
+        (new \ReflectionProperty(DashboardController::class, 'dashboardSectorKeys'))->setValue($controller, ['gass', 'sto']);
+        $monthly = new ReflectionMethod(DashboardController::class, 'physicalMonthlySumsForYear');
+        $rows = new ReflectionMethod(DashboardController::class, 'physicalRowsForYear');
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $gass = $monthly->invoke($controller, 'physical_targets', 2026, [7], 'gass');
+        $sto = $monthly->invoke($controller, 'physical_targets', 2026, [7], 'sto');
+        $gassRows = $rows->invoke($controller, 'physical_targets', 2026, [7], 'gass');
+        $stoRows = $rows->invoke($controller, 'physical_targets', 2026, [7], 'sto');
+        $reads = collect(DB::getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'from "physical_targets"'));
+        DB::disableQueryLog();
+
+        $this->assertCount(1, $reads, 'Monthly summaries and sector lists should reuse the same scoped rows.');
+        $this->assertSame(10.0, (float) $gass->sole()->jan);
+        $this->assertSame(20.0, (float) $sto->sole()->jan);
+        $this->assertSame('gass', $gassRows->sole()->sector);
+        $this->assertSame('sto', $stoRows->sole()->sector);
+        $this->assertSame(30.0, (float) $monthly->invoke($controller, 'physical_targets', 2026, [7], ['gass', 'sto'])->sole()->jan);
+        $this->assertSame(900.0, (float) $monthly->invoke($controller, 'physical_targets', 2026, [8], 'gass')->sole()->jan);
+        $this->assertSame(800.0, (float) $monthly->invoke($controller, 'physical_targets', 2025, [7], 'gass')->sole()->jan);
+    }
+
     public function test_comparison_counts_physical_input_cells_and_sums_financial_periods_by_scope(): void
     {
         DB::table('physical_targets')->insert([
